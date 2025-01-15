@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.6"
+        android:scaleY="0.6"
+        android:translateX="21.6"
+        android:translateY="21.6">
+        <!-- Film reel circle -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M54,27C39.088,27 27,39.088 27,54C27,68.912 39.088,81 54,81C68.912,81 81,68.912 81,54C81,39.088 68.912,27 54,27ZM54,33C65.598,33 75,42.402 75,54C75,65.598 65.598,75 54,75C42.402,75 33,65.598 33,54C33,42.402 42.402,33 54,33Z"/>
+        <!-- Center hole -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M54,48C50.686,48 48,50.686 48,54C48,57.314 50.686,60 54,60C57.314,60 60,57.314 60,54C60,50.686 57.314,48 54,48Z"/>
+        <!-- Film sprocket holes -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M54,36C51.791,36 50,37.791 50,40C50,42.209 51.791,44 54,44C56.209,44 58,42.209 58,40C58,37.791 56.209,36 54,36Z"/>
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M40,50C37.791,50 36,51.791 36,54C36,56.209 37.791,58 40,58C42.209,58 44,56.209 44,54C44,51.791 42.209,50 40,50Z"/>
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M68,50C65.791,50 64,51.791 64,54C64,56.209 65.791,58 68,58C70.209,58 72,56.209 72,54C72,51.791 70.209,50 68,50Z"/>
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M54,64C51.791,64 50,65.791 50,68C50,70.209 51.791,72 54,72C56.209,72 58,70.209 58,68C58,65.791 56.209,64 54,64Z"/>
+        <!-- Trend arrow -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M85,30L95,40L85,50L85,43L75,43L75,37L85,37Z"/>
+    </group>
+</vector> 
