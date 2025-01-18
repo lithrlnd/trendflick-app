@@ -3,8 +3,8 @@ package com.trendflick.di
 import android.content.Context
 import androidx.room.Room
 import com.squareup.moshi.Moshi
-import com.trendflick.data.db.AppDatabase
 import com.trendflick.data.db.Converters
+import com.trendflick.data.local.TrendFlickDatabase
 import com.trendflick.data.local.UserDao
 import com.trendflick.data.local.VideoDao
 import dagger.Module
@@ -26,13 +26,13 @@ object DatabaseModule {
 
     @Provides
     @Singleton
-    fun provideAppDatabase(
+    fun provideTrendFlickDatabase(
         @ApplicationContext context: Context,
         converters: Converters
-    ): AppDatabase {
+    ): TrendFlickDatabase {
         return Room.databaseBuilder(
             context,
-            AppDatabase::class.java,
+            TrendFlickDatabase::class.java,
             "trendflick.db"
         )
         .addTypeConverter(converters)
@@ -42,13 +42,13 @@ object DatabaseModule {
 
     @Provides
     @Singleton
-    fun provideUserDao(database: AppDatabase): UserDao {
+    fun provideUserDao(database: TrendFlickDatabase): UserDao {
         return database.userDao()
     }
 
     @Provides
     @Singleton
-    fun provideVideoDao(database: AppDatabase): VideoDao {
+    fun provideVideoDao(database: TrendFlickDatabase): VideoDao {
         return database.videoDao()
     }
 } 

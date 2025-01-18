@@ -23,7 +23,9 @@ fun VideoPlayer(
     videoUrl: String,
     modifier: Modifier = Modifier,
     isVisible: Boolean = true,
-    onProgressChanged: (Float) -> Unit = {}
+    onProgressChanged: (Float) -> Unit = {},
+    isPaused: Boolean = false,
+    playbackSpeed: Float = 1f
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -32,7 +34,8 @@ fun VideoPlayer(
         ExoPlayer.Builder(context).build().apply {
             repeatMode = Player.REPEAT_MODE_ONE
             volume = 1f
-            playWhenReady = true
+            playWhenReady = !isPaused
+            setHandleAudioBecomingNoisy(true)
         }
     }
 
@@ -48,14 +51,21 @@ fun VideoPlayer(
                 if (state == Player.STATE_READY) {
                     scope.launch {
                         while (true) {
-                            val progress = if (exoPlayer.duration > 0) {
-                                exoPlayer.currentPosition.toFloat() / exoPlayer.duration.toFloat()
-                            } else 0f
-                            onProgressChanged(progress)
+                            if (!isPaused) {
+                                val progress = if (exoPlayer.duration > 0) {
+                                    exoPlayer.currentPosition.toFloat() / exoPlayer.duration.toFloat()
+                                } else 0f
+                                onProgressChanged(progress)
+                            }
                             delay(16) // ~60fps update rate
                         }
                     }
                 }
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                super.onIsPlayingChanged(isPlaying)
+                // Handle any additional playback state changes if needed
             }
         }
         exoPlayer.addListener(listener)
@@ -66,10 +76,29 @@ fun VideoPlayer(
         }
     }
 
+    // Handle pause state
+    LaunchedEffect(isPaused) {
+        if (isPaused) {
+            exoPlayer.pause()
+        } else {
+            exoPlayer.play()
+        }
+    }
+
+    // Handle playback speed
+    LaunchedEffect(playbackSpeed) {
+        try {
+            exoPlayer.setPlaybackSpeed(playbackSpeed)
+        } catch (e: Exception) {
+            // Fallback to normal speed if setting fails
+            exoPlayer.setPlaybackSpeed(1f)
+        }
+    }
+
     DisposableEffect(isVisible) {
         if (!isVisible) {
             exoPlayer.pause()
-        } else {
+        } else if (!isPaused) {
             exoPlayer.play()
         }
         onDispose { }
@@ -81,6 +110,7 @@ fun VideoPlayer(
                 player = exoPlayer
                 useController = false
                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
             }
         },
         modifier = modifier

@@ -145,6 +145,16 @@ fun SplashScreen(
                         alpha = textScale.value
                     }
             )
+            Text(
+                text = "Not Your Data",
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f),
+                fontSize = 16.sp,
+                modifier = Modifier
+                    .scale(textScale.value)
+                    .graphicsLayer {
+                        alpha = textScale.value
+                    }
+            )
         }
     }
 } 

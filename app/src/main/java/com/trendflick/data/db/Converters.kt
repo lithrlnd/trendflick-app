@@ -8,34 +8,53 @@ import javax.inject.Inject
 
 @ProvidedTypeConverter
 class Converters @Inject constructor(private val moshi: Moshi) {
+    private val stringListType = Types.newParameterizedType(List::class.java, String::class.java)
+    private val stringListAdapter = moshi.adapter<List<String>>(stringListType)
+    
     private val mapType = Types.newParameterizedType(
         Map::class.java,
         String::class.java,
         Any::class.java
     )
     private val mapAdapter = moshi.adapter<Map<String, Any>>(mapType)
+    
+    private val mapListType = Types.newParameterizedType(
+        List::class.java,
+        Types.newParameterizedType(
+            Map::class.java,
+            String::class.java,
+            Any::class.java
+        )
+    )
+    private val mapListAdapter = moshi.adapter<List<Map<String, Any>>>(mapListType)
 
     @TypeConverter
-    fun mapToString(value: Map<String, Any>?): String {
-        return value?.let { mapAdapter.toJson(it) } ?: ""
+    fun fromStringList(value: List<String>): String {
+        return stringListAdapter.toJson(value)
     }
 
     @TypeConverter
-    fun stringToMap(value: String): Map<String, Any>? {
-        return if (value.isNotEmpty()) mapAdapter.fromJson(value) else null
+    fun toStringList(value: String): List<String> {
+        return stringListAdapter.fromJson(value) ?: emptyList()
     }
 
     @TypeConverter
-    fun listToString(value: List<String>?): String {
-        val listType = Types.newParameterizedType(List::class.java, String::class.java)
-        val adapter = moshi.adapter<List<String>>(listType)
-        return value?.let { adapter.toJson(it) } ?: ""
+    fun fromMap(value: Map<String, Any>): String {
+        return mapAdapter.toJson(value)
     }
 
     @TypeConverter
-    fun stringToList(value: String): List<String>? {
-        val listType = Types.newParameterizedType(List::class.java, String::class.java)
-        val adapter = moshi.adapter<List<String>>(listType)
-        return if (value.isNotEmpty()) adapter.fromJson(value) else null
+    fun toMap(value: String): Map<String, Any> {
+        return mapAdapter.fromJson(value) ?: emptyMap()
+    }
+
+    @TypeConverter
+    fun fromMapList(value: List<Map<String, Any>>): String {
+        return mapListAdapter.toJson(value)
+    }
+
+    @TypeConverter
+    fun toMapList(value: String): List<Map<String, Any>> {
+        return mapListAdapter.fromJson(value) ?: emptyList()
     }
 } 

@@ -1,10 +1,12 @@
 package com.trendflick.ui.components
 
 import android.Manifest
+import android.app.Activity
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
+import android.view.Surface
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -48,6 +50,22 @@ import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalView
+import android.view.WindowManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
 
 private const val TAG = "CameraPreview"
 
@@ -113,6 +131,128 @@ fun CameraPreview(
     onVideoRecorded: (List<File>) -> Unit
 ) {
     var hasPermissions by remember { mutableStateOf(false) }
+    var showControls by remember { mutableStateOf(true) }
+    var isRecording by remember { mutableStateOf(false) }
+    var recording: Recording? by remember { mutableStateOf(null) }
+    var isPaused by remember { mutableStateOf(false) }
+    var videoCapture: VideoCapture<Recorder>? by remember { mutableStateOf(null) }
+    var preview: Preview? by remember { mutableStateOf(null) }
+    var previewView: PreviewView? by remember { mutableStateOf(null) }
+    var cameraProvider: ProcessCameraProvider? by remember { mutableStateOf(null) }
+    var isBackCamera by remember { mutableStateOf(true) }
+    var selectedTimeLimit by remember { mutableStateOf(60L) }
+    var recordedTime by remember { mutableStateOf(0L) }
+    var videoSegments by remember { mutableStateOf(listOf<File>()) }
+    var segmentTimes by remember { mutableStateOf(listOf<Long>()) }
+
+    val context = LocalContext.current
+    val view = LocalView.current
+    val window = (context as? Activity)?.window
+    val lifecycleOwner = LocalLifecycleOwner.current
+    
+    // Add orientation handling
+    val display = context.display
+    val rotation = display?.rotation ?: 0
+    val orientation by remember { mutableStateOf(rotation) }
+
+    // Function to bind camera use cases
+    fun bindCameraUseCases() {
+        val cameraSelector = if (isBackCamera) {
+            CameraSelector.DEFAULT_BACK_CAMERA
+        } else {
+            CameraSelector.DEFAULT_FRONT_CAMERA
+        }
+        
+        try {
+            cameraProvider?.unbindAll()
+            
+            // Update preview
+            preview = Preview.Builder()
+                .setTargetAspectRatio(AspectRatio.RATIO_16_9)
+                .build()
+
+            // Configure video capture
+            val qualitySelector = QualitySelector.fromOrderedList(
+                listOf(Quality.HD, Quality.SD),
+                FallbackStrategy.lowerQualityOrHigherThan(Quality.SD)
+            )
+            
+            val recorder = Recorder.Builder()
+                .setQualitySelector(qualitySelector)
+                .build()
+            
+            videoCapture = VideoCapture.withOutput(recorder)
+
+            cameraProvider?.bindToLifecycle(
+                lifecycleOwner,
+                cameraSelector,
+                preview!!,
+                videoCapture!!
+            )
+            
+            previewView?.let { view ->
+                view.implementationMode = PreviewView.ImplementationMode.PERFORMANCE
+                when (orientation) {
+                    Surface.ROTATION_0 -> view.scaleType = PreviewView.ScaleType.FILL_CENTER
+                    Surface.ROTATION_180 -> view.scaleType = PreviewView.ScaleType.FILL_CENTER
+                    else -> view.scaleType = PreviewView.ScaleType.FIT_CENTER
+                }
+                preview?.setSurfaceProvider(view.surfaceProvider)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Use case binding failed", e)
+        }
+    }
+    
+    // Track orientation changes and handle system UI
+    LaunchedEffect(orientation) {
+        window?.let { w ->
+            WindowCompat.setDecorFitsSystemWindows(w, false)
+            WindowInsetsControllerCompat(w, view).let { controller ->
+                controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                if (orientation == Surface.ROTATION_90 || orientation == Surface.ROTATION_270) {
+                    delay(500) // Short delay for smooth transition
+                    showControls = false
+                    controller.hide(WindowInsetsCompat.Type.systemBars())
+                } else {
+                    showControls = true
+                    controller.show(WindowInsetsCompat.Type.systemBars())
+                }
+            }
+        }
+    }
+    
+    // Auto-hide controls in landscape or when recording
+    LaunchedEffect(orientation, isRecording) {
+        if (orientation == Surface.ROTATION_90 || 
+            orientation == Surface.ROTATION_270) {
+            showControls = false
+        }
+    }
+    
+    // Handle system UI visibility with fade animations
+    LaunchedEffect(showControls, orientation) {
+        window?.let {
+            WindowCompat.setDecorFitsSystemWindows(it, false)
+            WindowInsetsControllerCompat(it, view).let { controller ->
+                controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                if (!showControls || orientation == Surface.ROTATION_90 || orientation == Surface.ROTATION_270) {
+                    controller.hide(WindowInsetsCompat.Type.systemBars())
+                } else {
+                    controller.show(WindowInsetsCompat.Type.systemBars())
+                }
+            }
+        }
+    }
+
+    // Handle orientation changes for camera
+    DisposableEffect(orientation) {
+        if (orientation == Surface.ROTATION_90 || orientation == Surface.ROTATION_270) {
+            showControls = false
+        }
+        bindCameraUseCases()
+        onDispose { }
+    }
     
     checkAndRequestPermissions {
         hasPermissions = true
@@ -127,21 +267,6 @@ fun CameraPreview(
         }
         return
     }
-
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    var recording: Recording? by remember { mutableStateOf(null) }
-    var isRecording by remember { mutableStateOf(false) }
-    var isPaused by remember { mutableStateOf(false) }
-    var videoCapture: VideoCapture<Recorder>? by remember { mutableStateOf(null) }
-    var preview: Preview? by remember { mutableStateOf(null) }
-    var previewView: PreviewView? by remember { mutableStateOf(null) }
-    var cameraProvider: ProcessCameraProvider? by remember { mutableStateOf(null) }
-    var isBackCamera by remember { mutableStateOf(true) }
-    var selectedTimeLimit by remember { mutableStateOf(60L) }
-    var recordedTime by remember { mutableStateOf(0L) }
-    var videoSegments by remember { mutableStateOf(listOf<File>()) }
-    var segmentTimes by remember { mutableStateOf(listOf<Long>()) }
 
     // Time limit options in seconds
     val timeLimitOptions = remember {
@@ -170,31 +295,6 @@ fun CameraPreview(
     fun formatTime(millis: Long): String {
         val seconds = millis / 1000
         return String.format("%02d:%02d", seconds / 60, seconds % 60)
-    }
-
-    // Function to bind camera use cases
-    fun bindCameraUseCases() {
-        val cameraSelector = if (isBackCamera) {
-            CameraSelector.DEFAULT_BACK_CAMERA
-        } else {
-            CameraSelector.DEFAULT_FRONT_CAMERA
-        }
-        
-        try {
-            cameraProvider?.unbindAll()
-            cameraProvider?.bindToLifecycle(
-                lifecycleOwner,
-                cameraSelector,
-                preview!!,
-                videoCapture!!
-            )
-            
-            previewView?.let { view ->
-                preview?.setSurfaceProvider(view.surfaceProvider)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Use case binding failed", e)
-        }
     }
 
     // Initialize camera
@@ -264,260 +364,323 @@ fun CameraPreview(
             }?.also { recording = it }
     }
 
-    Box(modifier = modifier) {
-        // Camera preview
-        AndroidView(
-            factory = { ctx ->
-                PreviewView(ctx).apply {
-                    this.implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-                    this.scaleType = PreviewView.ScaleType.FILL_CENTER
-                    previewView = this
-                    preview?.setSurfaceProvider(this.surfaceProvider)
-                }
-            },
-            modifier = Modifier.fillMaxSize()
-        )
-
-        // Camera controls
+    Box(modifier = modifier.fillMaxSize()) {
+        // Camera preview with orientation-aware layout
         Box(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 48.dp)
-                .fillMaxWidth()
+                .fillMaxSize()
+                .clickable { 
+                    if (orientation == Surface.ROTATION_0 || orientation == Surface.ROTATION_180) {
+                        showControls = !showControls
+                        if (showControls) {
+                            // Auto-hide after 1.5 seconds when showing in portrait mode
+                            window?.let {
+                                it.decorView.postDelayed({
+                                    if (!isRecording) {
+                                        showControls = false
+                                    }
+                                }, 1500) // 1.5 seconds
+                            }
+                        }
+                    }
+                }
         ) {
-            Row(
+            AndroidView(
+                factory = { ctx ->
+                    PreviewView(ctx).apply {
+                        this.implementationMode = PreviewView.ImplementationMode.PERFORMANCE
+                        this.scaleType = PreviewView.ScaleType.FILL_START
+                        previewView = this
+                        preview?.setSurfaceProvider(this.surfaceProvider)
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+
+        // Top controls (status bar area)
+        AnimatedVisibility(
+            visible = showControls,
+            enter = fadeIn(
+                animationSpec = tween(
+                    durationMillis = 200,
+                    easing = LinearEasing
+                )
+            ),
+            exit = fadeOut(
+                animationSpec = tween(
+                    durationMillis = 200,
+                    easing = LinearEasing
+                )
+            ),
+            modifier = Modifier.align(Alignment.TopCenter)
+        ) {
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 32.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .statusBarsPadding()
+                    .background(Color.Black.copy(alpha = 0.3f))
             ) {
-                // Delete last segment button
-                Box(
-                    modifier = Modifier.size(40.dp)
+                // Camera switch button
+                IconButton(
+                    onClick = {
+                        if (!isRecording) {
+                            isBackCamera = !isBackCamera
+                            bindCameraUseCases()
+                        } else {
+                            Toast.makeText(context, "Stop recording first", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(16.dp)
+                        .size(44.dp)
+                        .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                        .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
                 ) {
-                    IconButton(
-                        onClick = {
-                            if (videoSegments.isNotEmpty()) {
-                                Toast.makeText(context, "Discard the last clip?", Toast.LENGTH_SHORT).show()
-                                val lastSegment = videoSegments.last()
-                                videoSegments = videoSegments.dropLast(1)
-                                segmentTimes = segmentTimes.dropLast(1)  // Remove the last segment time
-                                if (segmentTimes.isNotEmpty()) {
-                                    recordedTime = segmentTimes.last()  // Set time to last segment
-                                } else {
-                                    recordedTime = 0
-                                }
-                                lastSegment.delete()
-                            }
-                        },
-                        modifier = Modifier
-                            .size(40.dp)
-                            .background(Color.Transparent)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = "Delete Last Segment",
-                            tint = Color.White,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
-
-                // Center column for time options and record button
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    // Time options
-                    Row(
-                        modifier = Modifier
-                            .background(Color.Transparent)
-                            .padding(horizontal = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(24.dp)
-                    ) {
-                        timeLimitOptions.forEach { (seconds, label) ->
-                            val isSelected = selectedTimeLimit == seconds
-                            Text(
-                                text = label,
-                                color = if (isSelected) Color.White else Color.White.copy(alpha = 0.7f),
-                                style = MaterialTheme.typography.labelMedium,
-                                modifier = Modifier
-                                    .clickable { 
-                                        if (!isRecording) {
-                                            selectedTimeLimit = seconds
-                                            recordedTime = 0
-                                            segmentTimes = listOf()
-                                            videoSegments = listOf()
-                                        }
-                                    }
-                                    .padding(vertical = 4.dp)
-                            )
-                        }
-                    }
-
-                    // Record button
-                    Box(
-                        modifier = Modifier.size(85.dp)
-                    ) {
-                        // Background circle (white border)
-                        Box(
-                            modifier = Modifier
-                                .size(85.dp)
-                                .align(Alignment.Center)
-                                .border(
-                                    width = 4.dp,
-                                    color = Color.White.copy(alpha = 0.3f),
-                                    shape = CircleShape
-                                )
-                        )
-
-                        // Draw individual segment progress arcs
-                        var lastSegmentTime = 0L
-                        segmentTimes.forEach { segmentEndTime ->
-                            // Add a small gap by reducing the progress arc length
-                            val gapSize = 0.02f // 2% gap
-                            val progress = ((segmentEndTime - lastSegmentTime).toFloat() / (selectedTimeLimit * 1000)) - gapSize
-                            
-                            CircularProgressIndicator(
-                                progress = progress,
-                                modifier = Modifier
-                                    .size(85.dp)
-                                    .align(Alignment.Center)
-                                    .rotate(360f * lastSegmentTime.toFloat() / (selectedTimeLimit * 1000)),
-                                color = Color(0xFFFF0000),
-                                strokeWidth = 4.dp
-                            )
-                            lastSegmentTime = segmentEndTime
-                        }
-
-                        // Current segment progress (also with gap)
-                        if (isRecording && recordedTime > lastSegmentTime) {
-                            val gapSize = 0.02f // 2% gap
-                            val progress = ((recordedTime - lastSegmentTime).toFloat() / (selectedTimeLimit * 1000)) - gapSize
-                            
-                            CircularProgressIndicator(
-                                progress = progress,
-                                modifier = Modifier
-                                    .size(85.dp)
-                                    .align(Alignment.Center)
-                                    .rotate(360f * lastSegmentTime.toFloat() / (selectedTimeLimit * 1000)),
-                                color = Color(0xFFFF0000),
-                                strokeWidth = 4.dp
-                            )
-                        }
-
-                        // White segment divider lines
-                        segmentTimes.forEach { segmentEndTime ->
-                            Box(
-                                modifier = Modifier
-                                    .size(85.dp)
-                                    .align(Alignment.Center)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .width(4.dp)
-                                        .height(85.dp)
-                                        .background(Color.White)
-                                        .align(Alignment.Center)
-                                        .rotate(360f * (segmentEndTime.toFloat() / (selectedTimeLimit * 1000)))
-                                )
-                            }
-                        }
-                        
-                        // Inner record button
-                        IconButton(
-                            onClick = {
-                                if (isRecording) {
-                                    recording?.stop()
-                                } else {
-                                    startRecording()
-                                }
-                            },
-                            modifier = Modifier
-                                .size(72.dp)
-                                .align(Alignment.Center)
-                                .background(
-                                    color = Color(0xFFFF0000),
-                                    shape = CircleShape
-                                )
-                                .border(
-                                    width = 6.dp,
-                                    color = Color.White,
-                                    shape = CircleShape
-                                )
-                        ) {
-                            if (isRecording) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(24.dp)
-                                        .background(Color.White, RoundedCornerShape(4.dp))
-                                )
-                            }
-                        }
-
-                        // Timer display
-                        if (recordedTime > 0) {
-                            Text(
-                                text = formatTime(recordedTime),
-                                color = Color.White,
-                                style = MaterialTheme.typography.labelMedium,
-                                modifier = Modifier
-                                    .align(Alignment.TopCenter)
-                                    .offset(y = (-48).dp)
-                            )
-                        }
-                    }
-                }
-
-                // Checkmark button
-                Box(
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    IconButton(
-                        onClick = {
-                            if (videoSegments.isNotEmpty()) {
-                                onVideoRecorded(videoSegments)
-                            }
-                        },
-                        modifier = Modifier
-                            .size(40.dp)
-                            .background(Color.Transparent)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Check,
-                            contentDescription = "Preview Video",
-                            tint = Color.White,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.Default.Cameraswitch,
+                        contentDescription = "Switch Camera",
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
                 }
             }
         }
 
-        // Camera switch button
-        IconButton(
-            onClick = {
-                if (!isRecording) {
-                    isBackCamera = !isBackCamera
-                    bindCameraUseCases()
-                } else {
-                    Toast.makeText(context, "Stop recording first", Toast.LENGTH_SHORT).show()
-                }
-            },
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(16.dp)
-                .size(44.dp)
-                .background(Color.Black.copy(alpha = 0.6f), CircleShape)
-                .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)  // Subtle border
+        // Bottom controls
+        AnimatedVisibility(
+            visible = showControls,
+            enter = fadeIn(
+                animationSpec = tween(
+                    durationMillis = 200,
+                    easing = LinearEasing
+                )
+            ),
+            exit = fadeOut(
+                animationSpec = tween(
+                    durationMillis = 200,
+                    easing = LinearEasing
+                )
+            ),
+            modifier = Modifier.align(Alignment.BottomCenter)
         ) {
-            Icon(
-                imageVector = Icons.Default.Cameraswitch,
-                contentDescription = "Switch Camera",
-                tint = Color.White,
-                modifier = Modifier.size(22.dp)
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .background(Color.Black.copy(alpha = 0.3f))
+                    .padding(bottom = 48.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 32.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Delete last segment button
+                    Box(
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        IconButton(
+                            onClick = {
+                                if (videoSegments.isNotEmpty()) {
+                                    Toast.makeText(context, "Discard the last clip?", Toast.LENGTH_SHORT).show()
+                                    val lastSegment = videoSegments.last()
+                                    videoSegments = videoSegments.dropLast(1)
+                                    segmentTimes = segmentTimes.dropLast(1)  // Remove the last segment time
+                                    if (segmentTimes.isNotEmpty()) {
+                                        recordedTime = segmentTimes.last()  // Set time to last segment
+                                    } else {
+                                        recordedTime = 0
+                                    }
+                                    lastSegment.delete()
+                                }
+                            },
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(Color.Transparent)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ArrowBack,
+                                contentDescription = "Delete Last Segment",
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+
+                    // Center column for time options and record button
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        // Time options
+                        Row(
+                            modifier = Modifier
+                                .background(Color.Transparent)
+                                .padding(horizontal = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(24.dp)
+                        ) {
+                            timeLimitOptions.forEach { (seconds, label) ->
+                                val isSelected = selectedTimeLimit == seconds
+                                Text(
+                                    text = label,
+                                    color = if (isSelected) Color.White else Color.White.copy(alpha = 0.7f),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    modifier = Modifier
+                                        .clickable { 
+                                            if (!isRecording) {
+                                                selectedTimeLimit = seconds
+                                                recordedTime = 0
+                                                segmentTimes = listOf()
+                                                videoSegments = listOf()
+                                            }
+                                        }
+                                        .padding(vertical = 4.dp)
+                                )
+                            }
+                        }
+
+                        // Record button
+                        Box(
+                            modifier = Modifier.size(85.dp)
+                        ) {
+                            // Background circle (white border)
+                            Box(
+                                modifier = Modifier
+                                    .size(85.dp)
+                                    .align(Alignment.Center)
+                                    .border(
+                                        width = 4.dp,
+                                        color = Color.White.copy(alpha = 0.3f),
+                                        shape = CircleShape
+                                    )
+                            )
+
+                            // Draw individual segment progress arcs
+                            var lastSegmentTime = 0L
+                            segmentTimes.forEach { segmentEndTime ->
+                                // Add a small gap by reducing the progress arc length
+                                val gapSize = 0.02f // 2% gap
+                                val progress = ((segmentEndTime - lastSegmentTime).toFloat() / (selectedTimeLimit * 1000)) - gapSize
+                                
+                                CircularProgressIndicator(
+                                    progress = progress,
+                                    modifier = Modifier
+                                        .size(85.dp)
+                                        .align(Alignment.Center)
+                                        .rotate(360f * lastSegmentTime.toFloat() / (selectedTimeLimit * 1000)),
+                                    color = Color(0xFFFF0000),
+                                    strokeWidth = 4.dp
+                                )
+                                lastSegmentTime = segmentEndTime
+                            }
+
+                            // Current segment progress (also with gap)
+                            if (isRecording && recordedTime > lastSegmentTime) {
+                                val gapSize = 0.02f // 2% gap
+                                val progress = ((recordedTime - lastSegmentTime).toFloat() / (selectedTimeLimit * 1000)) - gapSize
+                                
+                                CircularProgressIndicator(
+                                    progress = progress,
+                                    modifier = Modifier
+                                        .size(85.dp)
+                                        .align(Alignment.Center)
+                                        .rotate(360f * lastSegmentTime.toFloat() / (selectedTimeLimit * 1000)),
+                                    color = Color(0xFFFF0000),
+                                    strokeWidth = 4.dp
+                                )
+                            }
+
+                            // White segment divider lines
+                            segmentTimes.forEach { segmentEndTime ->
+                                Box(
+                                    modifier = Modifier
+                                        .size(85.dp)
+                                        .align(Alignment.Center)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .width(4.dp)
+                                            .height(85.dp)
+                                            .background(Color.White)
+                                            .align(Alignment.Center)
+                                            .rotate(360f * (segmentEndTime.toFloat() / (selectedTimeLimit * 1000)))
+                                    )
+                                }
+                            }
+                            
+                            // Inner record button
+                            IconButton(
+                                onClick = {
+                                    if (isRecording) {
+                                        recording?.stop()
+                                    } else {
+                                        startRecording()
+                                    }
+                                },
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .align(Alignment.Center)
+                                    .background(
+                                        color = Color(0xFFFF0000),
+                                        shape = CircleShape
+                                    )
+                                    .border(
+                                        width = 6.dp,
+                                        color = Color.White,
+                                        shape = CircleShape
+                                    )
+                            ) {
+                                if (isRecording) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(24.dp)
+                                            .background(Color.White, RoundedCornerShape(4.dp))
+                                    )
+                                }
+                            }
+
+                            // Timer display
+                            if (recordedTime > 0) {
+                                Text(
+                                    text = formatTime(recordedTime),
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    modifier = Modifier
+                                        .align(Alignment.TopCenter)
+                                        .offset(y = (-48).dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // Checkmark button
+                    Box(
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        IconButton(
+                            onClick = {
+                                if (videoSegments.isNotEmpty()) {
+                                    onVideoRecorded(videoSegments)
+                                }
+                            },
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(Color.Transparent)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = "Preview Video",
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }

@@ -32,14 +32,14 @@ class UploadViewModel @Inject constructor(
                 
                 val video = Video(
                     id = 0, // Will be set by SampleDataProvider
-                    userId = "currentUser", // In a real app, this would come from auth
-                    username = "CurrentUser", // In a real app, this would come from auth
+                    did = "did:plc:default", // In a real app, this would come from auth
+                    handle = "default.bsky.social", // In a real app, this would come from auth
                     videoUrl = videoUri.toString(),
                     thumbnailUrl = "", // In a real app, we'd generate this
                     title = title,
                     description = description,
                     likes = 0,
-                    comments = 0,
+                    commentCount = 0,
                     shares = 0,
                     hashtags = hashtags
                 )

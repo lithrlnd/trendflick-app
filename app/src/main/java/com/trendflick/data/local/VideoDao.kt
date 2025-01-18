@@ -24,7 +24,7 @@ interface VideoDao {
     @Query("UPDATE videos SET likes = CASE WHEN likes > 0 THEN likes - 1 ELSE 0 END WHERE id = :videoId")
     suspend fun decrementLikes(videoId: Int)
 
-    @Query("UPDATE videos SET comments = comments + 1 WHERE id = :videoId")
+    @Query("UPDATE videos SET commentCount = commentCount + 1 WHERE id = :videoId")
     suspend fun incrementComments(videoId: Int)
 
     @Query("UPDATE videos SET shares = shares + 1 WHERE id = :videoId")
