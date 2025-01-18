@@ -1,0 +1,2 @@
+// Load secrets.properties file  
+def secretsFile = rootProject.file("secrets.properties")  

@@ -17,10 +17,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.pager.VerticalPager
+import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -54,6 +56,14 @@ import com.trendflick.ui.animation.slideInFromRight
 import com.trendflick.ui.animation.slideOutToRight
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import com.trendflick.ui.components.CategoryDrawer
+import com.trendflick.data.model.Comment
+import com.trendflick.ui.components.CommentDialog
+import com.trendflick.ui.components.VideoControls
+import android.content.Intent
+import android.content.Context
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.tween
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -64,91 +74,151 @@ fun HomeScreen(
     val videos by viewModel.videos.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val likedVideos by viewModel.likedVideos.collectAsState()
+    val comments by viewModel.comments.collectAsState()
+    val likedComments by viewModel.likedComments.collectAsState()
     var showDrawer by remember { mutableStateOf(false) }
+    var showComments by remember { mutableStateOf(false) }
+    var showRelatedVideos by remember { mutableStateOf(false) }
     var selectedCategory by remember { mutableStateOf<VideoCategory?>(null) }
+    var currentVideoId by remember { mutableStateOf<Int?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
     
     Box(
         modifier = Modifier
             .fillMaxSize()
             .pointerInput(Unit) {
-                detectHorizontalDragGestures(
-                    onDragEnd = { },
-                    onDragCancel = { },
+                detectDragGestures(
                     onDragStart = { offset ->
-                        // If the drag starts from the left edge (within 50dp), show drawer
                         if (offset.x < 50.dp.toPx()) {
                             showDrawer = true
                         }
                     },
-                    onHorizontalDrag = { change, dragAmount ->
+                    onDrag = { change, dragAmount ->
                         change.consume()
-                    }
+                    },
+                    onDragEnd = {},
+                    onDragCancel = {}
                 )
             }
     ) {
-        // Debug indicator - temporary to verify drawer state
-        Text(
-            text = if (showDrawer) "Drawer Open" else "Drawer Closed",
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 50.dp)
-                .clickable { showDrawer = !showDrawer }
-        )
-
-        // Main content
         if (isLoading) {
             LoadingAnimation()
         } else {
             val pagerState = rememberPagerState(pageCount = { videos.size })
-            val coroutineScope = rememberCoroutineScope()
 
-            // Preload next and previous videos
             LaunchedEffect(pagerState.currentPage) {
                 viewModel.preloadVideos(
                     currentPage = pagerState.currentPage,
                     videos = videos
                 )
+                currentVideoId = videos.getOrNull(pagerState.currentPage)?.id
+                showRelatedVideos = false
             }
 
-            VerticalPager(
-                state = pagerState,
-                modifier = Modifier.fillMaxSize(),
-                key = { videos[it].id }
-            ) { page ->
-                val video = videos[page]
-                val pageOffset = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
-                
-                Box(
-                    modifier = Modifier
-                        .graphicsLayer {
-                            alpha = 1f - pageOffset.absoluteValue.coerceIn(0f, 1f)
-                            translationY = pageOffset * size.height * 0.1f
-                        }
-                        .fillMaxSize()
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onDoubleTap = { offset ->
-                                    if (!likedVideos.contains(video.id)) {
-                                        viewModel.likeVideo(video.id)
-                                    }
-                                }
-                            )
-                        }
-                ) {
-                    VideoItem(
-                        video = video,
-                        isLiked = likedVideos.contains(video.id),
-                        onLikeClick = { viewModel.likeVideo(video.id) },
-                        onCommentClick = { viewModel.commentOnVideo(video.id) },
-                        onShareClick = { viewModel.shareVideo(video.id) },
-                        onProfileClick = { navController.navigate("profile/${video.userId}") },
-                        isVisible = page == pagerState.currentPage
-                    )
+            if (isLandscape) {
+                // Horizontal pager for landscape mode
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize()
+                ) { page ->
+                    val video = videos[page]
+                    val pageOffset = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
+                    
+                    Box(
+                        modifier = Modifier
+                            .graphicsLayer {
+                                alpha = 1f - pageOffset.absoluteValue.coerceIn(0f, 1f)
+                                translationX = pageOffset * size.width * 0.1f
+                            }
+                            .fillMaxSize()
+                    ) {
+                        VideoItem(
+                            video = video,
+                            isLiked = likedVideos.contains(video.id),
+                            onLikeClick = { viewModel.likeVideo(video.id) },
+                            onCommentClick = { 
+                                currentVideoId = video.id
+                                showComments = true
+                            },
+                            onShareClick = { viewModel.shareVideo(video.id) },
+                            onProfileClick = { navController.navigate("profile/${video.userId}") },
+                            isVisible = page == pagerState.currentPage,
+                            onLongPress = {
+                                showRelatedVideos = !showRelatedVideos
+                            }
+                        )
+                    }
                 }
+            } else {
+                // Vertical pager for portrait mode
+                VerticalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize(),
+                    key = { videos[it].id }
+                ) { page ->
+                    val video = videos[page]
+                    val pageOffset = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
+                    
+                    Box(
+                        modifier = Modifier
+                            .graphicsLayer {
+                                alpha = 1f - pageOffset.absoluteValue.coerceIn(0f, 1f)
+                                translationY = pageOffset * size.height * 0.1f
+                            }
+                            .fillMaxSize()
+                    ) {
+                        VideoItem(
+                            video = video,
+                            isLiked = likedVideos.contains(video.id),
+                            onLikeClick = { viewModel.likeVideo(video.id) },
+                            onCommentClick = { 
+                                currentVideoId = video.id
+                                showComments = true
+                            },
+                            onShareClick = { viewModel.shareVideo(video.id) },
+                            onProfileClick = { navController.navigate("profile/${video.userId}") },
+                            isVisible = page == pagerState.currentPage,
+                            onLongPress = {
+                                showRelatedVideos = !showRelatedVideos
+                            }
+                        )
+                    }
+                }
+            }
+
+            // Related videos panel
+            AnimatedVisibility(
+                visible = showRelatedVideos,
+                enter = slideInHorizontally(
+                    initialOffsetX = { fullWidth -> fullWidth },
+                    animationSpec = tween(300)
+                ),
+                exit = slideOutHorizontally(
+                    targetOffsetX = { fullWidth -> fullWidth },
+                    animationSpec = tween(300)
+                ),
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .fillMaxHeight()
+                    .fillMaxWidth(0.7f)
+            ) {
+                RelatedVideosPanel(
+                    relatedVideos = videos[pagerState.currentPage].relatedVideos,
+                    onVideoClick = { relatedVideo ->
+                        val index = videos.indexOfFirst { it.id == relatedVideo.id }
+                        if (index != -1) {
+                            showRelatedVideos = false
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(index)
+                            }
+                        }
+                    }
+                )
             }
         }
 
-        // Category Drawer
         CategoryDrawer(
             isOpen = showDrawer,
             onCategorySelected = { category ->
@@ -159,28 +229,21 @@ fun HomeScreen(
             onDismiss = { showDrawer = false }
         )
 
-        // Selected category chip
-        selectedCategory?.let { category ->
-            Surface(
-                modifier = Modifier
-                    .padding(16.dp)
-                    .align(Alignment.TopStart)
-                    .clickable { showDrawer = true },
-                color = category.color.copy(alpha = 0.2f),
-                shape = MaterialTheme.shapes.medium
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(category.icon)
-                    Text(
-                        text = category.name,
-                        style = MaterialTheme.typography.labelLarge
-                    )
+        currentVideoId?.let { videoId ->
+            CommentDialog(
+                isVisible = showComments,
+                onDismiss = { showComments = false },
+                comments = comments[videoId] ?: emptyList(),
+                onCommentSubmit = { content -> 
+                    viewModel.commentOnVideo(videoId, content)
+                },
+                onCommentLike = { commentId ->
+                    viewModel.likeComment(commentId)
+                },
+                onReplyClick = { commentId ->
+                    viewModel.replyToComment(videoId, commentId)
                 }
-            }
+            )
         }
     }
 }
@@ -219,227 +282,75 @@ fun VideoItem(
     onCommentClick: () -> Unit,
     onShareClick: () -> Unit,
     onProfileClick: () -> Unit,
-    isVisible: Boolean
+    isVisible: Boolean,
+    onLongPress: () -> Unit
 ) {
-    var progress by remember { mutableStateOf(0f) }
-    var showLikeAnimation by remember { mutableStateOf(false) }
-    var showVideoInfo by remember { mutableStateOf(false) }
-    var showRelatedVideos by remember { mutableStateOf(false) }
-    val view = LocalView.current
-    val coroutineScope = rememberCoroutineScope()
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
     
+    var playbackSpeed by remember { mutableStateOf(1f) }
+    var isPaused by remember { mutableStateOf(false) }
+    var progress by remember { mutableStateOf(0f) }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .pointerInput(Unit) {
                 detectTapGestures(
-                    onDoubleTap = { offset ->
-                        if (!isLiked) {
-                            onLikeClick()
-                            showLikeAnimation = true
-                            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                            coroutineScope.launch {
-                                delay(1000)
-                                showLikeAnimation = false
-                            }
-                        }
-                    },
-                    onLongPress = {
-                        showVideoInfo = true
-                        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                        coroutineScope.launch {
-                            delay(2000)
-                            showVideoInfo = false
-                        }
-                    }
+                    onLongPress = { onLongPress() }
                 )
             }
     ) {
         VideoPlayer(
             videoUrl = video.videoUrl,
-            modifier = Modifier.fillMaxSize(),
             isVisible = isVisible,
-            onProgressChanged = { progress = it }
+            onProgressChanged = { newProgress -> progress = newProgress },
+            playbackSpeed = playbackSpeed,
+            isPaused = isPaused,
+            modifier = Modifier.fillMaxSize()
         )
 
-        // Like animation overlay
-        AnimatedVisibility(
-            visible = showLikeAnimation,
-            enter = fadeIn() + scaleIn(),
-            exit = fadeOut(),
-            modifier = Modifier.align(Alignment.Center)
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.Favorite,
-                contentDescription = null,
-                modifier = Modifier.size(100.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
-        }
+        VideoControls(
+            video = video,
+            isLiked = isLiked,
+            onLikeClick = onLikeClick,
+            onCommentClick = onCommentClick,
+            onShareClick = onShareClick,
+            onProfileClick = onProfileClick,
+            onRelatedVideosClick = onLongPress,
+            progress = progress,
+            isPaused = isPaused,
+            onPauseToggle = { isPaused = !isPaused },
+            playbackSpeed = playbackSpeed,
+            onSpeedChange = { playbackSpeed = it },
+            isLandscape = isLandscape,
+            modifier = Modifier.fillMaxSize()
+        )
+    }
+}
 
-        // Video info overlay
-        AnimatedVisibility(
-            visible = showVideoInfo,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier
-                .align(Alignment.Center)
-                .fillMaxWidth()
-                .padding(32.dp)
-        ) {
-            Column(
-                modifier = Modifier
-                    .background(
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
-                        shape = RoundedCornerShape(16.dp)
-                    )
-                    .padding(16.dp)
-            ) {
-                Text(
-                    text = video.title,
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = video.description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    StatItem(Icons.Default.Favorite, video.likes.toString())
-                    StatItem(Icons.Default.ChatBubbleOutline, video.comments.toString())
-                    StatItem(Icons.Default.Share, video.shares.toString())
-                }
-            }
-        }
-
-        // Custom video controls with animations
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp)
-        ) {
-            // Video progress
-            CustomVideoProgress(
-                progress = progress,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 64.dp)
-            )
-
-            // Action buttons
-            Column(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(24.dp)
-            ) {
-                AnimatedActionButton(
-                    icon = if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                    onClick = {
-                        onLikeClick()
-                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                    },
-                    isActive = isLiked,
-                    count = video.likes
-                )
-                
-                AnimatedActionButton(
-                    icon = Icons.Filled.ChatBubbleOutline,
-                    onClick = {
-                        onCommentClick()
-                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                    },
-                    count = video.comments
-                )
-                
-                AnimatedActionButton(
-                    icon = Icons.Filled.Share,
-                    onClick = {
-                        onShareClick()
-                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                    }
-                )
-
-                // Add Related Videos Button
-                AnimatedActionButton(
-                    icon = Icons.Default.PlayCircle,
-                    onClick = {
-                        showRelatedVideos = !showRelatedVideos
-                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                    },
-                    isActive = showRelatedVideos
-                )
-            }
-
-            // User info and hashtags
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = 16.dp, bottom = 80.dp)
-                    .fillMaxWidth(0.8f)
-            ) {
-                Text(
-                    text = "@${video.username}",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold
-                    ),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.pointerInput(Unit) {
-                        detectTapGestures(
-                            onTap = {
-                                onProfileClick()
-                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                            }
-                        )
-                    }
-                )
-                
-                Text(
-                    text = video.description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                // Hashtags
-                Row(
-                    modifier = Modifier
-                        .horizontalScroll(rememberScrollState())
-                        .padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    video.hashtags.forEach { hashtag ->
-                        HashtagChip(
-                            hashtag = hashtag,
-                            onClick = { /* Handle hashtag click */ }
-                        )
-                    }
-                }
-            }
-
-            // Related Videos Panel
-            AnimatedVisibility(
-                visible = showRelatedVideos,
-                enter = slideInFromRight,
-                exit = slideOutToRight,
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .fillMaxHeight()
-                    .width(200.dp)
-            ) {
-                RelatedVideosPanel(
-                    relatedVideos = video.relatedVideos,
-                    onVideoClick = { /* Handle related video click */ }
-                )
-            }
-        }
+@Composable
+private fun StatItem(
+    icon: ImageVector,
+    count: String,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(16.dp),
+            tint = MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            text = count,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
     }
 }
 
@@ -521,31 +432,6 @@ private fun RelatedVideoItem(
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
             )
         }
-    }
-}
-
-@Composable
-private fun StatItem(
-    icon: ImageVector,
-    count: String,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            modifier = Modifier.size(16.dp),
-            tint = MaterialTheme.colorScheme.onSurface
-        )
-        Text(
-            text = count,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface
-        )
     }
 }
 

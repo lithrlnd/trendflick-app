@@ -35,25 +35,41 @@ fun VideoControls(
     onCommentClick: () -> Unit,
     onShareClick: () -> Unit,
     onProfileClick: () -> Unit,
+    onRelatedVideosClick: () -> Unit,
     isLiked: Boolean = false,
     progress: Float = 0f,
-    modifier: Modifier = Modifier
+    isPaused: Boolean = false,
+    onPauseToggle: () -> Unit,
+    playbackSpeed: Float = 1f,
+    onSpeedChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+    isLandscape: Boolean = false
 ) {
     var controlsVisible by remember { mutableStateOf(true) }
     var showHeartAnimation by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
-    
-    val heartScale by animateFloatAsState(
-        targetValue = if (showHeartAnimation) 1f else 0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        )
-    )
 
-    val controlsAlpha by animateFloatAsState(
-        targetValue = if (controlsVisible) 1f else 0f,
-        animationSpec = tween(300)
+    // Reset controls visibility when orientation changes
+    LaunchedEffect(isLandscape) {
+        controlsVisible = true
+        if (isLandscape) {
+            delay(3000)
+            controlsVisible = false
+        }
+    }
+
+    // Handle auto-hide in landscape mode
+    LaunchedEffect(controlsVisible, isLandscape) {
+        if (isLandscape && controlsVisible) {
+            delay(3000)
+            controlsVisible = false
+        }
+    }
+
+    val fadeAlpha by animateFloatAsState(
+        targetValue = if (isLandscape && !controlsVisible) 0f else 1f,
+        animationSpec = tween(300),
+        label = "fadeAlpha"
     )
 
     Box(
@@ -63,77 +79,81 @@ fun VideoControls(
                     onDoubleTap = { offset ->
                         if (!isLiked) {
                             onLikeClick()
-                        }
-                        showHeartAnimation = true
-                        coroutineScope.launch {
-                            delay(1000)
-                            showHeartAnimation = false
+                            showHeartAnimation = true
+                            coroutineScope.launch {
+                                delay(1000)
+                                showHeartAnimation = false
+                            }
                         }
                     },
                     onTap = {
                         controlsVisible = !controlsVisible
+                        if (!isLandscape) {
+                            onPauseToggle()
+                        }
                     }
                 )
             }
     ) {
         // Heart Animation
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer(
-                    scaleX = heartScale,
-                    scaleY = heartScale,
-                    alpha = heartScale
-                ),
-            contentAlignment = Alignment.Center
+        AnimatedVisibility(
+            visible = showHeartAnimation,
+            enter = fadeIn() + scaleIn(),
+            exit = fadeOut() + scaleOut(),
+            modifier = Modifier.align(Alignment.Center)
         ) {
-            if (showHeartAnimation) {
-                Icon(
-                    imageVector = Icons.Default.Favorite,
-                    contentDescription = null,
-                    tint = Color.Red,
-                    modifier = Modifier.size(100.dp)
-                )
-            }
+            Icon(
+                imageVector = Icons.Default.Favorite,
+                contentDescription = null,
+                tint = Color.Red,
+                modifier = Modifier.size(100.dp)
+            )
         }
 
+        // Top Header Container - fades in landscape
         Box(
             modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer(alpha = controlsAlpha)
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .graphicsLayer(alpha = fadeAlpha)
         ) {
-            // Gradient overlays
             Box(
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
                     .fillMaxWidth()
-                    .height(120.dp)
+                    .height(if (isLandscape) 80.dp else 120.dp)
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                Color.Black.copy(alpha = 0.4f),
+                                Color.Black.copy(alpha = if (isLandscape) 0.3f else 0.4f),
                                 Color.Transparent
                             )
                         )
                     )
             )
+        }
 
+        // Bottom Footer Container - fades in landscape
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .graphicsLayer(alpha = fadeAlpha)
+        ) {
             Box(
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .height(200.dp)
+                    .height(if (isLandscape) 120.dp else 200.dp)
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
                                 Color.Transparent,
-                                Color.Black.copy(alpha = 0.8f)
+                                Color.Black.copy(alpha = if (isLandscape) 0.6f else 0.8f)
                             )
                         )
                     )
             )
 
-            // Progress Bar with rounded corners
+            // Progress Bar
             LinearProgressIndicator(
                 progress = progress,
                 modifier = Modifier
@@ -146,140 +166,179 @@ fun VideoControls(
                 trackColor = Color.White.copy(alpha = 0.3f)
             )
 
-            // Right side controls with animations
-            Column(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(20.dp)
-            ) {
-                // Profile Button with circular background
-                IconButton(
-                    onClick = onProfileClick,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .background(Color.Black.copy(alpha = 0.3f), CircleShape)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.AccountCircle,
-                        contentDescription = "Profile",
-                        tint = Color.White,
-                        modifier = Modifier.size(32.dp)
-                    )
-                }
-
-                // Like Button with animation
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    IconButton(
-                        onClick = onLikeClick,
-                        modifier = Modifier.size(48.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = if (isLiked) "Unlike" else "Like",
-                            tint = if (isLiked) Color.Red else Color.White,
-                            modifier = Modifier
-                                .size(32.dp)
-                                .graphicsLayer(
-                                    scaleX = if (isLiked) 1.2f else 1f,
-                                    scaleY = if (isLiked) 1.2f else 1f
-                                )
-                        )
-                    }
-                    Text(
-                        text = formatCount(video.likes),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                // Comment Button
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    IconButton(
-                        onClick = onCommentClick,
-                        modifier = Modifier.size(48.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Comment,
-                            contentDescription = "Comment",
-                            tint = Color.White,
-                            modifier = Modifier.size(32.dp)
-                        )
-                    }
-                    Text(
-                        text = formatCount(video.comments),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                // Share Button
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    IconButton(
-                        onClick = onShareClick,
-                        modifier = Modifier.size(48.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Share,
-                            contentDescription = "Share",
-                            tint = Color.White,
-                            modifier = Modifier.size(32.dp)
-                        )
-                    }
-                    Text(
-                        text = formatCount(video.shares),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-
-            // Bottom content with enhanced typography
-            Column(
+            // Bottom content
+            Box(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(16.dp)
                     .fillMaxWidth(0.7f)
             ) {
-                Text(
-                    text = "@${video.userId}",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1
+                Column {
+                    Text(
+                        text = "@${video.userId}",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = video.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = video.description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.9f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+
+        // Right side controls - always visible
+        Column(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = if (isLandscape) 24.dp else 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(if (isLandscape) 16.dp else 20.dp)
+        ) {
+            // Profile Button
+            IconButton(
+                onClick = onProfileClick,
+                modifier = Modifier
+                    .size(48.dp)
+                    .background(Color.Black.copy(alpha = 0.3f), CircleShape)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AccountCircle,
+                    contentDescription = "Profile",
+                    tint = Color.White,
+                    modifier = Modifier.size(32.dp)
                 )
+            }
 
-                Spacer(modifier = Modifier.height(8.dp))
-
+            // Speed Button
+            IconButton(
+                onClick = { 
+                    onSpeedChange(when (playbackSpeed) {
+                        1f -> 1.5f
+                        1.5f -> 2f
+                        else -> 1f
+                    })
+                },
+                modifier = Modifier
+                    .size(32.dp)
+                    .background(Color.Black.copy(alpha = 0.3f), CircleShape)
+            ) {
                 Text(
-                    text = video.title,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontSize = 18.sp
-                    ),
+                    text = "${playbackSpeed}x",
+                    style = MaterialTheme.typography.labelSmall,
                     color = Color.White,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
                     fontWeight = FontWeight.Bold
                 )
+            }
 
-                Spacer(modifier = Modifier.height(4.dp))
-
+            // Like Button
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                IconButton(
+                    onClick = onLikeClick,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = if (isLiked) "Unlike" else "Like",
+                        tint = if (isLiked) Color.Red else Color.White,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
                 Text(
-                    text = video.description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = 0.9f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+                    text = formatCount(video.likes),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            // Comment Button
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                IconButton(
+                    onClick = onCommentClick,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Comment,
+                        contentDescription = "Comment",
+                        tint = Color.White,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+                Text(
+                    text = formatCount(video.commentCount),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            // Share Button
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                IconButton(
+                    onClick = onShareClick,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Share,
+                        contentDescription = "Share",
+                        tint = Color.White,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+                Text(
+                    text = formatCount(video.shares),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            // Related Videos Button
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                IconButton(
+                    onClick = onRelatedVideosClick,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlaylistPlay,
+                        contentDescription = "Related Videos",
+                        tint = Color.White,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+                Text(
+                    text = "Related",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
                 )
             }
         }
