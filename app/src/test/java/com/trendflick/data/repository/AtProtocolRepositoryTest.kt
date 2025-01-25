@@ -1,5 +1,6 @@
 package com.trendflick.data.repository
 
+import android.content.Context
 import com.trendflick.data.api.AtProtocolService
 import com.trendflick.data.local.UserDao
 import com.trendflick.data.model.AtSession
@@ -27,6 +28,7 @@ class AtProtocolRepositoryTest {
     private lateinit var repository: AtProtocolRepository
     private lateinit var service: AtProtocolService
     private lateinit var userDao: UserDao
+    private lateinit var context: Context
 
     // Following AT Protocol DID format
     private val testDid = "did:plc:test123456789"
@@ -46,7 +48,8 @@ class AtProtocolRepositoryTest {
     fun setup() {
         service = mockk(relaxed = true)
         userDao = mockk(relaxed = true)
-        repository = AtProtocolRepository(service, userDao)
+        context = mockk(relaxed = true)
+        repository = AtProtocolRepository(service, userDao, context)
     }
 
     @Test

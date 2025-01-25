@@ -11,13 +11,10 @@ class SplashViewModel @Inject constructor(
 ) : ViewModel() {
     
     fun hasCredentials(): Boolean {
-        // Force login screen for first-time use
         val handle = credentialsManager.getHandle()
         val password = credentialsManager.getPassword()
         
-        // Clear any existing credentials to ensure proper login flow
-        credentialsManager.clearCredentials()
-        
-        return false // Always go to login screen first
+        // Check if both handle and password exist
+        return !handle.isNullOrBlank() && !password.isNullOrBlank()
     }
 } 

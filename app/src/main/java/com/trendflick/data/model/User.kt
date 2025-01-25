@@ -14,8 +14,8 @@ data class User(
     val displayName: String? = null,
     val description: String? = null,
     val avatar: String? = null,
-    val accessJwt: String? = null,
-    val refreshJwt: String? = null,
-    @TypeConverters(Converters::class)
-    val preferences: Map<String, Any> = emptyMap()
+    val accessJwt: String,
+    val refreshJwt: String,
+    val appPassword: String? = null,
+    val preferences: Map<String, String> = emptyMap()
 ) 

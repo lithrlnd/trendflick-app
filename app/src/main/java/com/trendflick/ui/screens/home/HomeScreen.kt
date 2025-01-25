@@ -1,4 +1,8 @@
-@file:OptIn(UnstableApi::class)
+@file:OptIn(
+    ExperimentalMaterial3Api::class,
+    androidx.media3.common.util.UnstableApi::class,
+    ExperimentalMaterialApi::class
+)
 
 package com.trendflick.ui.screens.home
 
@@ -28,10 +32,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import androidx.media3.common.util.UnstableApi
+import com.trendflick.ui.navigation.Screen
 import com.trendflick.ui.components.VideoPlayer
 import com.trendflick.data.model.Video
 import com.trendflick.data.model.VideoCategory
@@ -64,186 +69,429 @@ import android.content.Context
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import com.trendflick.data.api.FeedPost
+import com.trendflick.ui.components.ThreadCard
+import com.trendflick.utils.DateUtils
+import androidx.compose.foundation.shape.CircleShape
+import com.trendflick.data.api.ThreadPost
+import com.trendflick.ui.viewmodels.SharedViewModel
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.unit.sp
+import com.trendflick.ui.screens.flicks.FlicksScreen
+import com.trendflick.ui.components.SwipeRefresh
+import com.trendflick.ui.components.rememberSwipeRefreshState
+import androidx.compose.material.ExperimentalMaterialApi
+import androidx.compose.ui.text.style.TextAlign
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(
-    navController: NavController,
-    viewModel: HomeViewModel = hiltViewModel()
+    viewModel: HomeViewModel = hiltViewModel(),
+    sharedViewModel: SharedViewModel = hiltViewModel(),
+    onNavigateToProfile: (String) -> Unit,
+    navController: NavController
 ) {
-    val videos by viewModel.videos.collectAsState()
+    val threads by viewModel.threads.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
-    val likedVideos by viewModel.likedVideos.collectAsState()
-    val comments by viewModel.comments.collectAsState()
-    val likedComments by viewModel.likedComments.collectAsState()
-    var showDrawer by remember { mutableStateOf(false) }
-    var showComments by remember { mutableStateOf(false) }
-    var showRelatedVideos by remember { mutableStateOf(false) }
-    var selectedCategory by remember { mutableStateOf<VideoCategory?>(null) }
-    var currentVideoId by remember { mutableStateOf<Int?>(null) }
-    val coroutineScope = rememberCoroutineScope()
-    val configuration = LocalConfiguration.current
-    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-    
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .pointerInput(Unit) {
-                detectDragGestures(
-                    onDragStart = { offset ->
-                        if (offset.x < 50.dp.toPx()) {
-                            showDrawer = true
-                        }
-                    },
-                    onDrag = { change, dragAmount ->
-                        change.consume()
-                    },
-                    onDragEnd = {},
-                    onDragCancel = {}
-                )
-            }
-    ) {
-        if (isLoading) {
-            LoadingAnimation()
-        } else {
-            val pagerState = rememberPagerState(pageCount = { videos.size })
+    val likedPosts by viewModel.likedPosts.collectAsState()
+    val currentThread by viewModel.currentThread.collectAsState()
+    val showComments by viewModel.showComments.collectAsState()
+    val currentPostComments by viewModel.currentPostComments.collectAsState()
+    val isLoadingComments by viewModel.isLoadingComments.collectAsState()
+    val scope = rememberCoroutineScope()
+    var commentText by remember { mutableStateOf("") }
+    val selectedFeed by sharedViewModel.selectedFeed.collectAsState()
+    val videos by viewModel.videos.collectAsState()
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
+    val isLoadingVideos by viewModel.isLoadingVideos.collectAsState()
+    val videoLoadError by viewModel.videoLoadError.collectAsState()
 
-            LaunchedEffect(pagerState.currentPage) {
-                viewModel.preloadVideos(
-                    currentPage = pagerState.currentPage,
-                    videos = videos
-                )
-                currentVideoId = videos.getOrNull(pagerState.currentPage)?.id
-                showRelatedVideos = false
-            }
+    LaunchedEffect(selectedFeed) {
+        viewModel.updateSelectedFeed(selectedFeed)
+    }
 
-            if (isLandscape) {
-                // Horizontal pager for landscape mode
-                HorizontalPager(
-                    state = pagerState,
-                    modifier = Modifier.fillMaxSize()
-                ) { page ->
-                    val video = videos[page]
-                    val pageOffset = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
-                    
-                    Box(
-                        modifier = Modifier
-                            .graphicsLayer {
-                                alpha = 1f - pageOffset.absoluteValue.coerceIn(0f, 1f)
-                                translationX = pageOffset * size.width * 0.1f
-                            }
-                            .fillMaxSize()
-                    ) {
-                        VideoItem(
-                            video = video,
-                            isLiked = likedVideos.contains(video.id),
-                            onLikeClick = { viewModel.likeVideo(video.id) },
-                            onCommentClick = { 
-                                currentVideoId = video.id
-                                showComments = true
-                            },
-                            onShareClick = { viewModel.shareVideo(video.id) },
-                            onProfileClick = { navController.navigate("profile/${video.userId}") },
-                            isVisible = page == pagerState.currentPage,
-                            onLongPress = {
-                                showRelatedVideos = !showRelatedVideos
-                            }
-                        )
-                    }
-                }
-            } else {
-                // Vertical pager for portrait mode
-                VerticalPager(
-                    state = pagerState,
-                    modifier = Modifier.fillMaxSize(),
-                    key = { videos[it].id }
-                ) { page ->
-                    val video = videos[page]
-                    val pageOffset = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
-                    
-                    Box(
-                        modifier = Modifier
-                            .graphicsLayer {
-                                alpha = 1f - pageOffset.absoluteValue.coerceIn(0f, 1f)
-                                translationY = pageOffset * size.height * 0.1f
-                            }
-                            .fillMaxSize()
-                    ) {
-                        VideoItem(
-                            video = video,
-                            isLiked = likedVideos.contains(video.id),
-                            onLikeClick = { viewModel.likeVideo(video.id) },
-                            onCommentClick = { 
-                                currentVideoId = video.id
-                                showComments = true
-                            },
-                            onShareClick = { viewModel.shareVideo(video.id) },
-                            onProfileClick = { navController.navigate("profile/${video.userId}") },
-                            isVisible = page == pagerState.currentPage,
-                            onLongPress = {
-                                showRelatedVideos = !showRelatedVideos
-                            }
-                        )
-                    }
-                }
-            }
+    LaunchedEffect(Unit) {
+        viewModel.loadMoreThreads()
+    }
 
-            // Related videos panel
-            AnimatedVisibility(
-                visible = showRelatedVideos,
-                enter = slideInHorizontally(
-                    initialOffsetX = { fullWidth -> fullWidth },
-                    animationSpec = tween(300)
-                ),
-                exit = slideOutHorizontally(
-                    targetOffsetX = { fullWidth -> fullWidth },
-                    animationSpec = tween(300)
-                ),
+    Box(modifier = Modifier.fillMaxSize()) {
+        SwipeRefresh(
+            refreshing = isRefreshing,
+            onRefresh = { viewModel.refresh() }
+        ) {
+            Scaffold(
                 modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .fillMaxHeight()
-                    .fillMaxWidth(0.7f)
-            ) {
-                RelatedVideosPanel(
-                    relatedVideos = videos[pagerState.currentPage].relatedVideos,
-                    onVideoClick = { relatedVideo ->
-                        val index = videos.indexOfFirst { it.id == relatedVideo.id }
-                        if (index != -1) {
-                            showRelatedVideos = false
-                            coroutineScope.launch {
-                                pagerState.animateScrollToPage(index)
+                    .fillMaxSize()
+                    .background(Color.Black),
+                contentWindowInsets = WindowInsets(0, 0, 0, 0),
+                topBar = {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Navigation buttons
+                            Row(
+                                modifier = Modifier
+                                    .background(
+                                        color = Color(0xFF1A1A1A),
+                                        shape = RoundedCornerShape(20.dp)
+                                    )
+                                    .padding(4.dp)
+                            ) {
+                                Button(
+                                    onClick = { 
+                                        sharedViewModel.updateSelectedFeed("Trends")
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (selectedFeed == "Trends") Color(0xFF6B4EFF) else Color.Transparent,
+                                        contentColor = if (selectedFeed == "Trends") Color.White else Color.White.copy(alpha = 0.7f)
+                                    ),
+                                    shape = RoundedCornerShape(18.dp),
+                                    modifier = Modifier.height(36.dp)
+                                ) {
+                                    Text(
+                                        text = "Trends",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                                
+                                Spacer(modifier = Modifier.width(8.dp))
+                                
+                                Button(
+                                    onClick = { 
+                                        sharedViewModel.updateSelectedFeed("Flicks")
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (selectedFeed == "Flicks") Color(0xFF6B4EFF) else Color.Transparent,
+                                        contentColor = if (selectedFeed == "Flicks") Color.White else Color.White.copy(alpha = 0.7f)
+                                    ),
+                                    shape = RoundedCornerShape(18.dp),
+                                    modifier = Modifier.height(36.dp)
+                                ) {
+                                    Text(
+                                        text = "Flicks",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+
+                            // AI Button
+                            Button(
+                                onClick = { navController.navigate(Screen.AI.route) },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF6B4EFF),
+                                    contentColor = Color.White
+                                ),
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                                modifier = Modifier.height(36.dp)
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.AutoAwesome,
+                                        contentDescription = "AI",
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        text = "AI",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp
+                                    )
+                                }
                             }
                         }
                     }
-                )
-            }
-        }
-
-        CategoryDrawer(
-            isOpen = showDrawer,
-            onCategorySelected = { category ->
-                selectedCategory = category
-                viewModel.filterByCategory(category)
-                showDrawer = false
-            },
-            onDismiss = { showDrawer = false }
-        )
-
-        currentVideoId?.let { videoId ->
-            CommentDialog(
-                isVisible = showComments,
-                onDismiss = { showComments = false },
-                comments = comments[videoId] ?: emptyList(),
-                onCommentSubmit = { content -> 
-                    viewModel.commentOnVideo(videoId, content)
-                },
-                onCommentLike = { commentId ->
-                    viewModel.likeComment(commentId)
-                },
-                onReplyClick = { commentId ->
-                    viewModel.replyToComment(videoId, commentId)
                 }
-            )
+            ) { paddingValues ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(paddingValues)
+                ) {
+                    if (selectedFeed == "Trends") {
+                        if (isLoading && threads.isEmpty()) {
+                            LoadingAnimation()
+                        } else if (threads.isEmpty()) {
+                            // Empty state
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Text(
+                                    text = "No threads available",
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Button(onClick = { viewModel.loadMoreThreads() }) {
+                                    Text("Refresh")
+                                }
+                            }
+                        } else {
+                            val threadCount = threads.size
+                            val pagerState = rememberPagerState(pageCount = { threadCount })
+
+                            // Load more threads when reaching the end
+                            LaunchedEffect(pagerState.currentPage) {
+                                if (pagerState.currentPage >= threadCount - 2 && !isLoading) {
+                                    viewModel.loadMoreThreads()
+                                }
+                            }
+
+                            VerticalPager(
+                                state = pagerState,
+                                modifier = Modifier.fillMaxSize(),
+                                key = { index -> threads.getOrNull(index)?.post?.uri ?: index.toString() }
+                            ) { page ->
+                                val thread = threads.getOrNull(page)
+                                if (thread != null) {
+                                    val pageOffset = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
+
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .graphicsLayer {
+                                                alpha = 1f - pageOffset.absoluteValue.coerceIn(0f, 1f)
+                                                translationY = pageOffset * size.height * 0.1f
+                                            }
+                                    ) {
+                                        ThreadCard(
+                                            feedPost = thread,
+                                            isLiked = likedPosts.contains(thread.post.uri),
+                                            onLikeClick = { viewModel.toggleLike(thread.post.uri) },
+                                            onRepostClick = { viewModel.repost(thread.post.uri) },
+                                            onShareClick = { viewModel.sharePost(thread.post.uri) },
+                                            onProfileClick = { onNavigateToProfile(thread.post.author.did) },
+                                            onThreadClick = { /* TODO */ },
+                                            onCommentClick = {
+                                                viewModel.loadComments(thread.post.uri)
+                                                viewModel.toggleComments(true)
+                                            },
+                                            onCreatePost = { navController.navigate(Screen.CreatePost.route) },
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                } else {
+                                    // Fallback UI for null thread
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("Content unavailable")
+                                    }
+                                }
+                            }
+                        }
+
+                        // Show loading indicator when loading more threads
+                        if (isLoading && threads.isNotEmpty()) {
+                            CircularProgressIndicator(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(16.dp)
+                            )
+                        }
+
+                        // Add FloatingActionButton for creating posts
+                        FloatingActionButton(
+                            onClick = { navController.navigate(Screen.CreatePost.route) },
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(16.dp)
+                                .navigationBarsPadding(),
+                            containerColor = Color(0xFF6B4EFF),
+                            contentColor = Color.White
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "Create new post",
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    } else {
+                        // Only show VideoFeedSection when on Flicks tab
+                        VideoFeedSection(
+                            videos = videos,
+                            isLoading = isLoadingVideos,
+                            error = videoLoadError,
+                            onRefresh = { viewModel.refreshVideoFeed() },
+                            onCreateVideo = { navController.navigate(Screen.CreateFlick.route) }
+                        )
+                    }
+
+                    // Comments overlay
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        AnimatedVisibility(
+                            visible = showComments,
+                            enter = slideInVertically(initialOffsetY = { it }),
+                            exit = slideOutVertically(targetOffsetY = { it })
+                        ) {
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .fillMaxHeight(0.92f)
+                                    .align(Alignment.BottomCenter)
+                                    .imePadding(),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.98f),
+                                tonalElevation = 2.dp,
+                                shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color(0xFF1A1A1A))
+                                        .padding(horizontal = 16.dp)
+                                ) {
+                                    // Header
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 16.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            IconButton(
+                                                onClick = { viewModel.toggleComments(false) }
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.ArrowBack,
+                                                    contentDescription = "Back to thread",
+                                                    tint = Color.White
+                                                )
+                                            }
+                                            Text(
+                                                text = "${currentThread?.replies?.size ?: 0} comments",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                color = Color.White
+                                            )
+                                        }
+                                        
+                                        // Add refresh button
+                                        IconButton(
+                                            onClick = { 
+                                                currentThread?.post?.uri?.let { uri ->
+                                                    viewModel.loadComments(uri)
+                                                }
+                                            }
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Refresh,
+                                                contentDescription = "Refresh comments",
+                                                tint = Color.White
+                                            )
+                                        }
+                                    }
+
+                                    // Comments list
+                                    LazyColumn(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                                    ) {
+                                        val thread = currentThread
+                                        if (thread != null) {
+                                            thread.replies?.forEach { reply ->
+                                                item {
+                                                    CommentItem(
+                                                        comment = reply,
+                                                        onProfileClick = { did -> onNavigateToProfile(did) },
+                                                        originalPostAuthorDid = thread.post.author.did
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Comment input
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 8.dp)
+                                            .navigationBarsPadding(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        OutlinedTextField(
+                                            value = commentText,
+                                            onValueChange = { commentText = it },
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .padding(end = 8.dp),
+                                            placeholder = { 
+                                                Text(
+                                                    "Add a comment...",
+                                                    color = Color.White.copy(alpha = 0.5f)
+                                                )
+                                            },
+                                            maxLines = 3,
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedBorderColor = Color(0xFF6B4EFF),
+                                                unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
+                                                cursorColor = Color(0xFF6B4EFF),
+                                                unfocusedTextColor = Color.White,
+                                                focusedTextColor = Color.White,
+                                                unfocusedContainerColor = Color.Transparent,
+                                                focusedContainerColor = Color.Transparent
+                                            )
+                                        )
+                                        IconButton(
+                                            onClick = {
+                                                if (commentText.isNotBlank()) {
+                                                    scope.launch {
+                                                        viewModel.postComment(currentThread?.post?.uri ?: "", commentText)
+                                                        commentText = ""
+                                                    }
+                                                }
+                                            },
+                                            enabled = commentText.isNotBlank()
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Send,
+                                                contentDescription = "Post comment",
+                                                tint = if (commentText.isNotBlank()) 
+                                                    Color(0xFF6B4EFF)
+                                                else 
+                                                    Color.White.copy(alpha = 0.5f)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -406,15 +654,25 @@ private fun RelatedVideoItem(
                     RoundedCornerShape(8.dp)
                 )
         ) {
-            // You can load actual thumbnail here using Coil or other image loading library
-            Icon(
-                imageVector = Icons.Default.PlayCircle,
-                contentDescription = null,
-                modifier = Modifier
-                    .size(24.dp)
-                    .align(Alignment.Center),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            if (video.thumbnailUrl.isNotEmpty()) {
+                AsyncImage(
+                    model = video.thumbnailUrl,
+                    contentDescription = "Video thumbnail",
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(8.dp)),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Default.PlayCircle,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .align(Alignment.Center),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
 
         // Video info
@@ -527,4 +785,250 @@ fun HashtagChip(
         border = null,
         modifier = Modifier.height(28.dp)
     )
+}
+
+@Composable
+private fun CommentItem(
+    comment: ThreadPost,
+    level: Int = 0,
+    onProfileClick: (String) -> Unit,
+    isOriginalPoster: Boolean = false,
+    originalPostAuthorDid: String? = null,
+    modifier: Modifier = Modifier
+) {
+    val isOP = originalPostAuthorDid != null && comment.post.author.did == originalPostAuthorDid
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(start = (level * 16).dp)
+            .padding(vertical = 8.dp)
+            .background(
+                if (isOP) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.1f)
+                else Color.Transparent,
+                RoundedCornerShape(8.dp)
+            )
+            .padding(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        // Thread line indicator
+        if (level > 0) {
+            Box(
+                modifier = Modifier
+                    .width(2.dp)
+                    .height(24.dp)
+                    .background(
+                        if (isOP) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)
+                    )
+            )
+        }
+
+        Column {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Profile picture
+                AsyncImage(
+                    model = comment.post.author.avatar,
+                    contentDescription = "Profile picture",
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .clickable { onProfileClick(comment.post.author.did) },
+                    contentScale = ContentScale.Crop
+                )
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = comment.post.author.displayName ?: comment.post.author.handle,
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (isOP) {
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                                modifier = Modifier.padding(horizontal = 4.dp)
+                            ) {
+                                Text(
+                                    text = "OP",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                    Text(
+                        text = "@${comment.post.author.handle} · ${DateUtils.formatTimestamp(comment.post.record.createdAt)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(4.dp))
+            
+            Text(
+                text = comment.post.record.text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(start = 40.dp)
+            )
+            
+            // Comment actions
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 40.dp, top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Reply,
+                        contentDescription = "Replies",
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "${comment.replies?.size ?: 0}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+    
+    // Recursively render replies
+    comment.replies?.forEach { reply ->
+        CommentItem(
+            comment = reply,
+            level = level + 1,
+            onProfileClick = onProfileClick,
+            originalPostAuthorDid = originalPostAuthorDid,
+            modifier = modifier
+        )
+    }
+}
+
+@Composable
+fun VideoFeedSection(
+    videos: List<Video>,
+    isLoading: Boolean,
+    error: String?,
+    onRefresh: () -> Unit,
+    onCreateVideo: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(modifier = modifier.fillMaxSize()) {
+        when {
+            isLoading -> {
+                CircularProgressIndicator(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .align(Alignment.Center),
+                    color = Color(0xFF6B4EFF)
+                )
+            }
+            error != null -> {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                        .align(Alignment.Center),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = error,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.7f)
+                    )
+                    TextButton(
+                        onClick = onRefresh,
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = Color(0xFF6B4EFF)
+                        )
+                    ) {
+                        Text("Retry")
+                    }
+                }
+            }
+            videos.isEmpty() -> {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                        .align(Alignment.Center),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "No videos found",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.7f)
+                    )
+                    Text(
+                        text = "Pull down to refresh or create your first flick",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.5f),
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+            else -> {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(vertical = 8.dp)
+                ) {
+                    itemsIndexed(videos) { index, video ->
+                        VideoItem(
+                            video = video,
+                            isLiked = false,
+                            onLikeClick = { /* TODO: Implement like action */ },
+                            onCommentClick = { /* TODO: Implement comment action */ },
+                            onShareClick = { /* TODO: Implement share action */ },
+                            onProfileClick = { /* TODO: Implement profile navigation */ },
+                            isVisible = true,
+                            onLongPress = { /* TODO: Implement long press action */ }
+                        )
+                        if (index < videos.size - 1) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                    }
+                }
+            }
+        }
+
+        // Update FloatingActionButton
+        FloatingActionButton(
+            onClick = onCreateVideo,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp)
+                .navigationBarsPadding(),
+            containerColor = Color(0xFF6B4EFF),
+            contentColor = Color.White
+        ) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = "Create new flick",
+                modifier = Modifier.size(24.dp)
+            )
+        }
+    }
 } 

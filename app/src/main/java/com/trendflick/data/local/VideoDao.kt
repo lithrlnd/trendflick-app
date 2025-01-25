@@ -6,8 +6,11 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface VideoDao {
-    @Query("SELECT * FROM videos ORDER BY id DESC")
+    @Query("SELECT * FROM videos ORDER BY sortAt DESC")
     fun getAllVideos(): Flow<List<Video>>
+
+    @Query("SELECT * FROM videos WHERE uri = :videoUri")
+    suspend fun getVideoById(videoUri: String): Video?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertVideo(video: Video)
@@ -18,15 +21,21 @@ interface VideoDao {
     @Delete
     suspend fun deleteVideo(video: Video)
 
-    @Query("UPDATE videos SET likes = likes + 1 WHERE id = :videoId")
-    suspend fun incrementLikes(videoId: Int)
+    @Query("UPDATE videos SET likes = likes + 1 WHERE uri = :videoUri")
+    suspend fun incrementLikes(videoUri: String)
 
-    @Query("UPDATE videos SET likes = CASE WHEN likes > 0 THEN likes - 1 ELSE 0 END WHERE id = :videoId")
-    suspend fun decrementLikes(videoId: Int)
+    @Query("UPDATE videos SET likes = likes - 1 WHERE uri = :videoUri")
+    suspend fun decrementLikes(videoUri: String)
 
-    @Query("UPDATE videos SET commentCount = commentCount + 1 WHERE id = :videoId")
-    suspend fun incrementComments(videoId: Int)
+    @Query("UPDATE videos SET comments = comments + 1 WHERE uri = :videoUri")
+    suspend fun incrementComments(videoUri: String)
 
-    @Query("UPDATE videos SET shares = shares + 1 WHERE id = :videoId")
-    suspend fun incrementShares(videoId: Int)
+    @Query("UPDATE videos SET shares = shares + 1 WHERE uri = :videoUri")
+    suspend fun incrementShares(videoUri: String)
+
+    @Query("SELECT * FROM videos WHERE did = :did ORDER BY sortAt DESC")
+    fun getVideosByUser(did: String): Flow<List<Video>>
+
+    @Query("SELECT * FROM videos WHERE uri != :videoUri ORDER BY sortAt DESC LIMIT 5")
+    suspend fun getRelatedVideos(videoUri: String): List<Video>
 } 

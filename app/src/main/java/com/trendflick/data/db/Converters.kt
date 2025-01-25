@@ -1,60 +1,57 @@
 package com.trendflick.data.db
 
-import androidx.room.ProvidedTypeConverter
 import androidx.room.TypeConverter
-import com.squareup.moshi.Moshi
-import com.squareup.moshi.Types
-import javax.inject.Inject
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import com.trendflick.data.model.Video
+import java.time.Instant
 
-@ProvidedTypeConverter
-class Converters @Inject constructor(private val moshi: Moshi) {
-    private val stringListType = Types.newParameterizedType(List::class.java, String::class.java)
-    private val stringListAdapter = moshi.adapter<List<String>>(stringListType)
-    
-    private val mapType = Types.newParameterizedType(
-        Map::class.java,
-        String::class.java,
-        Any::class.java
-    )
-    private val mapAdapter = moshi.adapter<Map<String, Any>>(mapType)
-    
-    private val mapListType = Types.newParameterizedType(
-        List::class.java,
-        Types.newParameterizedType(
-            Map::class.java,
-            String::class.java,
-            Any::class.java
-        )
-    )
-    private val mapListAdapter = moshi.adapter<List<Map<String, Any>>>(mapListType)
+class Converters {
+    private val gson = Gson()
 
     @TypeConverter
-    fun fromStringList(value: List<String>): String {
-        return stringListAdapter.toJson(value)
+    fun fromString(value: String?): List<String> {
+        if (value == null) return emptyList()
+        val listType = object : TypeToken<List<String>>() {}.type
+        return gson.fromJson(value, listType)
     }
 
     @TypeConverter
-    fun toStringList(value: String): List<String> {
-        return stringListAdapter.fromJson(value) ?: emptyList()
+    fun fromStringList(list: List<String>): String {
+        return gson.toJson(list)
     }
 
     @TypeConverter
-    fun fromMap(value: Map<String, Any>): String {
-        return mapAdapter.toJson(value)
+    fun fromVideoList(list: List<Video>): String {
+        return gson.toJson(list)
     }
 
     @TypeConverter
-    fun toMap(value: String): Map<String, Any> {
-        return mapAdapter.fromJson(value) ?: emptyMap()
+    fun toVideoList(value: String?): List<Video> {
+        if (value == null) return emptyList()
+        val listType = object : TypeToken<List<Video>>() {}.type
+        return gson.fromJson(value, listType)
     }
 
     @TypeConverter
-    fun fromMapList(value: List<Map<String, Any>>): String {
-        return mapListAdapter.toJson(value)
+    fun fromInstant(instant: Instant?): String? {
+        return instant?.toString()
     }
 
     @TypeConverter
-    fun toMapList(value: String): List<Map<String, Any>> {
-        return mapListAdapter.fromJson(value) ?: emptyList()
+    fun toInstant(value: String?): Instant? {
+        return value?.let { Instant.parse(it) }
+    }
+
+    @TypeConverter
+    fun fromStringMap(map: Map<String, String>): String {
+        return gson.toJson(map)
+    }
+
+    @TypeConverter
+    fun toStringMap(value: String?): Map<String, String> {
+        if (value == null) return emptyMap()
+        val mapType = object : TypeToken<Map<String, String>>() {}.type
+        return gson.fromJson(value, mapType)
     }
 } 

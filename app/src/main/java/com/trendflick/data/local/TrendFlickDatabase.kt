@@ -9,7 +9,7 @@ import com.trendflick.data.db.Converters
 
 @Database(
     entities = [User::class, Video::class],
-    version = 5,
+    version = 7,
     exportSchema = true
 )
 @TypeConverters(Converters::class)

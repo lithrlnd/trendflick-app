@@ -66,6 +66,12 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.LinearEasing
+import android.net.Uri
+import java.util.concurrent.Executor
+import kotlin.coroutines.suspendCoroutine
+import android.content.Intent
+import android.provider.Settings
+import com.trendflick.utils.PermissionUtils
 
 private const val TAG = "CameraPreview"
 
@@ -81,16 +87,15 @@ suspend fun <T> ListenableFuture<T>.await(context: Context): T = suspendCancella
 }
 
 @Composable
-private fun checkAndRequestPermissions(onPermissionsGranted: () -> Unit) {
+fun RequestPermissions(
+    onPermissionsGranted: () -> Unit,
+    onPermissionsDenied: () -> Unit = {}
+) {
     val context = LocalContext.current
     val requiredPermissions = remember {
-        mutableListOf(
-            Manifest.permission.CAMERA,
-            Manifest.permission.RECORD_AUDIO
-        ).apply {
-            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
-                add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-            }
+        mutableListOf<String>().apply {
+            addAll(PermissionUtils.getRequiredCameraPermissions())
+            addAll(PermissionUtils.getRequiredMediaPermissions())
         }
     }
 
@@ -105,6 +110,9 @@ private fun checkAndRequestPermissions(onPermissionsGranted: () -> Unit) {
         return
     }
 
+    var showRationale by remember { mutableStateOf(false) }
+    val activity = LocalContext.current as? Activity
+
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -112,576 +120,205 @@ private fun checkAndRequestPermissions(onPermissionsGranted: () -> Unit) {
         if (allGranted) {
             onPermissionsGranted()
         } else {
-            Toast.makeText(
-                context,
-                "Camera and microphone permissions are required for recording",
-                Toast.LENGTH_LONG
-            ).show()
+            showRationale = true
+            onPermissionsDenied()
         }
     }
 
     LaunchedEffect(missingPermissions) {
         permissionLauncher.launch(missingPermissions.toTypedArray())
     }
+
+    if (showRationale) {
+        AlertDialog(
+            onDismissRequest = { showRationale = false },
+            title = { Text("Permissions Required") },
+            text = { 
+                Text(
+                    "Camera and storage permissions are required to record and save videos. " +
+                    "Please grant these permissions in Settings."
+                ) 
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showRationale = false
+                        // Open app settings
+                        activity?.let { act ->
+                            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = Uri.fromParts("package", act.packageName, null)
+                            }
+                            act.startActivity(intent)
+                        }
+                    }
+                ) {
+                    Text("Open Settings")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRationale = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
 
 @Composable
 fun CameraPreview(
     modifier: Modifier = Modifier,
-    onVideoRecorded: (List<File>) -> Unit
+    onVideoRecorded: (List<File>) -> Unit,
+    isPaused: Boolean,
+    isBackCamera: Boolean,
+    isRecording: Boolean,
+    onSegmentUpdated: (List<Float>) -> Unit
 ) {
-    var hasPermissions by remember { mutableStateOf(false) }
-    var showControls by remember { mutableStateOf(true) }
-    var isRecording by remember { mutableStateOf(false) }
-    var recording: Recording? by remember { mutableStateOf(null) }
-    var isPaused by remember { mutableStateOf(false) }
-    var videoCapture: VideoCapture<Recorder>? by remember { mutableStateOf(null) }
-    var preview: Preview? by remember { mutableStateOf(null) }
-    var previewView: PreviewView? by remember { mutableStateOf(null) }
-    var cameraProvider: ProcessCameraProvider? by remember { mutableStateOf(null) }
-    var isBackCamera by remember { mutableStateOf(true) }
-    var selectedTimeLimit by remember { mutableStateOf(60L) }
-    var recordedTime by remember { mutableStateOf(0L) }
-    var videoSegments by remember { mutableStateOf(listOf<File>()) }
-    var segmentTimes by remember { mutableStateOf(listOf<Long>()) }
+    var permissionsGranted by remember { mutableStateOf(false) }
+    
+    RequestPermissions(
+        onPermissionsGranted = { permissionsGranted = true },
+        onPermissionsDenied = { permissionsGranted = false }
+    )
+
+    if (!permissionsGranted) {
+        return
+    }
 
     val context = LocalContext.current
-    val view = LocalView.current
-    val window = (context as? Activity)?.window
     val lifecycleOwner = LocalLifecycleOwner.current
-    
-    // Add orientation handling
-    val display = context.display
-    val rotation = display?.rotation ?: 0
-    val orientation by remember { mutableStateOf(rotation) }
+    val preview = Preview.Builder().build()
+    val previewView = remember { PreviewView(context) }
+    val videoCapture: MutableState<VideoCapture<Recorder>?> = remember { mutableStateOf(null) }
+    val recording: MutableState<Recording?> = remember { mutableStateOf(null) }
+    val recordedSegments = remember { mutableStateListOf<File>() }
+    val recordingSegments = remember { mutableStateListOf<Float>() }
+    var currentSegmentProgress by remember { mutableStateOf(0f) }
 
-    // Function to bind camera use cases
-    fun bindCameraUseCases() {
+    // Handle recording state changes
+    LaunchedEffect(isRecording) {
+        if (isRecording) {
+            startRecording(
+                context = context,
+                videoCapture = videoCapture.value,
+                recording = recording,
+                recordedSegments = recordedSegments,
+                recordingSegments = recordingSegments,
+                onSegmentUpdated = onSegmentUpdated,
+                onVideoRecorded = onVideoRecorded
+            )
+        } else {
+            recording.value?.stop()
+        }
+    }
+
+    // Handle pause/resume
+    LaunchedEffect(isPaused) {
+        if (isPaused && isRecording) {
+            recording.value?.pause()
+            if (currentSegmentProgress > 0f) {
+                recordingSegments.add(currentSegmentProgress)
+                currentSegmentProgress = 0f
+                onSegmentUpdated(recordingSegments.toList())
+            }
+        } else if (!isPaused && isRecording) {
+            recording.value?.resume()
+            recordingSegments.add(0f)
+            onSegmentUpdated(recordingSegments.toList())
+        }
+    }
+
+    // Handle camera setup and switching
+    LaunchedEffect(isBackCamera) {
+        val cameraProvider = context.getCameraProvider()
         val cameraSelector = if (isBackCamera) {
             CameraSelector.DEFAULT_BACK_CAMERA
         } else {
             CameraSelector.DEFAULT_FRONT_CAMERA
         }
-        
+
+        val recorder = Recorder.Builder()
+            .setQualitySelector(QualitySelector.from(Quality.HIGHEST))
+            .build()
+        videoCapture.value = VideoCapture.withOutput(recorder)
+
         try {
-            cameraProvider?.unbindAll()
-            
-            // Update preview
-            preview = Preview.Builder()
-                .setTargetAspectRatio(AspectRatio.RATIO_16_9)
-                .build()
-
-            // Configure video capture
-            val qualitySelector = QualitySelector.fromOrderedList(
-                listOf(Quality.HD, Quality.SD),
-                FallbackStrategy.lowerQualityOrHigherThan(Quality.SD)
-            )
-            
-            val recorder = Recorder.Builder()
-                .setQualitySelector(qualitySelector)
-                .build()
-            
-            videoCapture = VideoCapture.withOutput(recorder)
-
-            cameraProvider?.bindToLifecycle(
+            cameraProvider.unbindAll()
+            cameraProvider.bindToLifecycle(
                 lifecycleOwner,
                 cameraSelector,
-                preview!!,
-                videoCapture!!
+                preview,
+                videoCapture.value
             )
-            
-            previewView?.let { view ->
-                view.implementationMode = PreviewView.ImplementationMode.PERFORMANCE
-                when (orientation) {
-                    Surface.ROTATION_0 -> view.scaleType = PreviewView.ScaleType.FILL_CENTER
-                    Surface.ROTATION_180 -> view.scaleType = PreviewView.ScaleType.FILL_CENTER
-                    else -> view.scaleType = PreviewView.ScaleType.FIT_CENTER
-                }
-                preview?.setSurfaceProvider(view.surfaceProvider)
-            }
+            preview.setSurfaceProvider(previewView.surfaceProvider)
         } catch (e: Exception) {
-            Log.e(TAG, "Use case binding failed", e)
-        }
-    }
-    
-    // Track orientation changes and handle system UI
-    LaunchedEffect(orientation) {
-        window?.let { w ->
-            WindowCompat.setDecorFitsSystemWindows(w, false)
-            WindowInsetsControllerCompat(w, view).let { controller ->
-                controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                if (orientation == Surface.ROTATION_90 || orientation == Surface.ROTATION_270) {
-                    delay(500) // Short delay for smooth transition
-                    showControls = false
-                    controller.hide(WindowInsetsCompat.Type.systemBars())
-                } else {
-                    showControls = true
-                    controller.show(WindowInsetsCompat.Type.systemBars())
-                }
-            }
-        }
-    }
-    
-    // Auto-hide controls in landscape or when recording
-    LaunchedEffect(orientation, isRecording) {
-        if (orientation == Surface.ROTATION_90 || 
-            orientation == Surface.ROTATION_270) {
-            showControls = false
-        }
-    }
-    
-    // Handle system UI visibility with fade animations
-    LaunchedEffect(showControls, orientation) {
-        window?.let {
-            WindowCompat.setDecorFitsSystemWindows(it, false)
-            WindowInsetsControllerCompat(it, view).let { controller ->
-                controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                if (!showControls || orientation == Surface.ROTATION_90 || orientation == Surface.ROTATION_270) {
-                    controller.hide(WindowInsetsCompat.Type.systemBars())
-                } else {
-                    controller.show(WindowInsetsCompat.Type.systemBars())
-                }
-            }
+            Log.e("CameraPreview", "Use case binding failed", e)
         }
     }
 
-    // Handle orientation changes for camera
-    DisposableEffect(orientation) {
-        if (orientation == Surface.ROTATION_90 || orientation == Surface.ROTATION_270) {
-            showControls = false
+    DisposableEffect(Unit) {
+        onDispose {
+            recording.value?.stop()
         }
-        bindCameraUseCases()
-        onDispose { }
-    }
-    
-    checkAndRequestPermissions {
-        hasPermissions = true
-    }
-    
-    if (!hasPermissions) {
-        Box(modifier = modifier.fillMaxSize()) {
-            Text(
-                text = "Camera and microphone permissions are required",
-                modifier = Modifier.align(Alignment.Center)
-            )
-        }
-        return
     }
 
-    // Time limit options in seconds
-    val timeLimitOptions = remember {
-        listOf(
-            15L to "15s",
-            60L to "60s",
-            180L to "3m",
-            600L to "10m"
+    AndroidView(
+        factory = { previewView },
+        modifier = modifier
+    )
+}
+
+private suspend fun startRecording(
+    context: Context,
+    videoCapture: VideoCapture<Recorder>?,
+    recording: MutableState<Recording?>,
+    recordedSegments: MutableList<File>,
+    recordingSegments: MutableList<Float>,
+    onSegmentUpdated: (List<Float>) -> Unit,
+    onVideoRecorded: (List<File>) -> Unit
+) {
+    val videoFile = File(
+        context.filesDir,
+        "TrendFlick_${SimpleDateFormat("yyyy-MM-dd-HH-mm-ss-SSS", Locale.US)
+            .format(System.currentTimeMillis())}.mp4"
+    )
+    
+    val fileOutputOptions = FileOutputOptions.Builder(videoFile).build()
+
+    recording.value = videoCapture?.output
+        ?.prepareRecording(context, fileOutputOptions)
+        ?.apply { withAudioEnabled() }
+        ?.start(ContextCompat.getMainExecutor(context)) { event ->
+            when(event) {
+                is VideoRecordEvent.Start -> {
+                    recordingSegments.add(0f)
+                    onSegmentUpdated(recordingSegments.toList())
+                }
+                is VideoRecordEvent.Pause -> {
+                    // Handle pause event
+                }
+                is VideoRecordEvent.Resume -> {
+                    // Handle resume event
+                }
+                is VideoRecordEvent.Finalize -> {
+                    if (event.hasError()) {
+                        Log.e("CameraPreview", "Video capture failed: ${event.cause}")
+                    } else {
+                        recordedSegments.add(videoFile)
+                        onVideoRecorded(recordedSegments.toList())
+                    }
+                }
+            }
+        }
+}
+
+private suspend fun Context.getCameraProvider(): ProcessCameraProvider = suspendCoroutine { continuation ->
+    ProcessCameraProvider.getInstance(this).also { future ->
+        future.addListener(
+            {
+                continuation.resume(future.get())
+            },
+            ContextCompat.getMainExecutor(this)
         )
-    }
-
-    // Update recorded time
-    LaunchedEffect(isRecording, isPaused) {
-        while (isRecording && !isPaused) {
-            delay(100)
-            recordedTime += 100
-            if (recordedTime >= selectedTimeLimit * 1000) {
-                recording?.stop()
-                isRecording = false
-                isPaused = false
-            }
-        }
-    }
-
-    // Format time display
-    fun formatTime(millis: Long): String {
-        val seconds = millis / 1000
-        return String.format("%02d:%02d", seconds / 60, seconds % 60)
-    }
-
-    // Initialize camera
-    LaunchedEffect(Unit) {
-        try {
-            cameraProvider = ProcessCameraProvider.getInstance(context).await(context)
-            
-            preview = Preview.Builder()
-                .setTargetAspectRatio(AspectRatio.RATIO_16_9)
-                .build()
-
-            val qualitySelector = QualitySelector.fromOrderedList(
-                listOf(Quality.HD, Quality.SD),
-                FallbackStrategy.lowerQualityOrHigherThan(Quality.SD)
-            )
-            
-            val recorder = Recorder.Builder()
-                .setQualitySelector(qualitySelector)
-                .build()
-            
-            videoCapture = VideoCapture.withOutput(recorder)
-            
-            bindCameraUseCases()
-        } catch (e: Exception) {
-            Log.e(TAG, "Camera initialization failed", e)
-        }
-    }
-
-    // Function to start recording
-    fun startRecording() {
-        val videoFile = File(
-            context.getExternalFilesDir(null),
-            "TrendFlick_${System.currentTimeMillis()}.mp4"
-        )
-        
-        val fileOutputOptions = FileOutputOptions.Builder(videoFile).build()
-
-        videoCapture?.output?.prepareRecording(context, fileOutputOptions)
-            ?.apply { 
-                withAudioEnabled()
-            }
-            ?.start(ContextCompat.getMainExecutor(context)) { event ->
-                when(event) {
-                    is VideoRecordEvent.Start -> {
-                        isRecording = true
-                        Log.d(TAG, "Recording started successfully")
-                    }
-                    is VideoRecordEvent.Finalize -> {
-                        if (!event.hasError()) {
-                            Log.d(TAG, "Recording saved: ${videoFile.absolutePath}")
-                            if (videoFile.exists() && videoFile.length() > 0) {
-                                videoSegments = videoSegments + videoFile
-                                segmentTimes = segmentTimes + recordedTime
-                            }
-                        } else {
-                            Log.e(TAG, "Recording failed: ${event.error}")
-                            Toast.makeText(context, 
-                                "Failed to save recording: ${event.error}", 
-                                Toast.LENGTH_LONG
-                            ).show()
-                        }
-                        isRecording = false
-                        isPaused = false
-                        recording = null
-                    }
-                }
-            }?.also { recording = it }
-    }
-
-    Box(modifier = modifier.fillMaxSize()) {
-        // Camera preview with orientation-aware layout
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clickable { 
-                    if (orientation == Surface.ROTATION_0 || orientation == Surface.ROTATION_180) {
-                        showControls = !showControls
-                        if (showControls) {
-                            // Auto-hide after 1.5 seconds when showing in portrait mode
-                            window?.let {
-                                it.decorView.postDelayed({
-                                    if (!isRecording) {
-                                        showControls = false
-                                    }
-                                }, 1500) // 1.5 seconds
-                            }
-                        }
-                    }
-                }
-        ) {
-            AndroidView(
-                factory = { ctx ->
-                    PreviewView(ctx).apply {
-                        this.implementationMode = PreviewView.ImplementationMode.PERFORMANCE
-                        this.scaleType = PreviewView.ScaleType.FILL_START
-                        previewView = this
-                        preview?.setSurfaceProvider(this.surfaceProvider)
-                    }
-                },
-                modifier = Modifier.fillMaxSize()
-            )
-        }
-
-        // Top controls (status bar area)
-        AnimatedVisibility(
-            visible = showControls,
-            enter = fadeIn(
-                animationSpec = tween(
-                    durationMillis = 200,
-                    easing = LinearEasing
-                )
-            ),
-            exit = fadeOut(
-                animationSpec = tween(
-                    durationMillis = 200,
-                    easing = LinearEasing
-                )
-            ),
-            modifier = Modifier.align(Alignment.TopCenter)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .background(Color.Black.copy(alpha = 0.3f))
-            ) {
-                // Camera switch button
-                IconButton(
-                    onClick = {
-                        if (!isRecording) {
-                            isBackCamera = !isBackCamera
-                            bindCameraUseCases()
-                        } else {
-                            Toast.makeText(context, "Stop recording first", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(16.dp)
-                        .size(44.dp)
-                        .background(Color.Black.copy(alpha = 0.6f), CircleShape)
-                        .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Cameraswitch,
-                        contentDescription = "Switch Camera",
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-            }
-        }
-
-        // Bottom controls
-        AnimatedVisibility(
-            visible = showControls,
-            enter = fadeIn(
-                animationSpec = tween(
-                    durationMillis = 200,
-                    easing = LinearEasing
-                )
-            ),
-            exit = fadeOut(
-                animationSpec = tween(
-                    durationMillis = 200,
-                    easing = LinearEasing
-                )
-            ),
-            modifier = Modifier.align(Alignment.BottomCenter)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .background(Color.Black.copy(alpha = 0.3f))
-                    .padding(bottom = 48.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 32.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Delete last segment button
-                    Box(
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        IconButton(
-                            onClick = {
-                                if (videoSegments.isNotEmpty()) {
-                                    Toast.makeText(context, "Discard the last clip?", Toast.LENGTH_SHORT).show()
-                                    val lastSegment = videoSegments.last()
-                                    videoSegments = videoSegments.dropLast(1)
-                                    segmentTimes = segmentTimes.dropLast(1)  // Remove the last segment time
-                                    if (segmentTimes.isNotEmpty()) {
-                                        recordedTime = segmentTimes.last()  // Set time to last segment
-                                    } else {
-                                        recordedTime = 0
-                                    }
-                                    lastSegment.delete()
-                                }
-                            },
-                            modifier = Modifier
-                                .size(40.dp)
-                                .background(Color.Transparent)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ArrowBack,
-                                contentDescription = "Delete Last Segment",
-                                tint = Color.White,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-                    }
-
-                    // Center column for time options and record button
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        // Time options
-                        Row(
-                            modifier = Modifier
-                                .background(Color.Transparent)
-                                .padding(horizontal = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(24.dp)
-                        ) {
-                            timeLimitOptions.forEach { (seconds, label) ->
-                                val isSelected = selectedTimeLimit == seconds
-                                Text(
-                                    text = label,
-                                    color = if (isSelected) Color.White else Color.White.copy(alpha = 0.7f),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    modifier = Modifier
-                                        .clickable { 
-                                            if (!isRecording) {
-                                                selectedTimeLimit = seconds
-                                                recordedTime = 0
-                                                segmentTimes = listOf()
-                                                videoSegments = listOf()
-                                            }
-                                        }
-                                        .padding(vertical = 4.dp)
-                                )
-                            }
-                        }
-
-                        // Record button
-                        Box(
-                            modifier = Modifier.size(85.dp)
-                        ) {
-                            // Background circle (white border)
-                            Box(
-                                modifier = Modifier
-                                    .size(85.dp)
-                                    .align(Alignment.Center)
-                                    .border(
-                                        width = 4.dp,
-                                        color = Color.White.copy(alpha = 0.3f),
-                                        shape = CircleShape
-                                    )
-                            )
-
-                            // Draw individual segment progress arcs
-                            var lastSegmentTime = 0L
-                            segmentTimes.forEach { segmentEndTime ->
-                                // Add a small gap by reducing the progress arc length
-                                val gapSize = 0.02f // 2% gap
-                                val progress = ((segmentEndTime - lastSegmentTime).toFloat() / (selectedTimeLimit * 1000)) - gapSize
-                                
-                                CircularProgressIndicator(
-                                    progress = progress,
-                                    modifier = Modifier
-                                        .size(85.dp)
-                                        .align(Alignment.Center)
-                                        .rotate(360f * lastSegmentTime.toFloat() / (selectedTimeLimit * 1000)),
-                                    color = Color(0xFFFF0000),
-                                    strokeWidth = 4.dp
-                                )
-                                lastSegmentTime = segmentEndTime
-                            }
-
-                            // Current segment progress (also with gap)
-                            if (isRecording && recordedTime > lastSegmentTime) {
-                                val gapSize = 0.02f // 2% gap
-                                val progress = ((recordedTime - lastSegmentTime).toFloat() / (selectedTimeLimit * 1000)) - gapSize
-                                
-                                CircularProgressIndicator(
-                                    progress = progress,
-                                    modifier = Modifier
-                                        .size(85.dp)
-                                        .align(Alignment.Center)
-                                        .rotate(360f * lastSegmentTime.toFloat() / (selectedTimeLimit * 1000)),
-                                    color = Color(0xFFFF0000),
-                                    strokeWidth = 4.dp
-                                )
-                            }
-
-                            // White segment divider lines
-                            segmentTimes.forEach { segmentEndTime ->
-                                Box(
-                                    modifier = Modifier
-                                        .size(85.dp)
-                                        .align(Alignment.Center)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .width(4.dp)
-                                            .height(85.dp)
-                                            .background(Color.White)
-                                            .align(Alignment.Center)
-                                            .rotate(360f * (segmentEndTime.toFloat() / (selectedTimeLimit * 1000)))
-                                    )
-                                }
-                            }
-                            
-                            // Inner record button
-                            IconButton(
-                                onClick = {
-                                    if (isRecording) {
-                                        recording?.stop()
-                                    } else {
-                                        startRecording()
-                                    }
-                                },
-                                modifier = Modifier
-                                    .size(72.dp)
-                                    .align(Alignment.Center)
-                                    .background(
-                                        color = Color(0xFFFF0000),
-                                        shape = CircleShape
-                                    )
-                                    .border(
-                                        width = 6.dp,
-                                        color = Color.White,
-                                        shape = CircleShape
-                                    )
-                            ) {
-                                if (isRecording) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(24.dp)
-                                            .background(Color.White, RoundedCornerShape(4.dp))
-                                    )
-                                }
-                            }
-
-                            // Timer display
-                            if (recordedTime > 0) {
-                                Text(
-                                    text = formatTime(recordedTime),
-                                    color = Color.White,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    modifier = Modifier
-                                        .align(Alignment.TopCenter)
-                                        .offset(y = (-48).dp)
-                                )
-                            }
-                        }
-                    }
-
-                    // Checkmark button
-                    Box(
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        IconButton(
-                            onClick = {
-                                if (videoSegments.isNotEmpty()) {
-                                    onVideoRecorded(videoSegments)
-                                }
-                            },
-                            modifier = Modifier
-                                .size(40.dp)
-                                .background(Color.Transparent)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Check,
-                                contentDescription = "Preview Video",
-                                tint = Color.White,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 

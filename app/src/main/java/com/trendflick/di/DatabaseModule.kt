@@ -20,8 +20,8 @@ object DatabaseModule {
 
     @Provides
     @Singleton
-    fun provideConverters(moshi: Moshi): Converters {
-        return Converters(moshi)
+    fun provideConverters(): Converters {
+        return Converters()
     }
 
     @Provides
@@ -35,7 +35,6 @@ object DatabaseModule {
             TrendFlickDatabase::class.java,
             "trendflick.db"
         )
-        .addTypeConverter(converters)
         .fallbackToDestructiveMigration()
         .build()
     }

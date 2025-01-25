@@ -23,4 +23,13 @@ interface UserDao {
 
     @Update
     suspend fun updateUser(user: User)
+
+    @Query("SELECT did FROM users LIMIT 1")
+    suspend fun getCurrentUserDid(): String?
+
+    @Query("SELECT handle FROM users LIMIT 1")
+    suspend fun getCurrentUserHandle(): String?
+
+    @Query("DELETE FROM users")
+    suspend fun deleteAllUsers()
 } 

@@ -1,0 +1,11 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if true;  // Allow all operations during testing
+    }
+    match /videos/{videoId} {
+      allow read, write: if true;  // Explicitly allow video operations
+    }
+  }
+} 

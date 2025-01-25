@@ -202,6 +202,14 @@ fun VideoControls(
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = "${video.comments}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
                 }
             }
         }
@@ -289,7 +297,7 @@ fun VideoControls(
                     )
                 }
                 Text(
-                    text = formatCount(video.commentCount),
+                    text = formatCount(video.comments),
                     style = MaterialTheme.typography.labelMedium,
                     color = Color.White,
                     fontWeight = FontWeight.Bold

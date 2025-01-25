@@ -1,0 +1,20 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Match the videos collection
+    match /videos/{videoId} {
+      // During testing, allow read/write
+      allow read, write: if true;
+      
+      // Later we can add more specific rules like:
+      // allow read: if true;  // Anyone can read videos
+      // allow write: if request.resource.data.did != null 
+      //             && request.resource.data.handle != null;  // Must have AT Protocol identity
+    }
+    
+    // Protect all other collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+} 

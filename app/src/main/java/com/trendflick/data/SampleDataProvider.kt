@@ -3,83 +3,62 @@ package com.trendflick.data
 import com.trendflick.data.model.Video
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import java.time.Instant
+import java.util.UUID
 
 object SampleDataProvider {
-    private val _videos = MutableStateFlow(mutableListOf(
+    private val _videos = MutableStateFlow<List<Video>>(listOf(
         Video(
-            id = 1,
-            did = "did:plc:user1",
-            handle = "bigbuckcreator.bsky.social",
-            videoUrl = "https://storage.googleapis.com/exoplayer-test-media-0/BigBuckBunny_320x180.mp4",
-            thumbnailUrl = "https://storage.googleapis.com/exoplayer-test-media-0/images/test-media-1.jpg",
-            title = "Big Buck Bunny",
-            description = "A funny bunny's adventure",
-            likes = 1200,
-            commentCount = 350,
-            shares = 280,
-            hashtags = listOf("animation", "funny", "bunny", "3d")
+            uri = "at://did:plc:sample1/app.bsky.feed.post/1",
+            videoUrl = "https://example.com/video1.mp4",
+            description = "Sample video 1",
+            createdAt = Instant.now(),
+            indexedAt = Instant.now(),
+            sortAt = Instant.now(),
+            did = "did:plc:sample1",
+            handle = "user1.bsky.social",
+            title = "Sample Video 1",
+            thumbnailUrl = "https://example.com/thumb1.jpg",
+            username = "user1",
+            userId = "did:plc:sample1"
         ),
         Video(
-            id = 2,
-            did = "did:plc:user2",
-            handle = "wavecreator.bsky.social",
-            videoUrl = "https://storage.googleapis.com/exoplayer-test-media-0/test-mp4.mp4",
-            thumbnailUrl = "https://storage.googleapis.com/exoplayer-test-media-0/images/test-media-2.jpg",
-            title = "Colorful Waves",
-            description = "Beautiful wave patterns in motion",
-            likes = 890,
-            commentCount = 230,
-            shares = 150,
-            hashtags = listOf("waves", "colors", "art", "motion")
+            uri = "at://did:plc:sample2/app.bsky.feed.post/2",
+            videoUrl = "https://example.com/video2.mp4",
+            description = "Sample video 2",
+            createdAt = Instant.now(),
+            indexedAt = Instant.now(),
+            sortAt = Instant.now(),
+            did = "did:plc:sample2",
+            handle = "user2.bsky.social",
+            title = "Sample Video 2",
+            thumbnailUrl = "https://example.com/thumb2.jpg",
+            username = "user2",
+            userId = "did:plc:sample2"
         ),
         Video(
-            id = 3,
-            did = "did:plc:user3",
-            handle = "framemaster.bsky.social",
-            videoUrl = "https://storage.googleapis.com/exoplayer-test-media-0/frames-960x540.mp4",
-            thumbnailUrl = "https://storage.googleapis.com/exoplayer-test-media-0/images/test-media-3.jpg",
-            title = "Frame by Frame",
-            description = "A mesmerizing sequence of frames",
-            likes = 750,
-            commentCount = 180,
-            shares = 120,
-            hashtags = listOf("frames", "sequence", "tech", "art")
+            uri = "at://did:plc:sample3/app.bsky.feed.post/3",
+            videoUrl = "https://example.com/video3.mp4",
+            description = "Sample video 3",
+            createdAt = Instant.now(),
+            indexedAt = Instant.now(),
+            sortAt = Instant.now(),
+            did = "did:plc:sample3",
+            handle = "user3.bsky.social",
+            title = "Sample Video 3",
+            thumbnailUrl = "https://example.com/thumb3.jpg",
+            username = "user3",
+            userId = "did:plc:sample3"
         )
     ))
-    
-    val videos: StateFlow<List<Video>> = _videos.asStateFlow()
-    private var nextId = 4
+
+    val videos: StateFlow<List<Video>> = _videos
 
     fun addVideo(video: Video) {
-        val newVideo = video.copy(id = nextId++).apply {
-            relatedVideos = emptyList()
-        }
-        val currentList = _videos.value.toMutableList()
-        currentList.add(0, newVideo) // Add to the beginning of the list
-        updateVideos(currentList)
-        updateVideoRelations()
+        _videos.value = _videos.value + video
     }
 
-    fun updateVideos(newList: List<Video>) {
-        _videos.value = newList.toMutableList()
-        updateVideoRelations()
-    }
-
-    fun getRelatedVideos(video: Video): List<Video> {
-        // Return videos that share at least one hashtag with the input video
-        return _videos.value.filter { other ->
-            other.id != video.id && 
-            other.hashtags.any { it in video.hashtags }
-        }
-    }
-
-    fun updateVideoRelations() {
-        val currentList = _videos.value.map { video ->
-            video.apply {
-                relatedVideos = getRelatedVideos(video)
-            }
-        }
-        _videos.value = currentList.toMutableList()
+    fun updateVideos(videos: List<Video>) {
+        _videos.value = videos
     }
 } 

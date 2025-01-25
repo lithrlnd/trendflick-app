@@ -18,15 +18,18 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import com.trendflick.data.model.Comment
+import com.trendflick.utils.DateUtils
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
@@ -41,79 +44,73 @@ fun CommentDialog(
     val bottomSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val keyboardController = LocalSoftwareKeyboardController.current
     var commentText by remember { mutableStateOf("") }
-    var sortByTop by remember { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
 
     if (isVisible) {
         ModalBottomSheet(
             onDismissRequest = onDismiss,
             sheetState = bottomSheetState,
-            dragHandle = null,
+            dragHandle = { 
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(40.dp)
+                            .height(4.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f),
+                                shape = RoundedCornerShape(2.dp)
+                            )
+                    )
+                }
+            },
             containerColor = MaterialTheme.colorScheme.surface,
-            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(0.8f)
+                    .fillMaxHeight(0.7f)
                     .padding(horizontal = 16.dp)
             ) {
                 // Header
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 8.dp),
+                        .padding(bottom = 16.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = "${NumberFormat.getInstance().format(comments.size)} comments",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp
+                        )
                     )
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        TextButton(
-                            onClick = { sortByTop = true },
-                            colors = ButtonDefaults.textButtonColors(
-                                contentColor = if (sortByTop) 
-                                    MaterialTheme.colorScheme.primary 
-                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                            )
-                        ) {
-                            Text("Top")
-                        }
-                        TextButton(
-                            onClick = { sortByTop = false },
-                            colors = ButtonDefaults.textButtonColors(
-                                contentColor = if (!sortByTop) 
-                                    MaterialTheme.colorScheme.primary 
-                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                            )
-                        ) {
-                            Text("Latest")
-                        }
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close comments"
+                        )
                     }
                 }
+
+                Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
 
                 // Comments list
-                val sortedComments = remember(comments, sortByTop) {
-                    if (sortByTop) {
-                        comments.sortedByDescending { it.likes }
-                    } else {
-                        comments.sortedByDescending { it.timestamp }
-                    }
-                }
-
                 LazyColumn(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(20.dp),
                     contentPadding = PaddingValues(vertical = 16.dp)
                 ) {
-                    items(sortedComments) { comment ->
+                    items(comments) { comment ->
                         CommentItem(
                             comment = comment,
                             onLike = { onCommentLike(comment.id) },
@@ -122,33 +119,69 @@ fun CommentDialog(
                     }
                 }
 
+                Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
+
                 // Comment input
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 8.dp),
+                        .padding(vertical = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TextField(
-                        value = commentText,
-                        onValueChange = { commentText = it },
-                        modifier = Modifier.weight(1f),
-                        placeholder = { Text("Add a comment...") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(
-                            imeAction = ImeAction.Send
-                        ),
-                        keyboardActions = KeyboardActions(
-                            onSend = {
-                                if (commentText.isNotBlank()) {
-                                    onCommentSubmit(commentText)
-                                    commentText = ""
-                                    keyboardController?.hide()
+                    Column(modifier = Modifier.weight(1f)) {
+                        TextField(
+                            value = commentText,
+                            onValueChange = { 
+                                if (it.length <= 300) { // BlueSky character limit
+                                    commentText = it 
                                 }
-                            }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(20.dp)),
+                            placeholder = { Text("Add a reply...") },
+                            colors = TextFieldDefaults.colors(
+                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
+                            ),
+                            singleLine = false,
+                            maxLines = 4,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                            keyboardActions = KeyboardActions(
+                                onSend = {
+                                    if (commentText.isNotBlank()) {
+                                        onCommentSubmit(commentText)
+                                        commentText = ""
+                                        keyboardController?.hide()
+                                    }
+                                }
+                            )
                         )
-                    )
+                        // Character count indicator
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "${300 - commentText.length} characters remaining",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (commentText.length >= 290) 
+                                    MaterialTheme.colorScheme.error
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            if (commentText.length >= 290) {
+                                Text(
+                                    text = "Approaching limit",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                    }
                     IconButton(
                         onClick = {
                             if (commentText.isNotBlank()) {
@@ -156,11 +189,22 @@ fun CommentDialog(
                                 commentText = ""
                                 keyboardController?.hide()
                             }
-                        }
+                        },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .background(
+                                color = if (commentText.isNotBlank())
+                                    MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.surfaceVariant,
+                                shape = CircleShape
+                            )
                     ) {
                         Icon(
                             imageVector = Icons.Default.Send,
-                            contentDescription = "Send comment"
+                            contentDescription = "Send reply",
+                            tint = if (commentText.isNotBlank())
+                                MaterialTheme.colorScheme.onPrimary
+                            else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -179,20 +223,36 @@ private fun CommentItem(
         modifier = Modifier
             .fillMaxWidth()
             .padding(end = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.Top
     ) {
         // User Avatar
-        Surface(
-            modifier = Modifier.size(40.dp),
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.primaryContainer
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
         ) {
-            Text(
-                text = comment.username.first().toString(),
-                modifier = Modifier.wrapContentSize(),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
-            )
+            if (comment.avatar != null) {
+                AsyncImage(
+                    model = comment.avatar,
+                    contentDescription = "User avatar",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Text(
+                        text = comment.username.first().toString(),
+                        modifier = Modifier.wrapContentSize(),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+            }
         }
 
         // Comment Content
@@ -215,22 +275,25 @@ private fun CommentItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = formatTimestamp(comment.timestamp),
-                    style = MaterialTheme.typography.labelMedium,
+                    text = DateUtils.formatTimestamp(comment.createdAt),
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
                 TextButton(
                     onClick = onReply,
                     contentPadding = PaddingValues(horizontal = 8.dp)
                 ) {
+                    Icon(
+                        imageVector = Icons.Default.Reply,
+                        contentDescription = "Reply",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = if (comment.replyCount > 0) {
-                            "${comment.replyCount} ${if (comment.replyCount == 1) "reply" else "replies"}"
-                        } else {
-                            "Reply"
-                        },
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        text = "Reply",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
             }
@@ -260,17 +323,5 @@ private fun CommentItem(
                 )
             }
         }
-    }
-}
-
-private fun formatTimestamp(timestamp: Long): String {
-    val now = System.currentTimeMillis()
-    val diff = now - timestamp
-    return when {
-        diff < 60_000 -> "now" // less than 1 minute
-        diff < 3600_000 -> "${diff / 60_000}m" // less than 1 hour
-        diff < 86400_000 -> "${diff / 3600_000}h" // less than 1 day
-        diff < 604800_000 -> "${diff / 86400_000}d" // less than 1 week
-        else -> "${diff / 604800_000}w" // weeks
     }
 } 

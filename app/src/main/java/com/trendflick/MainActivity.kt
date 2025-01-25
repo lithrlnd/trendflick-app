@@ -1,6 +1,7 @@
 package com.trendflick
 
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
@@ -16,17 +17,39 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import com.trendflick.ui.navigation.Screen
 import com.trendflick.ui.navigation.BottomNavigationBar
 import com.trendflick.ui.screens.home.HomeScreen
-import com.trendflick.ui.screens.upload.UploadScreen
 import com.trendflick.ui.screens.profile.ProfileScreen
 import com.trendflick.ui.screens.splash.SplashScreen
 import com.trendflick.ui.screens.login.LoginScreen
+import com.trendflick.ui.screens.ai.AIScreen
 import com.trendflick.ui.theme.TrendFlickTheme
 import dagger.hilt.android.AndroidEntryPoint
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import com.trendflick.ui.screens.settings.*
+import com.trendflick.ui.screens.create.CreatePostScreen
+import com.trendflick.ui.screens.create.CreateFlickScreen
+import androidx.core.view.WindowCompat
+import com.trendflick.ui.screens.upload.UploadScreen
+import android.view.Window
+import android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+import androidx.compose.ui.graphics.Color
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.trendflick.ui.viewmodels.SharedViewModel
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Configure window for edge-to-edge and no title bar
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.requestFeature(Window.FEATURE_NO_TITLE)
+        window.setFlags(FLAG_LAYOUT_NO_LIMITS, FLAG_LAYOUT_NO_LIMITS)
+        
+        // Keep screen on while app is active
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         
         setContent {
             TrendFlickTheme {
@@ -36,7 +59,11 @@ class MainActivity : ComponentActivity() {
                 ) {
                     val navController = rememberNavController()
                     
-                    Box(modifier = Modifier.fillMaxSize()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .systemBarsPadding() // Add system bars padding
+                    ) {
                         NavHost(
                             navController = navController,
                             startDestination = Screen.Splash.route,
@@ -49,13 +76,56 @@ class MainActivity : ComponentActivity() {
                                 LoginScreen(navController = navController)
                             }
                             composable(Screen.Home.route) {
+                                val sharedViewModel: SharedViewModel = hiltViewModel()
                                 Box(modifier = Modifier.padding(bottom = 80.dp)) {
-                                    HomeScreen(navController = navController)
+                                    HomeScreen(
+                                        onNavigateToProfile = { did ->
+                                            navController.navigate("profile/$did")
+                                        },
+                                        navController = navController,
+                                        sharedViewModel = sharedViewModel
+                                    )
                                 }
                             }
-                            composable(Screen.Upload.route) {
+                            composable(Screen.Following.route) {
                                 Box(modifier = Modifier.padding(bottom = 80.dp)) {
-                                    UploadScreen()
+                                    Column(
+                                        modifier = Modifier.fillMaxSize(),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center
+                                    ) {
+                                        Text(
+                                            text = "Following Coming Soon",
+                                            style = MaterialTheme.typography.headlineMedium
+                                        )
+                                    }
+                                }
+                            }
+                            composable(Screen.CreateFlick.route) {
+                                Surface(
+                                    modifier = Modifier.fillMaxSize(),
+                                    color = Color.Black
+                                ) {
+                                    CreateFlickScreen(navController = navController)
+                                }
+                            }
+                            composable(Screen.CreatePost.route) {
+                                Box(modifier = Modifier.padding(bottom = 80.dp)) {
+                                    CreatePostScreen(navController = navController)
+                                }
+                            }
+                            composable(Screen.Chat.route) {
+                                Box(modifier = Modifier.padding(bottom = 80.dp)) {
+                                    Column(
+                                        modifier = Modifier.fillMaxSize(),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center
+                                    ) {
+                                        Text(
+                                            text = "Messages Coming Soon",
+                                            style = MaterialTheme.typography.headlineMedium
+                                        )
+                                    }
                                 }
                             }
                             composable(Screen.Profile.route) {
@@ -63,19 +133,61 @@ class MainActivity : ComponentActivity() {
                                     ProfileScreen(navController = navController)
                                 }
                             }
+                            composable(Screen.Upload.route) {
+                                Surface(
+                                    modifier = Modifier.fillMaxSize(),
+                                    color = Color.Black
+                                ) {
+                                    UploadScreen(navController = navController)
+                                }
+                            }
+                            composable(Screen.AI.route) {
+                                AIScreen(navController = navController)
+                            }
+                            
+                            // Settings Routes
+                            composable(Screen.Settings.route) {
+                                SettingsScreen(navController = navController)
+                            }
+                            composable(Screen.EditProfile.route) {
+                                EditProfileScreen(navController = navController)
+                            }
+                            composable(Screen.AppPassword.route) {
+                                AppPasswordScreen(navController = navController)
+                            }
+                            composable(Screen.PrivacySettings.route) {
+                                PrivacySettingsScreen(navController = navController)
+                            }
+                            composable(Screen.BlockedAccounts.route) {
+                                // TODO: Implement BlockedAccountsScreen
+                            }
                         }
                         
-                        // Only show bottom navigation bar when not on splash or login screen
                         val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
-                        if (currentRoute != Screen.Splash.route && currentRoute != Screen.Login.route) {
-                            BottomNavigationBar(
-                                navController = navController,
-                                modifier = Modifier.align(Alignment.BottomCenter)
-                            )
+                        if (currentRoute != Screen.Splash.route && 
+                            currentRoute != Screen.Login.route) {
+                            
+                            // Show bottom navigation bar on main screens
+                            if (!currentRoute.toString().startsWith("settings")) {
+                                BottomNavigationBar(
+                                    navController = navController,
+                                    modifier = Modifier.align(Alignment.BottomCenter)
+                                )
+                            }
                         }
                     }
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 } 

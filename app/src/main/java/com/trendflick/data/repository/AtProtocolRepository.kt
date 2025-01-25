@@ -1,77 +1,57 @@
 package com.trendflick.data.repository
 
-import com.trendflick.data.api.AtProtocolService
+import android.content.Context
+import android.net.Uri
+import android.webkit.MimeTypeMap
+import com.trendflick.data.api.*
 import com.trendflick.data.local.UserDao
 import com.trendflick.data.model.AtSession
 import com.trendflick.data.model.User
 import kotlinx.coroutines.flow.Flow
-import javax.inject.Inject
-import javax.inject.Singleton
+import java.time.Instant
 
-@Singleton
-class AtProtocolRepository @Inject constructor(
-    private val service: AtProtocolService,
-    private val userDao: UserDao
-) {
-    suspend fun createSession(handle: String, password: String): Result<AtSession> {
-        return try {
-            System.out.println("AT Protocol - Starting authentication")
-            
-            // Validate handle format
-            if (!handle.matches(Regex(".+\\.bsky\\.social$"))) {
-                System.err.println("AT Protocol - Invalid handle format. Must end with .bsky.social")
-                return Result.failure(Exception("Invalid handle format. Must end with .bsky.social"))
-            }
-            
-            // Validate app password format
-            if (!password.matches(Regex("[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}"))) {
-                System.err.println("AT Protocol - Invalid app password format. Must be in format: xxxx-xxxx-xxxx-xxxx")
-                return Result.failure(Exception("Invalid app password format. Must be in format: xxxx-xxxx-xxxx-xxxx"))
-            }
-            
-            System.out.println("AT Protocol - Attempting to create session for handle: $handle")
-            
-            val credentials = mapOf(
-                "identifier" to handle,
-                "password" to password
-            )
-            
-            val response = service.createSession(credentials)
-            
-            // Verify we received a valid DID
-            if (response.did?.startsWith("did:") != true) {
-                System.err.println("AT Protocol - Invalid DID format received")
-                return Result.failure(Exception("Invalid DID format received"))
-            }
-            
-            System.out.println("AT Protocol - Session created successfully")
-            System.out.println("AT Protocol - DID: ${response.did}")
-            System.out.println("AT Protocol - Handle: ${response.handle}")
-            
-            // Store user data
-            val user = User(
-                did = response.did,
-                handle = response.handle,
-                accessJwt = response.accessJwt,
-                refreshJwt = response.refreshJwt
-            )
-            userDao.insertUser(user)
-            
-            Result.success(response)
-        } catch (e: Exception) {
-            System.err.println("AT Protocol - Authentication failed")
-            System.err.println("AT Protocol - Error type: ${e.javaClass.simpleName}")
-            System.err.println("AT Protocol - Error message: ${e.message}")
-            e.printStackTrace()
-            Result.failure(e)
-        }
-    }
+interface AtProtocolRepository {
+    suspend fun createSession(handle: String, password: String): Result<AtSession>
+    suspend fun refreshSession(): Result<AtSession>
+    suspend fun uploadBlob(uri: Uri): BlobResult
+    suspend fun updateProfile(did: String, displayName: String?, description: String?, avatar: String?)
+    suspend fun getTimeline(algorithm: String = "reverse-chronological", limit: Int = 50, cursor: String? = null): Result<TimelineResponse>
+    suspend fun getPostThread(uri: String): Result<ThreadResponse>
+    suspend fun likePost(uri: String): Boolean
+    suspend fun isPostLikedByUser(uri: String): Boolean
+    suspend fun repost(uri: String)
+    fun getUserByDid(did: String): Flow<User?>
+    fun getUserByHandle(handle: String): Flow<User?>
+    suspend fun createPost(text: String, timestamp: String): Result<CreateRecordResponse>
+    suspend fun createReply(text: String, parentUri: String, parentCid: String, timestamp: String): Result<CreateRecordResponse>
+    suspend fun searchUsers(query: String): List<UserSearchResult>
+    suspend fun getCurrentSession(): AtProtocolUser?
+    suspend fun createPost(record: Map<String, Any>): AtProtocolPostResult
+    suspend fun identityResolveHandle(handle: String): String
+    suspend fun getDid(): String
+    suspend fun getHandle(): String
+    fun clearLikeCache()
+    suspend fun deleteSession(refreshJwt: String): Result<Unit>
+}
 
-    fun getUserByDid(did: String): Flow<User?> {
-        return userDao.getUserByDid(did)
-    }
+// Data classes used by the interface
+data class AtProtocolUser(
+    val did: String,
+    val handle: String
+)
 
-    fun getUserByHandle(handle: String): Flow<User?> {
-        return userDao.getUserByHandle(handle)
-    }
-} 
+data class AtProtocolPostResult(
+    val uri: String,
+    val cid: String
+)
+
+data class BlobResult(
+    val blobUri: String,
+    val mimeType: String
+)
+
+data class UserSearchResult(
+    val did: String,
+    val handle: String,
+    val displayName: String?
+) 

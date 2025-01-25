@@ -13,13 +13,17 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.trendflick.BuildConfig
 import com.trendflick.ui.navigation.Screen
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.graphics.Color
 
 @Composable
 fun LoginScreen(
     navController: NavController,
     viewModel: LoginViewModel = hiltViewModel()
 ) {
-    var handle by remember { mutableStateOf(BuildConfig.BLUESKY_HANDLE) }
+    var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf(BuildConfig.BLUESKY_APP_PASSWORD) }
     var isLoading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -51,13 +55,32 @@ fun LoginScreen(
                 style = MaterialTheme.typography.headlineMedium
             )
 
-            OutlinedTextField(
-                value = handle,
-                onValueChange = { handle = it },
-                label = { Text("Bluesky Handle") },
-                singleLine = true,
-                enabled = !isLoading
-            )
+            Column(
+                horizontalAlignment = Alignment.Start,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = { username = it.trim() },
+                    label = { Text("Username") },
+                    singleLine = true,
+                    enabled = !isLoading,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                
+                if (username.isNotEmpty()) {
+                    Text(
+                        text = buildAnnotatedString {
+                            append("Your handle will be: ")
+                            withStyle(style = SpanStyle(color = MaterialTheme.colorScheme.primary)) {
+                                append("@$username.bsky.social")
+                            }
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+                    )
+                }
+            }
 
             OutlinedTextField(
                 value = password,
@@ -66,7 +89,8 @@ fun LoginScreen(
                 singleLine = true,
                 enabled = !isLoading,
                 visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                modifier = Modifier.fillMaxWidth()
             )
 
             if (error != null) {
@@ -78,8 +102,8 @@ fun LoginScreen(
             }
 
             Button(
-                onClick = { viewModel.login(handle, password) },
-                enabled = !isLoading && handle.isNotBlank() && password.isNotBlank(),
+                onClick = { viewModel.login(username, password) },
+                enabled = !isLoading && username.isNotBlank() && password.isNotBlank(),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (isLoading) {
