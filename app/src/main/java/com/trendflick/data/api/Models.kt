@@ -282,4 +282,10 @@ data class GetLikesResponse(
 data class Like(
     @field:Json(name = "actor") val actor: AtIdentity,
     @field:Json(name = "createdAt") val createdAt: String
+)
+
+@JsonClass(generateAdapter = true)
+data class FollowsResponse(
+    @field:Json(name = "follows") val follows: List<AtProfile>,
+    @field:Json(name = "cursor") val cursor: String?
 ) 

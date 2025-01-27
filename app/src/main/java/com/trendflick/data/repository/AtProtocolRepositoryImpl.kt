@@ -23,6 +23,7 @@ import kotlinx.coroutines.withContext
 import android.util.Log
 import kotlinx.coroutines.delay
 import com.trendflick.data.auth.BlueskyCredentialsManager
+import com.trendflick.data.model.TrendingHashtag
 
 @Singleton
 class AtProtocolRepositoryImpl @Inject constructor(
@@ -253,12 +254,21 @@ class AtProtocolRepositoryImpl @Inject constructor(
                         "whats-hot" -> {
                             Log.d(TAG, "🔍 Using discovery feed endpoint with whats-hot algorithm")
                             service.getDiscoveryFeed(
+                                feed = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot",
+                                limit = limit,
+                                cursor = cursor
+                            )
+                        }
+                        "reverse-chronological" -> {
+                            Log.d(TAG, "🔍 Using personal timeline endpoint")
+                            service.getTimeline(
+                                algorithm = algorithm,
                                 limit = limit,
                                 cursor = cursor
                             )
                         }
                         else -> {
-                            Log.d(TAG, "🔍 Using personal timeline endpoint")
+                            Log.d(TAG, "🔍 Using default timeline endpoint")
                             service.getTimeline(
                                 algorithm = algorithm,
                                 limit = limit,
@@ -273,7 +283,7 @@ class AtProtocolRepositoryImpl @Inject constructor(
                             // Try personal timeline as fallback
                             Log.d(TAG, "🔄 Falling back to personal timeline")
                             service.getTimeline(
-                                algorithm = "reverse-chronological",
+                                algorithm = "following",
                                 limit = limit,
                                 cursor = cursor
                             )
@@ -635,6 +645,88 @@ class AtProtocolRepositoryImpl @Inject constructor(
                 throw error
             }
             .getOrThrow()
+    }
+
+    override suspend fun getFollows(actor: String, limit: Int, cursor: String?): Result<FollowsResponse> = withContext(Dispatchers.IO) {
+        try {
+            // Ensure valid session before making request
+            if (!ensureValidSession()) {
+                Log.e(TAG, "❌ No valid session available for follows request")
+                return@withContext Result.failure(Exception("No valid session available"))
+            }
+            
+            Log.d(TAG, """
+                🌐 Follows Request:
+                Actor: $actor
+                Limit: $limit
+                Cursor: $cursor
+            """.trimIndent())
+            
+            val response = service.getFollows(actor, limit, cursor)
+            Log.d(TAG, "✅ Follows fetch successful - Found ${response.follows.size} follows")
+            Result.success(response)
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to fetch follows: ${e.message}")
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun getTrendingHashtags(): List<TrendingHashtag> = withContext(Dispatchers.IO) {
+        try {
+            // Since BlueSky doesn't have a direct trending hashtags API yet,
+            // we'll create a curated list based on popular categories and current trends
+            listOf(
+                TrendingHashtag("photography", 1500, "Beautiful captures and visual stories", "📸"),
+                TrendingHashtag("music", 1200, "Latest tracks and music discussions", "🎵"),
+                TrendingHashtag("tech", 1000, "Technology news and discussions", "💻"),
+                TrendingHashtag("art", 900, "Digital and traditional artworks", "🎨"),
+                TrendingHashtag("gaming", 800, "Gaming highlights and discussions", "🎮"),
+                TrendingHashtag("food", 700, "Culinary adventures and recipes", "🍳"),
+                TrendingHashtag("nature", 600, "Nature and outdoor experiences", "🌿"),
+                TrendingHashtag("fitness", 500, "Health and workout motivation", "💪"),
+                TrendingHashtag("books", 400, "Book recommendations and reviews", "📚"),
+                TrendingHashtag("travel", 300, "Travel experiences and destinations", "✈️")
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get trending hashtags: ${e.message}")
+            emptyList()
+        }
+    }
+
+    override suspend fun getPostsByHashtag(
+        hashtag: String,
+        limit: Int,
+        cursor: String?
+    ): Result<TimelineResponse> = withContext(Dispatchers.IO) {
+        try {
+            if (!ensureValidSession()) {
+                return@withContext Result.failure(Exception("No valid session available"))
+            }
+
+            // Use the search functionality to find posts with the hashtag
+            val searchQuery = "#$hashtag"
+            Log.d(TAG, "🔍 Searching posts with hashtag: $searchQuery")
+
+            // For now, we'll use the regular timeline but filter for posts containing the hashtag
+            val response = service.getTimeline(
+                algorithm = "reverse-chronological",
+                limit = limit * 2, // Fetch more to account for filtering
+                cursor = cursor
+            )
+
+            // Filter posts containing the hashtag
+            val filteredFeed = response.feed.filter { feedPost ->
+                feedPost.post.record.text.contains(searchQuery, ignoreCase = true)
+            }.take(limit)
+
+            Result.success(TimelineResponse(
+                feed = filteredFeed,
+                cursor = response.cursor
+            ))
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get posts by hashtag: ${e.message}")
+            Result.failure(e)
+        }
     }
 
     companion object {

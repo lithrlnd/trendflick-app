@@ -661,3 +661,35 @@ TF_Home: 🔒 Skipping thread load - user is logged out
 2. Ensure proper cleanup of all auth states during logout
 3. Implement proper session termination sequence
 4. Add state verification before navigation 
+
+## Feed Loading Problems
+
+### 1. Following Feed Not Working
+**Priority: High**
+- Following feed shows empty state even when user follows accounts
+- Need to properly implement the `reverse-chronological` algorithm in `HomeViewModel.kt`
+- Should use `atProtocolRepository.getTimeline(algorithm = "reverse-chronological")` with proper user authentication
+
+### 2. Category and Hashtag Feed Loading
+**Priority: High**
+- Categories other than FYP only show refresh screen
+- Hashtag-based feeds not loading properly
+- Investigation needed:
+  1. Check AT Protocol's feed filtering capabilities
+  2. Review `getPostsByHashtag` implementation
+  3. Consider implementing custom feed generator for better performance
+  4. Add proper error handling and loading states
+
+### 3. Feed Loading Optimization
+**Priority: Medium**
+- Current implementation fetches more posts than needed
+- Need to implement proper pagination
+- Consider caching frequently accessed feeds
+- Add pull-to-refresh functionality
+
+## Next Steps
+1. Review AT Protocol documentation for proper feed implementation
+2. Implement proper error handling and loading states
+3. Add feed caching mechanism
+4. Optimize hashtag filtering
+5. Fix Following feed implementation 

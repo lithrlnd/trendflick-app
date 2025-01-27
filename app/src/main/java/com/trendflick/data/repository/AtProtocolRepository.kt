@@ -7,6 +7,7 @@ import com.trendflick.data.api.*
 import com.trendflick.data.local.UserDao
 import com.trendflick.data.model.AtSession
 import com.trendflick.data.model.User
+import com.trendflick.data.model.TrendingHashtag
 import kotlinx.coroutines.flow.Flow
 import java.time.Instant
 
@@ -32,6 +33,9 @@ interface AtProtocolRepository {
     suspend fun getHandle(): String
     fun clearLikeCache()
     suspend fun deleteSession(refreshJwt: String): Result<Unit>
+    suspend fun getFollows(actor: String, limit: Int = 50, cursor: String? = null): Result<FollowsResponse>
+    suspend fun getTrendingHashtags(): List<TrendingHashtag>
+    suspend fun getPostsByHashtag(hashtag: String, limit: Int = 50, cursor: String? = null): Result<TimelineResponse>
 }
 
 // Data classes used by the interface

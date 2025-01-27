@@ -93,4 +93,11 @@ interface AtProtocolService {
 
     @POST("xrpc/com.atproto.server.deleteSession")
     suspend fun deleteSession(@Body refreshJwt: String): Result<Unit>
+
+    @GET("xrpc/app.bsky.graph.getFollows")
+    suspend fun getFollows(
+        @Query("actor") actor: String,
+        @Query("limit") limit: Int = 50,
+        @Query("cursor") cursor: String? = null
+    ): FollowsResponse
 } 

@@ -37,6 +37,7 @@ import android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
 import androidx.compose.ui.graphics.Color
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.trendflick.ui.viewmodels.SharedViewModel
+import com.trendflick.ui.screens.following.FollowingScreen
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -89,16 +90,17 @@ class MainActivity : ComponentActivity() {
                             }
                             composable(Screen.Following.route) {
                                 Box(modifier = Modifier.padding(bottom = 80.dp)) {
-                                    Column(
-                                        modifier = Modifier.fillMaxSize(),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.Center
-                                    ) {
-                                        Text(
-                                            text = "Following Coming Soon",
-                                            style = MaterialTheme.typography.headlineMedium
-                                        )
-                                    }
+                                    FollowingScreen(
+                                        onNavigateToProfile = { did ->
+                                            navController.navigate("profile/$did")
+                                        },
+                                        onNavigateToCreatePost = {
+                                            navController.navigate(Screen.CreatePost.route)
+                                        },
+                                        onCreatePost = {
+                                            navController.navigate(Screen.CreatePost.route)
+                                        }
+                                    )
                                 }
                             }
                             composable(Screen.CreateFlick.route) {

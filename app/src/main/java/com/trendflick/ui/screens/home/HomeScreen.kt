@@ -117,6 +117,7 @@ fun HomeScreen(
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val isLoadingVideos by viewModel.isLoadingVideos.collectAsState()
     val videoLoadError by viewModel.videoLoadError.collectAsState()
+    val selectedCategory = remember { mutableStateOf("Trends") }
 
     LaunchedEffect(selectedFeed) {
         viewModel.updateSelectedFeed(selectedFeed)
@@ -146,7 +147,7 @@ fun HomeScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                            horizontalArrangement = Arrangement.Center,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             // Navigation buttons
@@ -170,7 +171,7 @@ fun HomeScreen(
                                     modifier = Modifier.height(36.dp)
                                 ) {
                                     Text(
-                                        text = "Trends",
+                                        text = selectedCategory.value,
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.Medium
                                     )
@@ -196,34 +197,6 @@ fun HomeScreen(
                                     )
                                 }
                             }
-
-                            // AI Button
-                            Button(
-                                onClick = { navController.navigate(Screen.AI.route) },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFF6B4EFF),
-                                    contentColor = Color.White
-                                ),
-                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
-                                modifier = Modifier.height(36.dp)
-                            ) {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.AutoAwesome,
-                                        contentDescription = "AI",
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Text(
-                                        text = "AI",
-                                        fontFamily = FontFamily.Monospace,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp
-                                    )
-                                }
-                            }
                         }
                     }
                 }
@@ -234,78 +207,160 @@ fun HomeScreen(
                         .padding(paddingValues)
                 ) {
                     if (selectedFeed == "Trends") {
-                        if (isLoading && threads.isEmpty()) {
-                            LoadingAnimation()
-                        } else if (threads.isEmpty()) {
-                            // Empty state
-                            Column(
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            var isDrawerOpen by remember { mutableStateOf(false) }
+                            var offsetX by remember { mutableStateOf(0f) }
+                            val drawerWidth = 250.dp
+
+                            Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(16.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
+                                    .pointerInput(Unit) {
+                                        detectHorizontalDragGestures(
+                                            onDragStart = { offset ->
+                                                // Increased edge detection area (80dp from edge)
+                                                if (offset.x < 80.dp.toPx()) {
+                                                    isDrawerOpen = true
+                                                }
+                                            },
+                                            onDragEnd = {
+                                                if (offsetX < drawerWidth.toPx() / 2) {
+                                                    isDrawerOpen = false
+                                                }
+                                            },
+                                            onDragCancel = {
+                                                if (offsetX < drawerWidth.toPx() / 2) {
+                                                    isDrawerOpen = false
+                                                }
+                                            },
+                                            onHorizontalDrag = { change, dragAmount ->
+                                                change.consume()
+                                                offsetX = (offsetX + dragAmount).coerceIn(0f, drawerWidth.toPx())
+                                            }
+                                        )
+                                    }
                             ) {
-                                Text(
-                                    text = "No threads available",
-                                    style = MaterialTheme.typography.titleMedium
+                                // Add tap area on the left edge
+                                Box(
+                                    modifier = Modifier
+                                        .width(40.dp)
+                                        .fillMaxHeight()
+                                        .clickable { isDrawerOpen = true }
                                 )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Button(onClick = { viewModel.loadMoreThreads() }) {
-                                    Text("Refresh")
+
+                                // Main content
+                                Box(modifier = Modifier.fillMaxSize()) {
+                                    if (isLoading && threads.isEmpty()) {
+                                        LoadingAnimation()
+                                    } else if (threads.isEmpty()) {
+                                        // Empty state
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(16.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center
+                                        ) {
+                                            Text(
+                                                text = "No threads available",
+                                                style = MaterialTheme.typography.titleMedium
+                                            )
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Button(onClick = { viewModel.loadMoreThreads() }) {
+                                                Text("Refresh")
+                                            }
+                                        }
+                                    } else {
+                                        val threadCount = threads.size
+                                        val pagerState = rememberPagerState(pageCount = { threadCount })
+
+                                        // Load more threads when reaching the end
+                                        LaunchedEffect(pagerState.currentPage) {
+                                            if (pagerState.currentPage >= threadCount - 2 && !isLoading) {
+                                                viewModel.loadMoreThreads()
+                                            }
+                                        }
+
+                                        VerticalPager(
+                                            state = pagerState,
+                                            modifier = Modifier.fillMaxSize(),
+                                            key = { index -> threads.getOrNull(index)?.post?.uri ?: index.toString() }
+                                        ) { page ->
+                                            val thread = threads.getOrNull(page)
+                                            if (thread != null) {
+                                                val pageOffset = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
+
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .graphicsLayer {
+                                                            alpha = 1f - pageOffset.absoluteValue.coerceIn(0f, 1f)
+                                                            translationY = pageOffset * size.height * 0.1f
+                                                        }
+                                                ) {
+                                                    ThreadCard(
+                                                        feedPost = thread,
+                                                        isLiked = likedPosts.contains(thread.post.uri),
+                                                        onLikeClick = { viewModel.toggleLike(thread.post.uri) },
+                                                        onRepostClick = { viewModel.repost(thread.post.uri) },
+                                                        onShareClick = { viewModel.sharePost(thread.post.uri) },
+                                                        onProfileClick = { onNavigateToProfile(thread.post.author.did) },
+                                                        onThreadClick = { /* TODO */ },
+                                                        onCommentClick = {
+                                                            viewModel.loadComments(thread.post.uri)
+                                                            viewModel.toggleComments(true)
+                                                        },
+                                                        onCreatePost = { navController.navigate(Screen.CreatePost.route) },
+                                                        modifier = Modifier.fillMaxSize()
+                                                    )
+                                                }
+                                            } else {
+                                                // Fallback UI for null thread
+                                                Box(
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Text("Content unavailable")
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
-                            }
-                        } else {
-                            val threadCount = threads.size
-                            val pagerState = rememberPagerState(pageCount = { threadCount })
 
-                            // Load more threads when reaching the end
-                            LaunchedEffect(pagerState.currentPage) {
-                                if (pagerState.currentPage >= threadCount - 2 && !isLoading) {
-                                    viewModel.loadMoreThreads()
-                                }
-                            }
-
-                            VerticalPager(
-                                state = pagerState,
-                                modifier = Modifier.fillMaxSize(),
-                                key = { index -> threads.getOrNull(index)?.post?.uri ?: index.toString() }
-                            ) { page ->
-                                val thread = threads.getOrNull(page)
-                                if (thread != null) {
-                                    val pageOffset = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
-
+                                // Drawer overlay
+                                if (isDrawerOpen) {
                                     Box(
                                         modifier = Modifier
                                             .fillMaxSize()
-                                            .graphicsLayer {
-                                                alpha = 1f - pageOffset.absoluteValue.coerceIn(0f, 1f)
-                                                translationY = pageOffset * size.height * 0.1f
-                                            }
-                                    ) {
-                                        ThreadCard(
-                                            feedPost = thread,
-                                            isLiked = likedPosts.contains(thread.post.uri),
-                                            onLikeClick = { viewModel.toggleLike(thread.post.uri) },
-                                            onRepostClick = { viewModel.repost(thread.post.uri) },
-                                            onShareClick = { viewModel.sharePost(thread.post.uri) },
-                                            onProfileClick = { onNavigateToProfile(thread.post.author.did) },
-                                            onThreadClick = { /* TODO */ },
-                                            onCommentClick = {
-                                                viewModel.loadComments(thread.post.uri)
-                                                viewModel.toggleComments(true)
-                                            },
-                                            onCreatePost = { navController.navigate(Screen.CreatePost.route) },
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    }
-                                } else {
-                                    // Fallback UI for null thread
-                                    Box(
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text("Content unavailable")
-                                    }
+                                            .background(Color.Black.copy(alpha = 0.5f))
+                                            .clickable { isDrawerOpen = false }
+                                    )
+                                }
+
+                                // Category Drawer
+                                AnimatedVisibility(
+                                    visible = isDrawerOpen,
+                                    enter = slideInHorizontally(initialOffsetX = { -it }),
+                                    exit = slideOutHorizontally(targetOffsetX = { -it }),
+                                    modifier = Modifier.align(Alignment.CenterStart)
+                                ) {
+                                    CategoryDrawer(
+                                        isOpen = isDrawerOpen,
+                                        onCategorySelected = { category ->
+                                            selectedCategory.value = category
+                                            viewModel.filterByCategory(category.lowercase())
+                                        },
+                                        onHashtagSelected = { hashtag ->
+                                            viewModel.setCurrentHashtag(hashtag)
+                                        },
+                                        trendingHashtags = viewModel.trendingHashtags.value,
+                                        currentHashtag = viewModel.currentHashtag.value,
+                                        currentCategory = selectedCategory.value,
+                                        onDismiss = { isDrawerOpen = false },
+                                        modifier = Modifier
+                                            .width(300.dp)
+                                            .fillMaxHeight()
+                                    )
                                 }
                             }
                         }

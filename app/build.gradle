@@ -231,4 +231,11 @@ dependencies {
     implementation 'androidx.hilt:hilt-navigation-compose:1.0.0'
     ksp 'androidx.hilt:hilt-compiler:1.0.0'
     ksp 'com.google.dagger:hilt-android-compiler:2.48'
+
+    // Accompanist Swipe Refresh
+    implementation "com.google.accompanist:accompanist-swiperefresh:0.32.0"
+
+    // Material Design 3
+    implementation "androidx.compose.material3:material3:1.1.2"
+    implementation "androidx.compose.material:material-icons-extended:1.5.4"
 } 
