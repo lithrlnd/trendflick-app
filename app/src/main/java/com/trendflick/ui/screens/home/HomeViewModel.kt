@@ -6,6 +6,7 @@ import com.trendflick.data.api.FeedPost
 import com.trendflick.data.api.Post
 import com.trendflick.data.api.ThreadPost
 import com.trendflick.data.api.ThreadResponse
+import com.trendflick.data.api.TimelineResponse
 import com.trendflick.data.repository.AtProtocolRepository
 import com.trendflick.data.repository.VideoRepository
 import com.trendflick.data.repository.VideoRepositoryImpl
@@ -39,6 +40,8 @@ import kotlinx.coroutines.tasks.await
 import com.trendflick.data.model.TrendingHashtag
 import com.trendflick.data.model.Category
 import com.trendflick.data.model.categories
+import kotlin.Comparable
+import kotlin.comparisons.compareByDescending
 
 @OptIn(kotlin.experimental.ExperimentalTypeInference::class)
 @HiltViewModel
@@ -359,11 +362,33 @@ class HomeViewModel @Inject constructor(
                     }
                     selectedFeed.value == "Following" -> {
                         Log.d(TAG, "🔍 Using following timeline")
-                        atProtocolRepository.getTimeline(
-                            cursor = if (isRefresh) null else currentCursor,
-                            algorithm = "reverse-chronological",
-                            limit = 50
-                        )
+                        try {
+                            // Add delay to ensure session is properly established
+                            delay(500)
+                            
+                            // Verify session before making request
+                            val currentUser = atProtocolRepository.getCurrentSession()
+                            if (currentUser == null) {
+                                Log.e(TAG, "❌ No current user found for following feed")
+                                throw Exception("No current user found")
+                            }
+                            
+                            Log.d(TAG, """
+                                📱 Following Feed Request:
+                                • User: ${currentUser.handle}
+                                • Algorithm: reverse-chronological
+                                • Cursor: ${if (isRefresh) "null" else currentCursor}
+                            """.trimIndent())
+                            
+                            atProtocolRepository.getTimeline(
+                                cursor = if (isRefresh) null else currentCursor,
+                                algorithm = "reverse-chronological",
+                                limit = 50
+                            )
+                        } catch (e: Exception) {
+                            Log.e(TAG, "❌ Following feed error: ${e.message}")
+                            throw e
+                        }
                     }
                     else -> {
                         Log.d(TAG, "🔍 Using default timeline")
@@ -429,13 +454,37 @@ class HomeViewModel @Inject constructor(
                         limit = 50
                     )
                     categoryHashtags != null -> {
-                        // If category has hashtags, use the first one for initial feed
-                        val primaryHashtag = categoryHashtags.first()
-                        _currentHashtag.value = primaryHashtag
-                        atProtocolRepository.getPostsByHashtag(
-                            hashtag = primaryHashtag,
-                            limit = 50
+                        Log.d(TAG, """
+                            🔍 Category Feed Request:
+                            • Category: $category
+                            • Hashtags: ${categoryHashtags.joinToString()}
+                        """.trimIndent())
+                        
+                        // Get a larger feed to ensure we have enough posts after filtering
+                        val result = atProtocolRepository.getTimeline(
+                            algorithm = "whats-hot",
+                            limit = 100
                         )
+                        
+                        result.map { response ->
+                            // Filter posts that contain any of the category hashtags
+                            val filteredPosts = response.feed.filter { feedPost ->
+                                categoryHashtags.any { hashtag ->
+                                    feedPost.post.record.text.lowercase().contains("#${hashtag.lowercase()}")
+                                }
+                            }.take(50)
+                            
+                            Log.d(TAG, """
+                                ✅ Category feed assembled:
+                                • Total posts: ${filteredPosts.size}
+                                • From hashtags: ${categoryHashtags.joinToString()}
+                            """.trimIndent())
+                            
+                            TimelineResponse(
+                                feed = filteredPosts,
+                                cursor = response.cursor
+                            )
+                        }
                     }
                     else -> atProtocolRepository.getTimeline(
                         algorithm = "reverse-chronological",
@@ -446,11 +495,14 @@ class HomeViewModel @Inject constructor(
                 result.onSuccess { response ->
                     _threads.value = response.feed
                     currentCursor = response.cursor
+                    
+                    // Load like states for the new posts
+                    loadInitialLikeStates(response.feed)
                 }.onFailure { e ->
-                    Log.e(TAG, "Failed to filter by category: ${e.message}")
+                    Log.e(TAG, "❌ Failed to filter by category: ${e.message}")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to filter by category: ${e.message}")
+                Log.e(TAG, "❌ Failed to filter by category: ${e.message}")
             } finally {
                 _isLoading.value = false
             }

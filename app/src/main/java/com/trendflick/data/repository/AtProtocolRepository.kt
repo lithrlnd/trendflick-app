@@ -36,6 +36,7 @@ interface AtProtocolRepository {
     suspend fun getFollows(actor: String, limit: Int = 50, cursor: String? = null): Result<FollowsResponse>
     suspend fun getTrendingHashtags(): List<TrendingHashtag>
     suspend fun getPostsByHashtag(hashtag: String, limit: Int = 50, cursor: String? = null): Result<TimelineResponse>
+    suspend fun ensureValidSession(): Boolean
 }
 
 // Data classes used by the interface

@@ -52,55 +52,74 @@ class AtProtocolRepositoryImpl @Inject constructor(
         delay(waitTime)
     }
 
-    private suspend fun ensureValidSession(): Boolean {
+    override suspend fun refreshSession(): Result<AtSession> = withContext(Dispatchers.IO) {
         try {
-            Log.d(TAG, "🔐 Validating session")
+            Log.d(TAG, "🔄 Attempting to refresh session")
             
-            // Check if we have valid credentials first
-            if (!credentialsManager.hasValidCredentials()) {
-                Log.e(TAG, "❌ No valid credentials found")
-                return false
-            }
-
-            // Check if we have a valid session
-            if (sessionManager.hasValidSession()) {
-                Log.d(TAG, "✅ Session is valid")
-                return true
-            }
-
-            // Try to refresh if we have a refresh token
-            val refreshToken = sessionManager.getRefreshToken()
-            if (!refreshToken.isNullOrEmpty()) {
-                Log.d(TAG, "🔄 Attempting session refresh")
-                try {
-                    refreshSession().getOrThrow()
-                    Log.d(TAG, "✅ Session refreshed successfully")
-                    return true
-                } catch (e: Exception) {
-                    Log.w(TAG, "⚠️ Session refresh failed: ${e.message}")
-                    // Continue to create new session
-                }
-            }
-
-            // Create new session with stored credentials
+            // Get current credentials
             val handle = credentialsManager.getHandle()
             val password = credentialsManager.getPassword()
             
-            if (!handle.isNullOrEmpty() && !password.isNullOrEmpty()) {
-                Log.d(TAG, "🔑 Creating new session with stored credentials")
-                try {
-                    createSession(handle, password).getOrThrow()
-                    Log.d(TAG, "✅ New session created successfully")
-                    return true
-                } catch (e: Exception) {
-                    Log.e(TAG, "❌ Failed to create session: ${e.message}")
-                    return false
-                }
+            if (handle.isNullOrEmpty() || password.isNullOrEmpty()) {
+                Log.e(TAG, "❌ No credentials available for refresh")
+                return@withContext Result.failure(Exception("No credentials available"))
             }
-
-            Log.e(TAG, "❌ No valid credentials available")
-            return false
             
+            // Try to refresh first
+            try {
+                Log.d(TAG, "🔄 Attempting token refresh")
+                val refreshResult = service.refreshSession()
+                sessionManager.saveSession(refreshResult)
+                return@withContext Result.success(refreshResult)
+            } catch (e: Exception) {
+                Log.w(TAG, "⚠️ Refresh failed, falling back to new session: ${e.message}")
+            }
+            
+            // If refresh fails, try creating a new session
+            Log.d(TAG, "🔄 Creating new session")
+            try {
+                val credentials = mapOf(
+                    "identifier" to handle,
+                    "password" to password
+                )
+                val result = service.createSession(credentials)
+                sessionManager.saveSession(result)
+                
+                Log.d(TAG, "✅ New session created successfully for ${result.handle}")
+                return@withContext Result.success(result)
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Failed to create new session: ${e.message}")
+                return@withContext Result.failure(e)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Session refresh failed: ${e.message}")
+            return@withContext Result.failure(e)
+        }
+    }
+
+    override suspend fun ensureValidSession(): Boolean {
+        try {
+            Log.d(TAG, "🔐 Validating session")
+            
+            // Check if we have valid credentials
+            val handle = credentialsManager.getHandle()
+            val password = credentialsManager.getPassword()
+            
+            if (handle.isNullOrEmpty() || password.isNullOrEmpty()) {
+                Log.e(TAG, "❌ No valid credentials found")
+                return false
+            }
+            
+            // Check if we have a valid access token
+            val accessToken = sessionManager.getAccessToken()
+            if (!accessToken.isNullOrEmpty()) {
+                Log.d(TAG, "✅ Found valid access token")
+                return true
+            }
+            
+            Log.d(TAG, "⚠️ No valid session found, attempting refresh")
+            val refreshResult = refreshSession()
+            return refreshResult.isSuccess
         } catch (e: Exception) {
             Log.e(TAG, "❌ Session validation failed: ${e.message}")
             return false
@@ -178,16 +197,6 @@ class AtProtocolRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun refreshSession(): Result<AtSession> {
-        return try {
-            val session = service.refreshSession()
-            sessionManager.saveSession(session)
-            Result.success(session)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
     override suspend fun uploadBlob(uri: Uri): BlobResult {
         try {
             val file = createTempFileFromUri(uri)
@@ -232,7 +241,7 @@ class AtProtocolRepositoryImpl @Inject constructor(
     ): Result<TimelineResponse> = withContext(Dispatchers.IO) {
         var retryCount = 0
         val maxRetries = 3
-        
+
         while (retryCount < maxRetries) {
             try {
                 // Ensure valid session before making request
@@ -259,13 +268,22 @@ class AtProtocolRepositoryImpl @Inject constructor(
                                 cursor = cursor
                             )
                         }
-                        "reverse-chronological" -> {
-                            Log.d(TAG, "🔍 Using personal timeline endpoint")
-                            service.getTimeline(
-                                algorithm = algorithm,
-                                limit = limit,
-                                cursor = cursor
-                            )
+                        "reverse-chronological", "following" -> {
+                            Log.d(TAG, "🔍 Using following timeline endpoint")
+                            try {
+                                service.getTimeline(
+                                    algorithm = "reverse-chronological",
+                                    limit = limit,
+                                    cursor = cursor
+                                )
+                            } catch (e: Exception) {
+                                Log.w(TAG, "⚠️ Failed with reverse-chronological, trying following algorithm")
+                                service.getTimeline(
+                                    algorithm = "following",
+                                    limit = limit,
+                                    cursor = cursor
+                                )
+                            }
                         }
                         else -> {
                             Log.d(TAG, "🔍 Using default timeline endpoint")
@@ -289,9 +307,16 @@ class AtProtocolRepositoryImpl @Inject constructor(
                             )
                         }
                         401 -> {
-                            Log.w(TAG, "🔄 Token expired, clearing session")
-                            sessionManager.clearSession()
-                            throw Exception("Session expired")
+                            Log.w(TAG, "🔄 Token expired, attempting refresh")
+                            val refreshResult = refreshSession()
+                            if (refreshResult.isSuccess) {
+                                Log.d(TAG, "✅ Session refreshed successfully")
+                                continue // Retry with new token
+                            } else {
+                                Log.w(TAG, "🔄 Session refresh failed, clearing session")
+                                sessionManager.clearSession()
+                                throw Exception("Session expired")
+                            }
                         }
                         429 -> {
                             Log.w(TAG, "⏳ Rate limited")
@@ -310,7 +335,15 @@ class AtProtocolRepositoryImpl @Inject constructor(
                     feed = response.feed.filter { feedPost ->
                         try {
                             val post = feedPost.post
-                            val isValid = post.uri.isNotEmpty() && post.cid.isNotEmpty()
+                            val isValid = post.uri.isNotEmpty() && post.cid.isNotEmpty() &&
+                                // Validate reply references if they exist
+                                (feedPost.reply?.let { reply ->
+                                    reply.root?.uri?.isNotEmpty() == true && 
+                                    reply.root?.cid?.isNotEmpty() == true &&
+                                    reply.parent?.uri?.isNotEmpty() == true && 
+                                    reply.parent?.cid?.isNotEmpty() == true
+                                } ?: true)
+                            
                             if (!isValid) {
                                 Log.w(TAG, "⚠️ Filtered out invalid post: ${post.uri}")
                             }
@@ -342,8 +375,15 @@ class AtProtocolRepositoryImpl @Inject constructor(
                 if (e.message?.contains("Session expired") == true ||
                     e.message?.contains("Unauthorized") == true ||
                     e.message?.contains("Not authenticated") == true) {
-                    Log.w(TAG, "🔒 Authentication error - stopping retries")
-                    return@withContext Result.failure(e)
+                    Log.w(TAG, "🔒 Authentication error - attempting refresh")
+                    val refreshResult = refreshSession()
+                    if (refreshResult.isSuccess) {
+                        Log.d(TAG, "✅ Session refreshed successfully")
+                        continue // Retry with new token
+                    } else {
+                        Log.w(TAG, "🔒 Authentication error - stopping retries")
+                        return@withContext Result.failure(e)
+                    }
                 }
                 
                 retryCount++
@@ -563,19 +603,22 @@ class AtProtocolRepositoryImpl @Inject constructor(
 
     override suspend fun getCurrentSession(): AtProtocolUser? {
         return try {
-            Log.d(TAG, "Checking current session...")
+            Log.d(TAG, "🔍 Checking current session")
             val did = sessionManager.getDid()
             val handle = userDao.getCurrentUserHandle()
             
             if (did != null && handle != null) {
                 AtProtocolUser(did = did, handle = handle)
             } else {
-                refreshSession().getOrNull()?.let { session ->
-                    AtProtocolUser(did = session.did, handle = session.handle)
-                }
+                refreshSession().fold(
+                    onSuccess = { session ->
+                        AtProtocolUser(did = session.did, handle = session.handle)
+                    },
+                    onFailure = { null }
+                )
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Session check failed", e)
+            Log.e(TAG, "❌ Session check failed: ${e.message}")
             null
         }
     }
@@ -678,7 +721,7 @@ class AtProtocolRepositoryImpl @Inject constructor(
             listOf(
                 TrendingHashtag("photography", 1500, "Beautiful captures and visual stories", "📸"),
                 TrendingHashtag("music", 1200, "Latest tracks and music discussions", "🎵"),
-                TrendingHashtag("tech", 1000, "Technology news and discussions", "💻"),
+                TrendingHashtag("tech", 1000, "Technology news and discussions", "��"),
                 TrendingHashtag("art", 900, "Digital and traditional artworks", "🎨"),
                 TrendingHashtag("gaming", 800, "Gaming highlights and discussions", "🎮"),
                 TrendingHashtag("food", 700, "Culinary adventures and recipes", "🍳"),
@@ -703,28 +746,42 @@ class AtProtocolRepositoryImpl @Inject constructor(
                 return@withContext Result.failure(Exception("No valid session available"))
             }
 
-            // Use the search functionality to find posts with the hashtag
+            Log.d(TAG, "🔍 Fetching posts for hashtag: $hashtag")
+            
+            // Get a larger feed to ensure we have enough posts after filtering
+            val response = try {
+                service.getTimeline(
+                    algorithm = "whats-hot",
+                    limit = limit * 3, // Get more posts since we'll be filtering
+                    cursor = cursor
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "⚠️ Failed to get hot posts, falling back to chronological")
+                service.getTimeline(
+                    algorithm = "reverse-chronological",
+                    limit = limit * 3,
+                    cursor = cursor
+                )
+            }
+
+            // Filter posts containing the hashtag (case insensitive)
             val searchQuery = "#$hashtag"
-            Log.d(TAG, "🔍 Searching posts with hashtag: $searchQuery")
-
-            // For now, we'll use the regular timeline but filter for posts containing the hashtag
-            val response = service.getTimeline(
-                algorithm = "reverse-chronological",
-                limit = limit * 2, // Fetch more to account for filtering
-                cursor = cursor
-            )
-
-            // Filter posts containing the hashtag
             val filteredFeed = response.feed.filter { feedPost ->
-                feedPost.post.record.text.contains(searchQuery, ignoreCase = true)
+                feedPost.post.record.text.lowercase().contains(searchQuery.lowercase())
             }.take(limit)
+            
+            Log.d(TAG, """
+                ✅ Hashtag feed results:
+                • Found ${filteredFeed.size} posts for #$hashtag
+                • Using cursor: ${response.cursor}
+            """.trimIndent())
 
             Result.success(TimelineResponse(
                 feed = filteredFeed,
                 cursor = response.cursor
             ))
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to get posts by hashtag: ${e.message}")
+            Log.e(TAG, "❌ Failed to get posts by hashtag: ${e.message}")
             Result.failure(e)
         }
     }

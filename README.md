@@ -1,5 +1,117 @@
 # TrendFlick App
 
+A modern BlueSky-compatible social media client focused on creating a seamless video and image sharing experience while strictly adhering to the AT Protocol standards.
+
+## Implemented Features
+
+### Authentication
+- ✅ BlueSky account login/signup integration
+- ✅ Secure session management with refresh capabilities
+- ✅ Persistent credentials storage
+- ✅ Automatic session recovery and token refresh
+
+### Feed Management
+- ✅ Multiple feed types:
+  - Trending ("what's hot")
+  - Following
+  - Category-based feeds
+  - Hashtag-based feeds
+- ✅ Smart feed filtering and aggregation
+- ✅ Category system with associated hashtags
+- ✅ Efficient post deduplication
+- ✅ Pull-to-refresh functionality
+
+### Social Interactions
+- ✅ Like/Unlike posts with state persistence
+- ✅ View and create replies
+- ✅ Repost functionality
+- ✅ Thread view support
+- ✅ Profile viewing
+
+### Media Handling
+- ✅ Image upload and display
+- ✅ Video upload support
+- ✅ Blob reference management
+- ✅ Media size validation
+- ✅ MIME type handling
+
+### Category System
+- ✅ Predefined categories with curated hashtags
+- ✅ Smart post filtering based on hashtags
+- ✅ Category-specific feeds
+- ✅ Trending hashtags support
+
+### Technical Features
+- ✅ AT Protocol compliance
+- ✅ Efficient caching system
+- ✅ Error handling and recovery
+- ✅ Rate limiting management
+- ✅ Firebase integration for state persistence
+- ✅ Background processing for media uploads
+
+## Technical Stack
+- **Language**: Kotlin
+- **UI Framework**: Jetpack Compose
+- **Architecture**: MVVM
+- **Network**: Retrofit with AT Protocol
+- **Storage**: 
+  - Firebase Realtime Database (likes)
+  - SharedPreferences (session)
+  - Room Database (local cache)
+- **DI**: Hilt
+- **Async**: Coroutines + Flow
+
+## Project Structure
+```
+app/
+├── data/
+│   ├── api/         # AT Protocol API interfaces
+│   ├── auth/        # Authentication management
+│   ├── local/       # Local storage and caching
+│   ├── model/       # Data models
+│   └── repository/  # Repository implementations
+├── di/              # Dependency injection modules
+├── ui/
+│   ├── components/  # Reusable UI components
+│   ├── screens/     # Screen implementations
+│   └── theme/       # App theming
+└── utils/           # Utility classes
+```
+
+## Current Status
+- Core AT Protocol integration complete
+- Category and hashtag system implemented
+- Feed management and filtering operational
+- Social interactions (likes, replies) working
+- Media upload framework in place
+- Session management robust and reliable
+
+## Next Steps
+1. Enhance media playback experience
+2. Implement custom feed algorithms
+3. Add offline support
+4. Enhance error recovery mechanisms
+5. Implement advanced search features
+
+## Development Guidelines
+- Follow Material 3 design principles
+- Maintain AT Protocol compliance
+- Ensure proper error handling
+- Write unit tests for new features
+- Document public APIs
+
+## Getting Started
+1. Clone the repository
+2. Add your BlueSky API credentials
+3. Set up Firebase project
+4. Build and run
+
+## Contributing
+Contributions are welcome! Please read our contributing guidelines and submit pull requests for any enhancements.
+
+## License
+[Add your license information here]
+
 ## Core Purpose
 TrendFlick is a feature-rich BlueSky-compatible social media client that focuses on creating a seamless video and image sharing experience while strictly adhering to the AT Protocol standards. Built with modern Android development practices, it combines powerful media capabilities with AI-enhanced features.
 
@@ -203,163 +315,6 @@ TrendFlick is a feature-rich BlueSky-compatible social media client that focuses
 4. User data privacy
 5. Network security
 
-## Contributing
-Please read our DEVELOPER.md for detailed contribution guidelines.
-
-## License
-See LICENSE file for details.
-
-## Current Status
-
-### Video Upload Implementation
-- Firebase Storage integration is set up
-- Basic video upload functionality implemented
-- Test functions created for debugging upload issues
-- Currently investigating upload path issues
-
-### Testing Progress
-1. Successfully tested:
-   - Firebase Storage connection
-   - Firestore database connection
-   - Test file upload to root directory
-
-2. Current Investigation:
-   - Video upload to `/videos` directory
-   - File access and permissions
-   - Storage path resolution
-
-### Development Environment
-- Android Studio
-- Firebase Console for monitoring
-- Database Inspector for verification
-
-## Setup
-
-### Environment Variables
-For security, BlueSky credentials should be set as environment variables:
-```bash
-# Required for BlueSky integration
-export BLUESKY_HANDLE=your.handle.bsky.social
-export BLUESKY_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
-```
-
-These can also be set in your IDE's run configuration or your CI/CD pipeline.
-
-1. Firebase Configuration:
-   - Create a Firebase project
-   - Enable Firebase Storage
-   - Create a `/videos` directory in Firebase Storage
-   - Set Storage Rules:
-   ```javascript
-   rules_version = '2';
-   service firebase.storage {
-     match /b/{bucket}/o {
-       match /videos/{videoId} {
-         allow read, write: if true;  // Development only - update for production
-       }
-     }
-   }
-   ```
-
-2. BlueSky Integration:
-   - Requires BlueSky account for cross-posting
-   - Uses AT Protocol for authentication
-   - Posts include video links (videos hosted on TrendFlick)
-
 ## Development Notes
 
-- Firebase Storage must have `/videos` directory created
-- Videos are stored with format: `video_[timestamp]_[UUID].mp4`
-- Maximum video size: 100MB
-- BlueSky posts include "Coming soon to Android" notice
-
-## Known Issues
-
-1. Firebase Storage Setup:
-   - Need to manually create `/videos` directory
-   - Storage path must match rules configuration
-
-2. AT Protocol Authentication:
-   - Session management needs improvement
-   - Better error handling for failed BlueSky auth
-
-3. Video Processing:
-   - Speed adjustment feature needs testing
-   - Thumbnail generation not implemented
-
-## Coming Soon
-
-- [ ] Proper Firebase Storage directory structure
-- [ ] Enhanced error handling
-- [ ] Thumbnail support for videos
-- [ ] User profile management
-- [ ] Video feed implementation
-- [ ] Public release on Play Store
-
-## Additional Technical Notes
-- The ViewModel uses Kotlin Flow for reactive state management
-- Firebase operations are designed to be non-blocking
-- All network calls include timeout handling
-- State preservation across configuration changes is handled via SavedStateHandle 
-
-## Recent Updates
-
-### Authentication & Storage Setup (Latest)
-- Implemented Firebase Authentication for secure video uploads
-- Added Firebase Storage configuration with proper security rules
-- Set up authentication checks before video uploads
-- Maintained BlueSky AT Protocol authentication for social features
-- Current Status:
-  - ✅ BlueSky AT Protocol authentication working
-  - ✅ Firebase Storage configured
-  - 🔄 Working on Firebase Authentication for video uploads
-  - 🔄 Testing video upload functionality
-
-### Video Feed Implementation
-- Added Firestore integration for video storage and retrieval
-- Implemented timestamp handling in ISO 8601 format with UTC timezone
-- Added detailed logging for debugging video feed issues
-- Enhanced error handling for video document parsing
-- Improved video metadata storage with consistent document IDs
-
-### BlueSky Integration
-- Updated AT Protocol post creation with proper embed structure
-- Enhanced video post format on BlueSky with description and embedded video
-- Added support for optional BlueSky posting
-- Implemented proper URI formatting for cross-platform compatibility
-
-### Firebase Configuration
-- Set up Cloud Firestore with `videos` collection
-- Implemented document structure with ISO timestamp format
-- Added real-time video feed listener with proper ordering
-- Enhanced video metadata storage and retrieval
-- Added Firebase Storage rules for secure video uploads:
-  ```javascript
-  rules_version = '2';
-  service firebase.storage {
-    match /b/{bucket}/o {
-      match /videos/{videoId} {
-        allow read: if true;  // Public video access
-        allow write: if request.auth != null;  // Authenticated uploads only
-      }
-    }
-  }
-  ```
-
-### Technical Improvements
-- Added comprehensive logging throughout the application
-- Enhanced error handling and validation
-- Improved timestamp parsing and storage
-- Added document verification after saves 
-
-## Setup Instructions
-
-### Firebase Configuration
-1. Storage Rules are configured for testing
-2. Firestore Database is set up
-3. Test video path: `/videos/TestVideo.mp4`
-
-### Testing
-Currently using two approaches for testing:
-1. Manual testing through Android Studio debugger
-2. Database Inspector for verifying data 
+- Firebase Storage must have `/videos`

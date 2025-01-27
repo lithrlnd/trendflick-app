@@ -23,12 +23,41 @@ val mainFeeds = listOf(
 )
 
 val categories = listOf(
-    Category("Tech & AI", "💻", setOf("tech", "ai", "coding", "startup", "innovation")),
-    Category("Entertainment", "🎬", setOf("movies", "tv", "streaming", "cinema")),
-    Category("Gaming", "🎮", setOf("gaming", "esports", "streamer", "gameplay")),
-    Category("Art & Design", "🎨", setOf("art", "design", "illustration", "creative")),
-    Category("Beauty", "💄", setOf("beauty", "makeup", "skincare", "fashion")),
-    Category("Music", "🎵", setOf("music", "newmusic", "artist", "songs")),
-    Category("Food", "🍳", setOf("food", "cooking", "recipe", "foodie")),
-    Category("Fitness", "💪", setOf("fitness", "health", "workout", "wellness"))
+    Category("Tech & AI", "💻", setOf(
+        "tech", "ai", "coding", "startup", "innovation",
+        "technology", "artificialintelligence", "programming",
+        "developer", "machinelearning"
+    )),
+    Category("Entertainment", "🎬", setOf(
+        "movies", "tv", "streaming", "cinema", "entertainment",
+        "film", "series", "netflix", "hollywood", "shows"
+    )),
+    Category("Gaming", "🎮", setOf(
+        "gaming", "esports", "streamer", "gameplay", "gamer",
+        "twitch", "videogames", "ps5", "xbox", "nintendoswitch"
+    )),
+    Category("Art & Design", "🎨", setOf(
+        "art", "design", "illustration", "creative", "artist",
+        "digitalart", "graphicdesign", "artwork", "drawing",
+        "animation"
+    )),
+    Category("Beauty", "💄", setOf(
+        "beauty", "makeup", "skincare", "fashion", "style",
+        "cosmetics", "beautytips", "selfcare", "glam",
+        "beautycommunity"
+    )),
+    Category("Music", "🎵", setOf(
+        "music", "newmusic", "artist", "songs", "musician",
+        "spotify", "hiphop", "rap", "indie", "livemusic"
+    )),
+    Category("Food", "🍳", setOf(
+        "food", "cooking", "recipe", "foodie", "chef",
+        "homecooking", "foodphotography", "baking", "cuisine",
+        "foodlover"
+    )),
+    Category("Fitness", "💪", setOf(
+        "fitness", "health", "workout", "wellness", "gym",
+        "training", "motivation", "exercise", "healthy",
+        "fitnessmotivation"
+    ))
 ) 
