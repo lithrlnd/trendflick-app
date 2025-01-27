@@ -95,6 +95,7 @@ import com.trendflick.ui.components.rememberSwipeRefreshState
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.ui.text.style.TextAlign
 import com.trendflick.ui.components.RichTextRenderer
+import android.util.Log
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -104,6 +105,7 @@ fun HomeScreen(
     onNavigateToProfile: (String) -> Unit,
     navController: NavController
 ) {
+    val context = LocalContext.current
     val threads by viewModel.threads.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val likedPosts by viewModel.likedPosts.collectAsState()
@@ -120,6 +122,18 @@ fun HomeScreen(
     val isLoadingVideos by viewModel.isLoadingVideos.collectAsState()
     val videoLoadError by viewModel.videoLoadError.collectAsState()
     val selectedCategory = remember { mutableStateOf("Trends") }
+
+    // Collect share events
+    LaunchedEffect(Unit) {
+        viewModel.shareEvent.collect { shareIntent ->
+            try {
+                val chooserIntent = Intent.createChooser(shareIntent, "Share via")
+                context.startActivity(chooserIntent)
+            } catch (e: Exception) {
+                Log.e("HomeScreen", "Failed to share: ${e.message}")
+            }
+        }
+    }
 
     LaunchedEffect(selectedFeed) {
         viewModel.updateSelectedFeed(selectedFeed)

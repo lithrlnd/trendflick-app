@@ -113,6 +113,9 @@ class HomeViewModel @Inject constructor(
     private val _errorEvents = MutableSharedFlow<String>()
     val errorEvents = _errorEvents.asSharedFlow()
 
+    private val _shareEvent = MutableSharedFlow<Intent>()
+    val shareEvent = _shareEvent.asSharedFlow()
+
     companion object {
         private const val MAX_COMMENT_LENGTH = 300 // BlueSky character limit
     }
@@ -682,11 +685,51 @@ class HomeViewModel @Inject constructor(
     }
 
     fun sharePost(uri: String) {
-        // Implement sharing functionality
+        viewModelScope.launch {
+            try {
+                // Get the post details to create a proper share URL
+                val threadResult = atProtocolRepository.getPostThread(uri)
+                threadResult.onSuccess { response ->
+                    val post = response.thread.post
+                    val handle = post.author.handle
+                    
+                    // Create the BlueSky post URL
+                    val rkey = uri.substringAfterLast('/')
+                    val shareUrl = "https://bsky.app/profile/$handle/post/$rkey"
+                    
+                    // Create a preview of the post content (limited to 100 chars)
+                    val postPreview = post.record.text.take(100).let {
+                        if (post.record.text.length > 100) "$it..." else it
+                    }
+                    
+                    // Create share text with TrendFlick branding
+                    val shareText = """
+                        📱 Shared via TrendFlick
+                        
+                        ${post.author.displayName ?: "@$handle"}:
+                        "$postPreview"
+                        
+                        View on BlueSky: $shareUrl
+                        
+                        Download TrendFlick: [Coming Soon to Play Store]
+                    """.trimIndent()
+                    
+                    // Create share intent
+                    val shareIntent = Intent().apply {
+                        action = Intent.ACTION_SEND
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, shareText)
+                    }
+                    
+                    // Emit the share intent to be handled by the UI
+                    _shareEvent.emit(shareIntent)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to share post: ${e.message}")
+                _errorEvents.emit("Failed to share post")
+            }
+        }
     }
-
-    private val _shareEvent = MutableSharedFlow<Intent>()
-    val shareEvent = _shareEvent.asSharedFlow()
 
     // Function to toggle comments visibility
     fun toggleComments(show: Boolean) {
@@ -1029,4 +1072,6 @@ class HomeViewModel @Inject constructor(
         _currentHashtag.value = null
         loadThreads(isRefresh = true)
     }
-} 
+}
+
+   

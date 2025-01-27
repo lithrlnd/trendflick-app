@@ -71,11 +71,11 @@ interface AtProtocolService {
     ): GetLikesResponse
 
     @GET("xrpc/app.bsky.feed.getRepostedBy")
-    suspend fun getRepostsByUri(
+    suspend fun getReposts(
         @Query("uri") uri: String,
-        @Query("limit") limit: Int = 1,
+        @Query("limit") limit: Int = 50,
         @Query("cursor") cursor: String? = null
-    ): GetRepostsResponse
+    ): GetRepostedByResponse
 
     data class SearchUsersResponse(
         val users: List<UserProfile>
@@ -152,15 +152,29 @@ interface AtProtocolService {
         val cid: String
     )
 
-    data class GetRepostsResponse(
+    data class GetRepostedByResponse(
+        val repostedBy: List<AtProfile>,
         val uri: String,
-        val reposts: List<RepostView>,
         val cursor: String?
     )
 
+    data class RepostViewer(
+        val repost: String?,
+        val repostedAt: String?
+    )
+
     data class RepostView(
-        val actor: UserProfile,
-        val createdAt: String,
+        val uri: String,
+        val cid: String,
+        val author: AtProfile,
+        val record: RepostRecord,
         val indexedAt: String
+    )
+
+    data class RepostsResponse(
+        val uri: String,
+        val reposts: List<RepostView>,
+        val cursor: String?,
+        val viewer: RepostViewer?
     )
 } 

@@ -600,7 +600,7 @@ class AtProtocolRepositoryImpl @Inject constructor(
             Log.d(TAG, "🌐 Fetching repost status from AT Protocol for $uri")
             val did = userDao.getCurrentUserDid() ?: sessionManager.getDid()
             val response = service.getReposts(uri, limit = 1)
-            val isReposted = response.repostedBy.any { repost -> repost.did == did }
+            val isReposted = response.repostedBy.any { it.did == did }
             repostStatusCache[uri] = isReposted to System.currentTimeMillis()
             Log.d(TAG, "✅ Repost status fetched successfully: $isReposted")
             isReposted
