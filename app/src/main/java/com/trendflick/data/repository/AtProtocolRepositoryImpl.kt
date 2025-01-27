@@ -22,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import android.util.Log
 import kotlinx.coroutines.delay
+import com.trendflick.data.auth.BlueskyCredentialsManager
 
 @Singleton
 class AtProtocolRepositoryImpl @Inject constructor(
@@ -29,7 +30,7 @@ class AtProtocolRepositoryImpl @Inject constructor(
     private val userDao: UserDao,
     @ApplicationContext private val context: Context,
     private val sessionManager: SessionManager,
-    private val credentialsManager: CredentialsManager
+    private val credentialsManager: BlueskyCredentialsManager
 ) : AtProtocolRepository {
 
     private var lastSessionAttempt: Long = 0
@@ -250,53 +251,18 @@ class AtProtocolRepositoryImpl @Inject constructor(
                 val response = try {
                     when (algorithm) {
                         "whats-hot" -> {
-                            Log.d(TAG, "🔍 Using timeline endpoint with whats-hot algorithm")
-                            val rawResponse = service.getTimeline(
-                                algorithm = "whats-hot",
+                            Log.d(TAG, "🔍 Using discovery feed endpoint with whats-hot algorithm")
+                            service.getDiscoveryFeed(
                                 limit = limit,
                                 cursor = cursor
-                            )
-                            // Filter out posts with invalid/missing CIDs
-                            rawResponse.copy(
-                                feed = rawResponse.feed.filter { feedPost ->
-                                    try {
-                                        val isValid = feedPost.post.cid != null && 
-                                                    (feedPost.post.record.reply == null || 
-                                                     feedPost.post.record.reply.root?.cid != null)
-                                        if (!isValid) {
-                                            Log.w(TAG, "⚠️ Filtered out post with missing CID: ${feedPost.post.uri}")
-                                        }
-                                        isValid
-                                    } catch (e: Exception) {
-                                        Log.w(TAG, "⚠️ Error validating post ${feedPost.post.uri}: ${e.message}")
-                                        false
-                                    }
-                                }
                             )
                         }
                         else -> {
                             Log.d(TAG, "🔍 Using personal timeline endpoint")
-                            val rawResponse = service.getTimeline(
-                                algorithm = "reverse-chronological",
+                            service.getTimeline(
+                                algorithm = algorithm,
                                 limit = limit,
                                 cursor = cursor
-                            )
-                            // Apply same filtering for consistency
-                            rawResponse.copy(
-                                feed = rawResponse.feed.filter { feedPost ->
-                                    try {
-                                        val isValid = feedPost.post.cid != null && 
-                                                    (feedPost.post.record.reply == null || 
-                                                     feedPost.post.record.reply.root?.cid != null)
-                                        if (!isValid) {
-                                            Log.w(TAG, "⚠️ Filtered out post with missing CID: ${feedPost.post.uri}")
-                                        }
-                                        isValid
-                                    } catch (e: Exception) {
-                                        Log.w(TAG, "⚠️ Error validating post ${feedPost.post.uri}: ${e.message}")
-                                        false
-                                    }
-                                }
                             )
                         }
                     }
@@ -304,28 +270,12 @@ class AtProtocolRepositoryImpl @Inject constructor(
                     when (e.code()) {
                         400 -> {
                             Log.e(TAG, "❌ Invalid request: ${e.message()}")
-                            // Try personal timeline as fallback with filtering
+                            // Try personal timeline as fallback
                             Log.d(TAG, "🔄 Falling back to personal timeline")
-                            val rawResponse = service.getTimeline(
+                            service.getTimeline(
                                 algorithm = "reverse-chronological",
                                 limit = limit,
                                 cursor = cursor
-                            )
-                            rawResponse.copy(
-                                feed = rawResponse.feed.filter { feedPost ->
-                                    try {
-                                        val isValid = feedPost.post.cid != null && 
-                                                    (feedPost.post.record.reply == null || 
-                                                     feedPost.post.record.reply.root?.cid != null)
-                                        if (!isValid) {
-                                            Log.w(TAG, "⚠️ Filtered out post with missing CID: ${feedPost.post.uri}")
-                                        }
-                                        isValid
-                                    } catch (e: Exception) {
-                                        Log.w(TAG, "⚠️ Error validating post ${feedPost.post.uri}: ${e.message}")
-                                        false
-                                    }
-                                }
                             )
                         }
                         401 -> {
@@ -345,18 +295,35 @@ class AtProtocolRepositoryImpl @Inject constructor(
                     }
                 }
                 
-                if (response.feed.isEmpty()) {
-                    Log.w(TAG, "⚠️ Empty feed received")
+                // Filter and validate posts
+                val validatedResponse = response.copy(
+                    feed = response.feed.filter { feedPost ->
+                        try {
+                            val post = feedPost.post
+                            val isValid = post.uri.isNotEmpty() && post.cid.isNotEmpty()
+                            if (!isValid) {
+                                Log.w(TAG, "⚠️ Filtered out invalid post: ${post.uri}")
+                            }
+                            isValid
+                        } catch (e: Exception) {
+                            Log.w(TAG, "⚠️ Error validating post: ${e.message}")
+                            false
+                        }
+                    }
+                )
+                
+                if (validatedResponse.feed.isEmpty()) {
+                    Log.w(TAG, "⚠️ Empty feed received after validation")
                 } else {
                     Log.d(TAG, """
                         ✅ Timeline Response:
-                        Feed size: ${response.feed.size}
-                        Has cursor: ${response.cursor != null}
-                        First post: ${response.feed.firstOrNull()?.post?.uri}
+                        Feed size: ${validatedResponse.feed.size}
+                        Has cursor: ${validatedResponse.cursor != null}
+                        First post: ${validatedResponse.feed.firstOrNull()?.post?.uri}
                     """.trimIndent())
                 }
                 
-                return@withContext Result.success(response)
+                return@withContext Result.success(validatedResponse)
                 
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Timeline fetch failed (Attempt ${retryCount + 1}): ${e.message}")

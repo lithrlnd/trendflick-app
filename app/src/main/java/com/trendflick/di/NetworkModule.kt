@@ -7,6 +7,7 @@ import com.trendflick.data.api.*
 import com.trendflick.data.local.UserDao
 import com.trendflick.data.repository.AtProtocolRepository
 import com.trendflick.data.repository.AtProtocolRepositoryImpl
+import com.trendflick.data.auth.BlueskyCredentialsManager
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -29,6 +30,7 @@ import com.trendflick.data.api.SessionManager
 import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 import android.util.Log
+import android.content.SharedPreferences
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -224,14 +226,6 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideCredentialsManager(
-        @ApplicationContext context: Context
-    ): CredentialsManager {
-        return CredentialsManager(context)
-    }
-
-    @Provides
-    @Singleton
     fun provideAuthInterceptor(
         sessionManager: SessionManager
     ): AuthInterceptor {
@@ -302,7 +296,7 @@ object NetworkModule {
         userDao: UserDao,
         @ApplicationContext context: Context,
         sessionManager: SessionManager,
-        credentialsManager: CredentialsManager
+        credentialsManager: BlueskyCredentialsManager
     ): AtProtocolRepository {
         return AtProtocolRepositoryImpl(service, userDao, context, sessionManager, credentialsManager)
     }

@@ -104,7 +104,7 @@ data class ReplyReference(
 @JsonClass(generateAdapter = true)
 data class PostReference(
     @field:Json(name = "uri") val uri: String,
-    @field:Json(name = "cid") val cid: String
+    @field:Json(name = "cid") val cid: String? = null
 )
 
 // Response Models

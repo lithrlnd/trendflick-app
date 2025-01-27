@@ -29,7 +29,7 @@ interface AtProtocolService {
 
     @GET("xrpc/app.bsky.feed.getFeed")
     suspend fun getDiscoveryFeed(
-        @Query("feed") feed: String = "at://did:plc:ewvi7nxzyoun6zhxrhs64oiz/app.bsky.feed.generator/hot-classic",
+        @Query("feed") feed: String = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot",
         @Query("limit") limit: Int = 50,
         @Query("cursor") cursor: String? = null
     ): TimelineResponse

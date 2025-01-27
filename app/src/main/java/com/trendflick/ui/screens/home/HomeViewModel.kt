@@ -302,21 +302,13 @@ class HomeViewModel @Inject constructor(
     }
 
     fun loadMoreThreads(isRefresh: Boolean = false) {
-        if (isLoggedOut) {
-            Log.d(TAG, "🔒 Skipping thread load - user is logged out")
-            return
-        }
-
-        if (loadingJob?.isActive == true) {
-            Log.d(TAG, "⚠️ Skipping thread load - previous load still active")
-            return
-        }
-        
+        loadingJob?.cancel()
         loadingJob = viewModelScope.launch {
             try {
                 if (isRefresh) {
+                    _isRefreshing.value = true
+                } else {
                     _isLoading.value = true
-                    _threads.value = emptyList()
                 }
                 
                 val selectedFeed = _selectedFeed.value
@@ -362,17 +354,7 @@ class HomeViewModel @Inject constructor(
                     currentCursor = response.cursor
                     
                     val filteredPosts = response.feed.filter { feedPost ->
-                        when (selectedFeed) {
-                            "Trends" -> {
-                                val isValidPost = feedPost.post.record.reply == null && 
-                                                feedPost.post.cid != null
-                                if (!isValidPost) {
-                                    Log.d(TAG, "🔍 Filtered out invalid post: ${feedPost.post.uri}")
-                                }
-                                isValidPost
-                            }
-                            else -> true
-                        }
+                        feedPost.post.uri.isNotEmpty() && feedPost.post.cid.isNotEmpty()
                     }
                     
                     val newThreads = if (isRefresh) {
@@ -413,24 +395,22 @@ class HomeViewModel @Inject constructor(
                         when (error.code()) {
                             401 -> {
                                 // Session expired, trigger reauth
-                                Log.w(TAG, "🔄 Session expired, attempting to refresh")
-                                try {
-                                    ensureValidSession()
-                                } catch (e: Exception) {
-                                    Log.e(TAG, "❌ Failed to refresh session: ${e.message}")
-                                }
+                                isLoggedOut = true
                             }
                             429 -> {
-                                Log.w(TAG, "⏳ Rate limited, please wait")
+                                // Rate limited, wait and retry
+                                delay(5000)
+                                loadMoreThreads(isRefresh)
                             }
                         }
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "❌ Exception in loadMoreThreads: ${e.message}")
+                Log.e(TAG, "❌ Failed to load threads: ${e.message}")
                 Log.e(TAG, "Stack trace: ${e.stackTraceToString()}")
             } finally {
                 _isLoading.value = false
+                _isRefreshing.value = false
             }
         }
     }
