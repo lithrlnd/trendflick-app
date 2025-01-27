@@ -94,6 +94,7 @@ import com.trendflick.ui.components.SwipeRefresh
 import com.trendflick.ui.components.rememberSwipeRefreshState
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.ui.text.style.TextAlign
+import com.trendflick.ui.components.RichTextRenderer
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -890,9 +891,14 @@ private fun CommentItem(
     originalPostAuthorDid: String? = null,
     modifier: Modifier = Modifier
 ) {
+    var showReplyInput by remember { mutableStateOf(false) }
+    var replyText by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    val viewModel: HomeViewModel = hiltViewModel()
     val isOP = originalPostAuthorDid != null && comment.post.author.did == originalPostAuthorDid
+    val remainingChars = 300 - replyText.length
 
-    Row(
+    Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(start = (level * 16).dp)
@@ -902,120 +908,175 @@ private fun CommentItem(
                 else Color.Transparent,
                 RoundedCornerShape(8.dp)
             )
-            .padding(8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+            .padding(8.dp)
     ) {
-        // Thread line indicator
-        if (level > 0) {
-            Box(
+        // Existing comment content
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Profile picture
+            AsyncImage(
+                model = comment.post.author.avatar,
+                contentDescription = "Profile picture",
                 modifier = Modifier
-                    .width(2.dp)
-                    .height(24.dp)
-                    .background(
-                        if (isOP) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)
-                    )
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .clickable { onProfileClick(comment.post.author.did) },
+                contentScale = ContentScale.Crop
             )
-        }
 
-        Column {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Profile picture
-                AsyncImage(
-                    model = comment.post.author.avatar,
-                    contentDescription = "Profile picture",
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .clickable { onProfileClick(comment.post.author.did) },
-                    contentScale = ContentScale.Crop
-                )
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            text = comment.post.author.displayName ?: comment.post.author.handle,
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        if (isOP) {
-                            Surface(
-                                shape = RoundedCornerShape(4.dp),
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                                modifier = Modifier.padding(horizontal = 4.dp)
-                            ) {
-                                Text(
-                                    text = "OP",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                    }
-                    Text(
-                        text = "@${comment.post.author.handle} · ${DateUtils.formatTimestamp(comment.post.record.createdAt)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(4.dp))
-            
-            Text(
-                text = comment.post.record.text,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(start = 40.dp)
-            )
-            
-            // Comment actions
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 40.dp, top = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Column(modifier = Modifier.weight(1f)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Reply,
-                        contentDescription = "Replies",
-                        modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                     Text(
-                        text = "${comment.replies?.size ?: 0}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = comment.post.author.displayName ?: comment.post.author.handle,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
+                    if (isOP) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                            modifier = Modifier.padding(horizontal = 4.dp)
+                        ) {
+                            Text(
+                                text = "OP",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+                Text(
+                    text = "@${comment.post.author.handle} · ${DateUtils.formatTimestamp(comment.post.record.createdAt)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(4.dp))
+        
+        RichTextRenderer(
+            text = comment.post.record.text,
+            facets = comment.post.record.facets ?: emptyList(),
+            onMentionClick = { did -> onProfileClick(did) },
+            onHashtagClick = { /* Handle hashtag click */ },
+            onLinkClick = { /* Handle link click */ },
+            modifier = Modifier.padding(start = 40.dp)
+        )
+        
+        // Comment actions
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 40.dp, top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                modifier = Modifier.clickable { showReplyInput = !showReplyInput },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Reply,
+                    contentDescription = "Reply",
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "${comment.replies?.size ?: 0}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        // Reply input field
+        AnimatedVisibility(visible = showReplyInput) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 40.dp, top = 8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = replyText,
+                        onValueChange = { 
+                            if (it.length <= 300) {
+                                replyText = it
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("Write a reply...") },
+                        maxLines = 3,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF6B4EFF),
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
+                            cursorColor = Color(0xFF6B4EFF),
+                            unfocusedTextColor = Color.White,
+                            focusedTextColor = Color.White
+                        ),
+                        supportingText = {
+                            Text(
+                                text = "$remainingChars",
+                                color = if (remainingChars < 50) 
+                                    Color(0xFFFF4B4B) 
+                                else 
+                                    Color.White.copy(alpha = 0.5f)
+                            )
+                        }
+                    )
+                    IconButton(
+                        onClick = {
+                            if (replyText.isNotBlank() && replyText.length <= 300) {
+                                scope.launch {
+                                    viewModel.postComment(
+                                        parentUri = comment.post.uri,
+                                        text = replyText
+                                    )
+                                    replyText = ""
+                                    showReplyInput = false
+                                }
+                            }
+                        },
+                        enabled = replyText.isNotBlank() && replyText.length <= 300
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Send,
+                            contentDescription = "Send reply",
+                            tint = if (replyText.isNotBlank() && replyText.length <= 300) 
+                                Color(0xFF6B4EFF)
+                            else 
+                                Color.White.copy(alpha = 0.5f)
+                        )
+                    }
                 }
             }
         }
-    }
-    
-    // Recursively render replies
-    comment.replies?.forEach { reply ->
-        CommentItem(
-            comment = reply,
-            level = level + 1,
-            onProfileClick = onProfileClick,
-            originalPostAuthorDid = originalPostAuthorDid,
-            modifier = modifier
-        )
+        
+        // Recursively render replies
+        comment.replies?.forEach { reply ->
+            CommentItem(
+                comment = reply,
+                level = level + 1,
+                onProfileClick = onProfileClick,
+                originalPostAuthorDid = originalPostAuthorDid,
+                modifier = modifier
+            )
+        }
     }
 }
 

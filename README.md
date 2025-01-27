@@ -23,7 +23,15 @@ A modern BlueSky-compatible social media client focused on creating a seamless v
 
 ### Social Interactions
 - ✅ Like/Unlike posts with state persistence
-- ✅ View and create replies
+- ✅ Advanced reply system:
+  - Nested reply support with proper threading
+  - Rich text support in replies (@mentions, #hashtags)
+  - Character limit enforcement (300 chars)
+  - Visual character counter with color indicators
+  - Thread hierarchy visualization with indentation
+  - Original Poster (OP) highlighting
+  - Reply reference handling per AT Protocol spec
+  - Parent and root reference maintenance
 - ✅ Repost functionality
 - ✅ Thread view support
 - ✅ Profile viewing
@@ -43,6 +51,10 @@ A modern BlueSky-compatible social media client focused on creating a seamless v
 
 ### Technical Features
 - ✅ AT Protocol compliance
+  - Strong references for replies (URI + CID)
+  - Proper thread structure maintenance
+  - Parent/root reference handling
+  - Rich text facet processing
 - ✅ Efficient caching system
 - ✅ Error handling and recovery
 - ✅ Rate limiting management
@@ -82,16 +94,26 @@ app/
 - Core AT Protocol integration complete
 - Category and hashtag system implemented
 - Feed management and filtering operational
-- Social interactions (likes, replies) working
+- Reply system fully implemented:
+  - Proper AT Protocol threading
+  - Rich text support
+  - Visual hierarchy
+  - Character limits
+  - Error handling
 - Media upload framework in place
 - Session management robust and reliable
 
 ## Next Steps
-1. Enhance media playback experience
-2. Implement custom feed algorithms
-3. Add offline support
-4. Enhance error recovery mechanisms
-5. Implement advanced search features
+1. Enhance reply system:
+   - Add mention/hashtag suggestions
+   - Implement floating suggestion UI
+   - Add rich text preview
+   - Improve facet processing for clickable elements
+2. Enhance media playback experience
+3. Implement custom feed algorithms
+4. Add offline support
+5. Enhance error recovery mechanisms
+6. Implement advanced search features
 
 ## Development Guidelines
 - Follow Material 3 design principles

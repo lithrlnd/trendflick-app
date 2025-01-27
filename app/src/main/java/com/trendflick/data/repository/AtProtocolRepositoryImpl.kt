@@ -565,8 +565,10 @@ class AtProtocolRepositoryImpl @Inject constructor(
         return try {
             val did = sessionManager.getDid() ?: throw IllegalStateException("No DID found")
             
+            val processedText = text
+            
             val record = PostRecord(
-                text = text,
+                text = processedText,
                 createdAt = timestamp,
                 reply = ReplyReference(
                     parent = PostReference(uri = parentUri, cid = parentCid),

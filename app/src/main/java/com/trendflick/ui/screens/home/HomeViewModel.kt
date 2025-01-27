@@ -107,6 +107,9 @@ class HomeViewModel @Inject constructor(
     private val _currentHashtag = MutableStateFlow<String?>(null)
     val currentHashtag: StateFlow<String?> = _currentHashtag.asStateFlow()
 
+    private val _errorEvents = MutableSharedFlow<String>()
+    val errorEvents = _errorEvents.asSharedFlow()
+
     companion object {
         private const val MAX_COMMENT_LENGTH = 300 // BlueSky character limit
     }
@@ -341,7 +344,12 @@ class HomeViewModel @Inject constructor(
                 
                 result.onSuccess { response ->
                     val filteredPosts = response.feed.filter { post ->
-                        post.post.uri.isNotEmpty() && post.post.cid.isNotEmpty()
+                        // Only include posts that:
+                        // 1. Have valid URI and CID
+                        // 2. Are not replies (don't have a reply.parent field)
+                        post.post.uri.isNotEmpty() && 
+                        post.post.cid.isNotEmpty() &&
+                        post.post.record.reply == null
                     }
                     _threads.value = if (isRefresh) {
                         filteredPosts
@@ -675,7 +683,9 @@ class HomeViewModel @Inject constructor(
     // Function to post a new comment
     fun postComment(parentUri: String, text: String) {
         if (text.length > MAX_COMMENT_LENGTH) {
-            Log.e(TAG, "❌ Comment exceeds BlueSky character limit of $MAX_COMMENT_LENGTH")
+            viewModelScope.launch {
+                _errorEvents.emit("Comment exceeds BlueSky character limit of $MAX_COMMENT_LENGTH")
+            }
             return
         }
 
@@ -701,10 +711,15 @@ class HomeViewModel @Inject constructor(
                         loadComments(parentUri)
                     }.onFailure { error ->
                         Log.e(TAG, "❌ Failed to create reply: ${error.message}")
+                        _errorEvents.emit("Failed to create reply: ${error.message}")
                     }
+                }.onFailure { error ->
+                    Log.e(TAG, "❌ Failed to get thread: ${error.message}")
+                    _errorEvents.emit("Failed to get thread: ${error.message}")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Failed to post comment: ${e.message}")
+                _errorEvents.emit("Error posting comment: ${e.message}")
                 e.printStackTrace()
             } finally {
                 _isLoadingComments.value = false
