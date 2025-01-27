@@ -233,27 +233,6 @@ data class BlobRef(
     @field:Json(name = "size") val size: Long? = null
 )
 
-// Facet Models
-@JsonClass(generateAdapter = true)
-data class Facet(
-    @field:Json(name = "index") val index: TextRange,
-    @field:Json(name = "features") val features: List<FacetFeature>
-)
-
-@JsonClass(generateAdapter = true)
-data class TextRange(
-    @field:Json(name = "start") val start: Int,
-    @field:Json(name = "end") val end: Int
-)
-
-@JsonClass(generateAdapter = true)
-data class FacetFeature(
-    @field:Json(name = "\$type") val type: String? = null,
-    @field:Json(name = "uri") val uri: String? = null,
-    @field:Json(name = "did") val did: String? = null,
-    @field:Json(name = "tag") val tag: String? = null
-)
-
 // Other Models
 @JsonClass(generateAdapter = true)
 data class ReplyRef(

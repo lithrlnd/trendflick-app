@@ -113,153 +113,45 @@ Contributions are welcome! Please read our contributing guidelines and submit pu
 [Add your license information here]
 
 ## Core Purpose
-TrendFlick is a feature-rich BlueSky-compatible social media client that focuses on creating a seamless video and image sharing experience while strictly adhering to the AT Protocol standards. Built with modern Android development practices, it combines powerful media capabilities with AI-enhanced features.
+TrendFlick is a BlueSky-compatible social media client that focuses on creating a seamless video and image sharing experience while strictly adhering to the AT Protocol standards.
 
 ## Key Features
-
-### Core Social Features
 1. **Authentication**
-   - BlueSky account login/signup with secure credential management
-   - Firebase Authentication integration with anonymous fallback
-   - Robust session management
+   - BlueSky account login/signup
+   - Session management
    - Handle resolution
-   - Secure app password protection
 
 2. **Feed Management**
-   - Dynamic timeline viewing with pull-to-refresh
-   - Rich post creation with media support
+   - Timeline viewing
+   - Post creation with media
    - Support for BlueSky's feed algorithms
    - Custom feed filtering
-   - Vertical and horizontal content paging
+   - Rich text rendering with interactive elements:
+     - Clickable @mentions
+     - Clickable #hashtags
+     - Clickable links with underline styling
+     - UTF-8 compliant text processing
+     - Future-proof feature handling
 
 3. **Media Handling**
-   - Advanced video upload and playback using Media3 (ExoPlayer)
-   - Smart video caching system (90MB cache)
+   - Video upload and playback
    - Image sharing (up to 4 images per post)
-   - Efficient blob reference management
+   - Blob reference management
    - Media size limit compliance (1MB per image)
    - EXIF data stripping
-   - CameraX integration for high-quality captures
 
 4. **Social Interactions**
-   - Likes and reposts with haptic feedback
+   - Likes and reposts
    - Threading and replies
    - Quote posts
-   - Rich user profiles with editing capabilities
+   - User profiles
    - Following/Follower management
-   - Blocked accounts management
 
-### Advanced Features
-1. **AI Integration**
-   - AI-powered content assistance
-   - Smart content recommendations
-   - OpenAI API integration
-
-2. **Privacy & Security**
-   - End-to-end encryption support
-   - Secure credential storage
-   - Privacy settings management
-   - Blocked accounts handling
-   - Firebase Crashlytics for stability
-
-3. **User Experience**
-   - Rich animations and transitions
-   - Haptic feedback
-   - Edge-to-edge design
-   - Dark/Light theme support
-   - Offline capability
-   - Pull-to-refresh functionality
-   - Splash screen with animations
-   - Left side navigation drawer with categories:
-     - Trending feed (🔥)
-     - For You Page (FYP) (🎯)
-     - Following feed (👥)
-     - Popular feed (⭐)
-   - Smooth animations with Material 3 design
-
-4. **Messaging** (Coming Soon)
-   - Direct messaging support
-   - Real-time chat capabilities
-   - Media sharing in messages
-
-### Feed Management
-- **Smart Feed Categories**:
-  - FYP (For You Page) using BlueSky's "whats-hot" algorithm
-  - Following feed with reverse-chronological timeline
-  - Category-based discovery with hashtag filtering
-  - Trending hashtags section
-
-### Category Discovery
-- **Curated Categories**:
-  - Tech & AI (#tech, #ai, #coding, #startup, #innovation)
-  - Entertainment (#movies, #tv, #streaming, #cinema)
-  - Gaming (#gaming, #esports, #streamer, #gameplay)
-  - Art & Design (#art, #design, #illustration, #creative)
-  - Beauty (#beauty, #makeup, #skincare, #fashion)
-  - Music (#music, #newmusic, #artist, #songs)
-  - Food (#food, #cooking, #recipe, #foodie)
-  - Fitness (#fitness, #health, #workout, #wellness)
-
-### UI/UX Improvements
-- Smooth category drawer with improved edge detection
-- Dynamic feed title updates based on selection
-- Hashtag previews in category items
-- Seamless category switching with auto-closing drawer
-
-## Technical Stack
-
-### Frontend
-1. **UI Framework**
-   - Jetpack Compose with Material 3
-   - Custom animations and transitions
-   - Responsive layouts
-   - Edge-to-edge design
-
-2. **State Management**
-   - MVVM architecture
-   - Kotlin Flow for reactive programming
-   - Jetpack Navigation Compose
-   - ViewModel integration
-
-### Backend Integration
-1. **Firebase Services**
-   - Authentication
-   - Firestore for data persistence
-   - Cloud Storage for media
-   - Analytics for insights
-   - Crashlytics for stability monitoring
-
-2. **Networking**
-   - Retrofit with OkHttp
-   - Efficient API caching
-   - Custom interceptors
-   - Moshi and Gson for JSON handling
-
-### Data Management
-1. **Local Storage**
-   - Room database
-   - Secure credential storage
-   - Efficient media caching
-   - File provider implementation
-
-### Development Features
-1. **Build System**
-   - Gradle with KTS
-   - Multiple build variants
-   - ProGuard optimization
-   - Resource shrinking
-
-2. **Testing**
-   - Unit tests with JUnit and MockK
-   - UI tests with Espresso
-   - Integration tests
-   - Truth assertions
-
-3. **Code Quality**
-   - Kotlin static analysis
-   - Custom lint rules
-   - Crash reporting
-   - Performance monitoring
+5. **Embed Support**
+   - External links with preview cards
+   - Image embeds
+   - Record embeds
+   - Record with media embeds
 
 ## Technical Requirements
 1. **AT Protocol Compliance**
@@ -267,34 +159,23 @@ TrendFlick is a feature-rich BlueSky-compatible social media client that focuses
    - Proper blob handling
    - Correct JSON structures
    - Handle all required fields
+   - Rich text facet processing
+   - UTF-8 byte offset handling
 
 2. **Performance Goals**
-   - Fast feed loading with caching
-   - Efficient media handling
-   - Smooth scrolling and animations
+   - Fast feed loading
+   - Efficient media caching
+   - Smooth scrolling
    - Quick post creation
-   - Optimized battery usage
+   - Responsive text rendering
 
-3. **Platform Requirements**
-   - Minimum SDK: 26 (Android 8.0)
-   - Target SDK: 34 (Android 14)
-   - Kotlin-first development
-   - Jetpack Compose UI
-
-## Success Metrics
-1. **User Engagement**
-   - Post creation success rate
-   - Media upload success rate
-   - Feed loading speed
-   - Session duration
-   - User retention
-
-2. **Technical Performance**
-   - Crash-free sessions
-   - API call success rate
-   - Media loading times
-   - Memory usage
-   - Battery efficiency
+3. **User Experience**
+   - Material 3 design
+   - Dark/Light theme support
+   - Offline capability
+   - Error recovery
+   - Clear feedback
+   - Interactive text elements
 
 ## Development Priorities
 1. Fix feed loading for Following and Categories

@@ -48,6 +48,7 @@ fun ThreadCard(
     onThreadClick: () -> Unit,
     onCommentClick: () -> Unit,
     onCreatePost: () -> Unit,
+    onHashtagClick: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var showHeartAnimation by remember { mutableStateOf(false) }
@@ -135,10 +136,20 @@ fun ThreadCard(
                         .weight(1f)
                         .padding(end = 16.dp)
                 ) {
-                    Text(
+                    RichTextRenderer(
                         text = feedPost.post.record.text,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        facets = feedPost.post.record.facets ?: emptyList(),
+                        onMentionClick = { did ->
+                            onProfileClick()
+                        },
+                        onHashtagClick = { tag ->
+                            // Handle hashtag click in parent
+                            onHashtagClick?.invoke(tag)
+                        },
+                        onLinkClick = { url ->
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                            context.startActivity(intent)
+                        },
                         modifier = Modifier.fillMaxWidth()
                     )
 

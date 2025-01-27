@@ -43,57 +43,61 @@ object NetworkModule {
         @FromJson
         fun fromJson(reader: JsonReader): Facet? {
             try {
-                var index: TextRange? = null
+                var index: FacetIndex? = null
                 var features: MutableList<FacetFeature> = mutableListOf()
                 
                 reader.beginObject()
                 while (reader.hasNext()) {
                     when (reader.nextName()) {
                         "index" -> {
-                            try {
+                            reader.beginObject()
+                            var start: Int? = null
+                            var end: Int? = null
+                            while (reader.hasNext()) {
+                                when (reader.nextName()) {
+                                    "start", "byteStart" -> start = reader.nextInt()
+                                    "end", "byteEnd" -> end = reader.nextInt()
+                                    else -> reader.skipValue()
+                                }
+                            }
+                            reader.endObject()
+                            if (start != null && end != null) {
+                                index = FacetIndex(start, end)
+                            }
+                        }
+                        "features" -> {
+                            reader.beginArray()
+                            while (reader.hasNext()) {
                                 reader.beginObject()
-                                var start: Int? = null
-                                var end: Int? = null
+                                var type: String? = null
+                                var uri: String? = null
+                                var did: String? = null
+                                var tag: String? = null
+                                
                                 while (reader.hasNext()) {
                                     when (reader.nextName()) {
-                                        "start", "byteStart" -> start = reader.nextInt()
-                                        "end", "byteEnd" -> end = reader.nextInt()
+                                        "\$type" -> type = reader.nextString()
+                                        "uri" -> uri = reader.nextString()
+                                        "did" -> did = reader.nextString()
+                                        "tag" -> tag = reader.nextString()
                                         else -> reader.skipValue()
                                     }
                                 }
                                 reader.endObject()
-                                if (start != null && end != null) {
-                                    index = TextRange(start, end)
-                                }
-                            } catch (e: Exception) {
-                                reader.skipValue()
-                            }
-                        }
-                        "features" -> {
-                            try {
-                                reader.beginArray()
-                                while (reader.hasNext()) {
-                                    reader.beginObject()
-                                    var uri: String? = null
-                                    var did: String? = null
-                                    var tag: String? = null
-                                    var type: String? = null
-                                    while (reader.hasNext()) {
-                                        when (reader.nextName()) {
-                                            "\$type" -> type = reader.nextString()
-                                            "uri" -> uri = reader.nextString()
-                                            "did" -> did = reader.nextString()
-                                            "tag" -> tag = reader.nextString()
-                                            else -> reader.skipValue()
-                                        }
+                                
+                                when {
+                                    type?.contains("mention") == true && did != null -> {
+                                        features.add(MentionFeature(did = did))
                                     }
-                                    reader.endObject()
-                                    features.add(FacetFeature(type, uri, did, tag))
+                                    type?.contains("link") == true && uri != null -> {
+                                        features.add(LinkFeature(uri = uri))
+                                    }
+                                    type?.contains("tag") == true && tag != null -> {
+                                        features.add(TagFeature(tag = tag))
+                                    }
                                 }
-                                reader.endArray()
-                            } catch (e: Exception) {
-                                reader.skipValue()
                             }
+                            reader.endArray()
                         }
                         else -> reader.skipValue()
                     }
@@ -123,14 +127,17 @@ object NetworkModule {
             writer.name("start").value(value.index.start)
             writer.name("end").value(value.index.end)
             writer.endObject()
+            
             writer.name("features")
             writer.beginArray()
             value.features.forEach { feature ->
                 writer.beginObject()
-                feature.type?.let { writer.name("\$type").value(it) }
-                feature.uri?.let { writer.name("uri").value(it) }
-                feature.did?.let { writer.name("did").value(it) }
-                feature.tag?.let { writer.name("tag").value(it) }
+                writer.name("\$type").value(feature.type)
+                when (feature) {
+                    is MentionFeature -> writer.name("did").value(feature.did)
+                    is LinkFeature -> writer.name("uri").value(feature.uri)
+                    is TagFeature -> writer.name("tag").value(feature.tag)
+                }
                 writer.endObject()
             }
             writer.endArray()

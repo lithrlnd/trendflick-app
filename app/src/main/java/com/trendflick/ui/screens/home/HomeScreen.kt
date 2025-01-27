@@ -311,6 +311,9 @@ fun HomeScreen(
                                                             viewModel.toggleComments(true)
                                                         },
                                                         onCreatePost = { navController.navigate(Screen.CreatePost.route) },
+                                                        onHashtagClick = { tag -> 
+                                                            viewModel.onHashtagSelected(tag)
+                                                        },
                                                         modifier = Modifier.fillMaxSize()
                                                     )
                                                 }
@@ -541,6 +544,42 @@ fun HomeScreen(
                                             )
                                         }
                                     }
+                                }
+                            }
+                        }
+                    }
+
+                    // Add hashtag filter indicator if active
+                    AnimatedVisibility(
+                        visible = viewModel.currentHashtag.collectAsState().value != null,
+                        enter = slideInVertically() + fadeIn(),
+                        exit = slideOutVertically() + fadeOut()
+                    ) {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .padding(8.dp)
+                                    .fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "#${viewModel.currentHashtag.collectAsState().value}",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                                IconButton(onClick = { viewModel.clearHashtagFilter() }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Clear hashtag filter",
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
                                 }
                             }
                         }

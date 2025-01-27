@@ -260,6 +260,12 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    fun loadThreads(isRefresh: Boolean = false) {
+        viewModelScope.launch {
+            loadThreadsInternal(isRefresh)
+        }
+    }
+
     private suspend fun loadThreadsInternal(isRefresh: Boolean = false) {
         if (isLoggedOut) {
             Log.d(TAG, "🔒 Skipping thread load - user is logged out")
@@ -278,14 +284,17 @@ class HomeViewModel @Inject constructor(
             }
             
             // Clear cursor but keep existing threads to avoid flicker
-            currentCursor = null
+            if (isRefresh) {
+                currentCursor = null
+                _threads.value = emptyList()
+            }
             
             // Add delay to ensure session is properly established
             delay(500)
             
             // Single attempt with proper error handling
             try {
-                loadMoreThreads(isRefresh = true)
+                loadMoreThreads(isRefresh)
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Thread load failed: ${e.message}")
                 // If it's a connection closed error, wait and retry once
@@ -293,7 +302,7 @@ class HomeViewModel @Inject constructor(
                     Log.d(TAG, "🔄 Connection closed, retrying after delay")
                     delay(1000)
                     try {
-                        loadMoreThreads(isRefresh = true)
+                        loadMoreThreads(isRefresh)
                     } catch (retryE: Exception) {
                         Log.e(TAG, "❌ Retry failed: ${retryE.message}")
                     }
@@ -308,118 +317,42 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    // Public non-suspend function that launches the coroutine
-    fun loadThreads() {
-        viewModelScope.launch {
-            loadThreadsInternal()
-        }
-    }
-
     fun loadMoreThreads(isRefresh: Boolean = false) {
-        if (_isLoading.value) return
+        if (_isLoading.value || loadingJob?.isActive == true) return
         
-        viewModelScope.launch {
-            _isLoading.value = true
-            
+        loadingJob = viewModelScope.launch {
             try {
-                // Ensure session is valid before making request
-                try {
-                    ensureValidSession()
-                    if (isLoggedOut) {
-                        Log.d(TAG, "🔒 Thread load aborted - user is logged out")
-                        return@launch
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "❌ Session validation failed: ${e.message}")
-                    if (e.message?.contains("Not authenticated") == true || 
-                        e.message?.contains("Unauthorized") == true) {
-                        isLoggedOut = true
-                        return@launch
-                    }
-                }
+                _isLoading.value = true
                 
-                val result = when {
-                    currentHashtag.value != null -> {
-                        atProtocolRepository.getPostsByHashtag(
-                            hashtag = currentHashtag.value!!,
-                            cursor = if (isRefresh) null else currentCursor
-                        )
-                    }
-                    selectedFeed.value == "Trends" -> {
-                        Log.d(TAG, "🔍 Using whats-hot algorithm for Trends feed")
-                        atProtocolRepository.getTimeline(
-                            cursor = if (isRefresh) null else currentCursor,
-                            algorithm = "whats-hot",
-                            limit = 50
-                        )
-                    }
-                    selectedFeed.value == "FYP" -> {
-                        Log.d(TAG, "🔍 Using default timeline")
-                        atProtocolRepository.getTimeline(
-                            cursor = if (isRefresh) null else currentCursor,
-                            limit = 50
-                        )
-                    }
-                    selectedFeed.value == "Following" -> {
-                        Log.d(TAG, "🔍 Using following timeline")
-                        try {
-                            // Add delay to ensure session is properly established
-                            delay(500)
-                            
-                            // Verify session before making request
-                            val currentUser = atProtocolRepository.getCurrentSession()
-                            if (currentUser == null) {
-                                Log.e(TAG, "❌ No current user found for following feed")
-                                throw Exception("No current user found")
-                            }
-                            
-                            Log.d(TAG, """
-                                📱 Following Feed Request:
-                                • User: ${currentUser.handle}
-                                • Algorithm: reverse-chronological
-                                • Cursor: ${if (isRefresh) "null" else currentCursor}
-                            """.trimIndent())
-                            
-                            atProtocolRepository.getTimeline(
-                                cursor = if (isRefresh) null else currentCursor,
-                                algorithm = "reverse-chronological",
-                                limit = 50
-                            )
-                        } catch (e: Exception) {
-                            Log.e(TAG, "❌ Following feed error: ${e.message}")
-                            throw e
-                        }
-                    }
-                    else -> {
-                        Log.d(TAG, "🔍 Using default timeline")
-                        atProtocolRepository.getTimeline(
-                            cursor = if (isRefresh) null else currentCursor,
-                            limit = 50
-                        )
-                    }
+                val result = if (_currentHashtag.value != null) {
+                    atProtocolRepository.getPostsByHashtag(
+                        hashtag = _currentHashtag.value!!,
+                        cursor = if (isRefresh) null else currentCursor
+                    )
+                } else {
+                    atProtocolRepository.getTimeline(
+                        algorithm = when (_selectedFeed.value) {
+                            "Following" -> "reverse-chronological"
+                            else -> "whats-hot"
+                        },
+                        cursor = if (isRefresh) null else currentCursor
+                    )
                 }
                 
                 result.onSuccess { response ->
-                    Log.d(TAG, "✅ Timeline fetch successful - Raw feed size: ${response.feed.size}")
-                    currentCursor = response.cursor
-                    
-                    val filteredPosts = response.feed.filter { feedPost ->
-                        feedPost.post.uri.isNotEmpty() && feedPost.post.cid.isNotEmpty()
+                    val filteredPosts = response.feed.filter { post ->
+                        post.post.uri.isNotEmpty() && post.post.cid.isNotEmpty()
                     }
-                    
-                    val newThreads = if (isRefresh) {
+                    _threads.value = if (isRefresh) {
                         filteredPosts
                     } else {
                         _threads.value + filteredPosts
                     }
-                    
-                    _threads.value = newThreads
                     loadInitialLikeStates(filteredPosts)
-                }.onFailure { error ->
-                    Log.e(TAG, "❌ Failed to load threads: ${error.message}")
+                    currentCursor = response.cursor
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "❌ Error loading threads: ${e.message}")
+                Log.e(TAG, "Failed to load more threads: ${e.message}")
             } finally {
                 _isLoading.value = false
             }
@@ -994,20 +927,34 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    private fun loadHashtagPosts(hashtag: String) {
+    fun onHashtagSelected(hashtag: String) {
         viewModelScope.launch {
             try {
                 _isLoading.value = true
-                val result = atProtocolRepository.getPostsByHashtag(hashtag)
-                result.onSuccess { response ->
-                    _threads.value = response.feed
-                    currentCursor = response.cursor
-                }.onFailure { error ->
-                    Log.e(TAG, "Failed to load hashtag posts: ${error.message}")
-                }
+                _currentHashtag.value = hashtag
+                currentCursor = null
+                _threads.value = emptyList()
+                
+                // Load posts for hashtag
+                atProtocolRepository.getPostsByHashtag(hashtag)
+                    .onSuccess { response ->
+                        val filteredPosts = response.feed.filter { post ->
+                            post.post.uri.isNotEmpty() && post.post.cid.isNotEmpty()
+                        }
+                        _threads.value = filteredPosts
+                        loadInitialLikeStates(filteredPosts)
+                        currentCursor = response.cursor
+                    }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load hashtag posts: ${e.message}")
             } finally {
                 _isLoading.value = false
             }
         }
+    }
+
+    fun clearHashtagFilter() {
+        _currentHashtag.value = null
+        loadThreads(isRefresh = true)
     }
 } 
