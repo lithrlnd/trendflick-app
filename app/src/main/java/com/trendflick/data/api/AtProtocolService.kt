@@ -41,7 +41,7 @@ interface AtProtocolService {
     ): ThreadResponse
 
     @POST("xrpc/com.atproto.repo.createRecord")
-    suspend fun createRecord(@Body request: CreatePostRequest): CreateRecordResponse
+    suspend fun createRecord(@Body request: CreateRecordRequest): CreateRecordResponse
 
     @POST("xrpc/com.atproto.repo.createRecord")
     suspend fun createLike(@Body request: LikeRequest): CreateRecordResponse
@@ -70,6 +70,13 @@ interface AtProtocolService {
         @Query("cursor") cursor: String? = null
     ): GetLikesResponse
 
+    @GET("xrpc/app.bsky.feed.getRepostedBy")
+    suspend fun getRepostsByUri(
+        @Query("uri") uri: String,
+        @Query("limit") limit: Int = 1,
+        @Query("cursor") cursor: String? = null
+    ): GetRepostsResponse
+
     data class SearchUsersResponse(
         val users: List<UserProfile>
     )
@@ -77,7 +84,8 @@ interface AtProtocolService {
     data class UserProfile(
         val did: String,
         val handle: String,
-        val displayName: String?
+        val displayName: String?,
+        val avatar: String? = null
     )
 
     @GET("xrpc/app.bsky.actor.searchActors")
@@ -100,4 +108,59 @@ interface AtProtocolService {
         @Query("limit") limit: Int = 50,
         @Query("cursor") cursor: String? = null
     ): FollowsResponse
+
+    data class CreateRecordRequest(
+        val repo: String,
+        val collection: String,
+        val record: Any,
+        val rkey: String? = null,
+        val validate: Boolean = true,
+        val swapCommit: String? = null
+    )
+
+    data class RepostRecord(
+        val type: String = "app.bsky.feed.repost",
+        val subject: PostReference,
+        val createdAt: String
+    )
+
+    data class PostRecord(
+        val type: String = "app.bsky.feed.post",
+        val text: String,
+        val createdAt: String,
+        val reply: ReplyReference? = null,
+        val embed: RecordEmbed? = null
+    )
+
+    data class RecordEmbed(
+        val type: String = "app.bsky.embed.record",
+        val record: StrongRef
+    )
+
+    data class StrongRef(
+        val uri: String,
+        val cid: String
+    )
+
+    data class ReplyReference(
+        val parent: PostReference,
+        val root: PostReference
+    )
+
+    data class PostReference(
+        val uri: String,
+        val cid: String
+    )
+
+    data class GetRepostsResponse(
+        val uri: String,
+        val reposts: List<RepostView>,
+        val cursor: String?
+    )
+
+    data class RepostView(
+        val actor: UserProfile,
+        val createdAt: String,
+        val indexedAt: String
+    )
 } 

@@ -22,12 +22,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.*
+import androidx.compose.ui.text.input.*
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
@@ -35,48 +31,48 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.ui.ExperimentalComposeUiApi
-import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.text.input.TransformedText
-import androidx.compose.ui.text.input.OffsetMapping
 import com.trendflick.ui.viewmodels.SharedViewModel
 import com.trendflick.ui.navigation.Screen
+import com.trendflick.ui.components.SuggestionPopup
+import com.trendflick.data.model.SuggestionItem
 
 @Composable
 private fun rememberMentionHashtagTransformation(highlightColor: Color): VisualTransformation {
-    return remember {
-        object : VisualTransformation {
-            override fun filter(text: AnnotatedString): TransformedText {
-                val annotatedString = buildAnnotatedString {
-                    var lastIndex = 0
-                    val mentionPattern = Regex("@[\\w.-]+")
-                    val hashtagPattern = Regex("#[\\w-]+")
-                    
-                    val allMatches = (mentionPattern.findAll(text.text) + hashtagPattern.findAll(text.text))
-                        .sortedBy { it.range.first }
-                    
-                    for (match in allMatches) {
-                        // Add text before the match
-                        append(text.text.substring(lastIndex, match.range.first))
-                        
-                        // Add the highlighted match
-                        withStyle(SpanStyle(color = highlightColor)) {
-                            append(match.value)
+    return remember(highlightColor) {
+        VisualTransformation { text ->
+            val annotatedString = buildAnnotatedString {
+                var startIndex = 0
+                var currentIndex = 0
+                
+                while (currentIndex < text.text.length) {
+                    when (text.text[currentIndex]) {
+                        '@', '#' -> {
+                            // Add the text before the special character
+                            append(text.text.substring(startIndex, currentIndex))
+                            
+                            // Find the end of the mention/hashtag
+                            val endIndex = text.text.indexOf(' ', currentIndex + 1)
+                                .takeIf { it != -1 } ?: text.text.length
+                            
+                            // Add the colored mention/hashtag
+                            withStyle(SpanStyle(color = highlightColor)) {
+                                append(text.text.substring(currentIndex, endIndex))
+                            }
+                            
+                            currentIndex = endIndex
+                            startIndex = endIndex
                         }
-                        
-                        lastIndex = match.range.last + 1
-                    }
-                    
-                    // Add remaining text
-                    if (lastIndex < text.text.length) {
-                        append(text.text.substring(lastIndex))
+                        else -> currentIndex++
                     }
                 }
                 
-                return TransformedText(
-                    text = annotatedString,
-                    offsetMapping = OffsetMapping.Identity
-                )
+                // Add any remaining text
+                if (startIndex < text.text.length) {
+                    append(text.text.substring(startIndex))
+                }
             }
+            
+            TransformedText(annotatedString, OffsetMapping.Identity)
         }
     }
 }
@@ -91,36 +87,50 @@ fun CreatePostScreen(
 ) {
     var postTextFieldValue by remember { mutableStateOf(TextFieldValue()) }
     var isPosting by remember { mutableStateOf(false) }
-    var showHandleSuggestions by remember { mutableStateOf(false) }
-    var currentMentionQuery by remember { mutableStateOf("") }
+    var showSuggestions by remember { mutableStateOf(false) }
+    var currentQuery by remember { mutableStateOf("") }
+    var queryType by remember { mutableStateOf<QueryType?>(null) }
+    val suggestions by viewModel.suggestions.collectAsState()
+    
     val keyboardController = LocalSoftwareKeyboardController.current
-    
     val uiState by viewModel.uiState.collectAsState()
-    val handleSuggestions by viewModel.handleSuggestions.collectAsState()
 
-    // Get the highlight color from the theme in the composable context
+    // Get the highlight color from the theme
     val highlightColor = MaterialTheme.colorScheme.primary
-    
-    // Pass the color to the transformation
     val mentionHashtagTransformation = rememberMentionHashtagTransformation(highlightColor)
 
     LaunchedEffect(postTextFieldValue.text) {
-        // Check if we're in the middle of typing a mention
-        val lastAtSymbolIndex = postTextFieldValue.text.lastIndexOf('@')
-        if (lastAtSymbolIndex != -1) {
-            val textAfterAt = postTextFieldValue.text.substring(lastAtSymbolIndex + 1)
-            val spaceAfterAt = textAfterAt.indexOf(' ')
-            val currentWord = if (spaceAfterAt == -1) textAfterAt else textAfterAt.substring(0, spaceAfterAt)
-            
-            if (currentWord.isNotEmpty()) {
-                currentMentionQuery = currentWord
-                viewModel.searchHandles(currentWord)
-                showHandleSuggestions = true
-            } else {
-                showHandleSuggestions = false
+        // Check if we're typing a mention or hashtag
+        val text = postTextFieldValue.text
+        val lastAtIndex = text.lastIndexOf('@')
+        val lastHashIndex = text.lastIndexOf('#')
+        
+        when {
+            lastAtIndex != -1 && lastAtIndex > lastHashIndex && 
+            (lastAtIndex == 0 || text[lastAtIndex - 1].isWhitespace()) -> {
+                val query = text.substring(lastAtIndex + 1).takeWhile { !it.isWhitespace() }
+                if (query != currentQuery) {
+                    currentQuery = query
+                    queryType = QueryType.MENTION
+                    viewModel.searchMentions(query)
+                    showSuggestions = true
+                }
             }
-        } else {
-            showHandleSuggestions = false
+            lastHashIndex != -1 && lastHashIndex > lastAtIndex && 
+            (lastHashIndex == 0 || text[lastHashIndex - 1].isWhitespace()) -> {
+                val query = text.substring(lastHashIndex + 1).takeWhile { !it.isWhitespace() }
+                if (query != currentQuery) {
+                    currentQuery = query
+                    queryType = QueryType.HASHTAG
+                    viewModel.searchHashtags(query)
+                    showSuggestions = true
+                }
+            }
+            else -> {
+                showSuggestions = false
+                currentQuery = ""
+                queryType = null
+            }
         }
     }
 
@@ -130,150 +140,113 @@ fun CreatePostScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(if (replyToUri != null) "Reply" else "Create Post") },
-                navigationIcon = {
-                    IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(Icons.Default.Close, contentDescription = "Close")
-                    }
-                },
-                actions = {
-                    Button(
-                        onClick = {
-                            isPosting = true
-                            keyboardController?.hide()
-                            if (replyToUri != null && replyToCid != null) {
-                                viewModel.createReply(postTextFieldValue.text, replyToUri, replyToCid)
-                            } else {
-                                viewModel.createPost(postTextFieldValue.text)
-                            }
-                        },
-                        enabled = postTextFieldValue.text.isNotBlank() && !isPosting,
-                        modifier = Modifier.padding(end = 8.dp)
-                    ) {
-                        Text("Post")
-                    }
-                }
-            )
-        }
-    ) { padding ->
+    Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
                 .padding(16.dp)
         ) {
-            if (replyToUri != null) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                    )
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Reply,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Replying to post",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-
-            TextField(
+            OutlinedTextField(
                 value = postTextFieldValue,
-                onValueChange = { postTextFieldValue = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                visualTransformation = mentionHashtagTransformation,
-                placeholder = {
-                    Text(
-                        text = if (replyToUri != null) 
-                            "Write your reply... Use @ to mention users and # for hashtags" 
-                        else 
-                            "What's on your mind? Use @ to mention users and # for hashtags",
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
-                },
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent
-                ),
-                keyboardOptions = KeyboardOptions(
-                    imeAction = ImeAction.Done,
-                    autoCorrect = true
-                ),
-                keyboardActions = KeyboardActions(
-                    onDone = { keyboardController?.hide() }
-                ),
-                maxLines = 10
-            )
-
-            // Handle suggestions
-            if (showHandleSuggestions && handleSuggestions.isNotEmpty()) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 200.dp)
-                        .padding(top = 8.dp)
-                ) {
-                    LazyColumn {
-                        items(handleSuggestions) { handle ->
-                            HandleSuggestionItem(
-                                handle = handle,
-                                onClick = {
-                                    // Replace the current mention with the selected handle
-                                    val lastAtIndex = postTextFieldValue.text.lastIndexOf('@')
-                                    if (lastAtIndex != -1) {
-                                        postTextFieldValue = TextFieldValue(postTextFieldValue.text.substring(0, lastAtIndex) + "@${handle.handle} " + postTextFieldValue.text.substring(lastAtIndex + 1))
+                onValueChange = { newValue ->
+                    if (newValue.text.length <= 300) {
+                        postTextFieldValue = newValue
+                        
+                        // Check for @ or # triggers
+                        val lastChar = newValue.text.lastOrNull()
+                        when (lastChar) {
+                            '@' -> {
+                                queryType = QueryType.MENTION
+                                currentQuery = ""
+                                showSuggestions = true
+                                viewModel.searchMentions("")
+                            }
+                            '#' -> {
+                                queryType = QueryType.HASHTAG
+                                currentQuery = ""
+                                showSuggestions = true
+                                viewModel.searchHashtags("")
+                            }
+                            ' ' -> {
+                                showSuggestions = false
+                                queryType = null
+                            }
+                            else -> {
+                                // Check if we're in the middle of a mention/hashtag
+                                val text = newValue.text
+                                val lastMentionIndex = text.lastIndexOf('@')
+                                val lastHashtagIndex = text.lastIndexOf('#')
+                                val lastSpaceIndex = text.lastIndexOf(' ')
+                                
+                                when {
+                                    lastMentionIndex > lastSpaceIndex -> {
+                                        queryType = QueryType.MENTION
+                                        currentQuery = text.substring(lastMentionIndex + 1)
+                                        showSuggestions = true
+                                        viewModel.searchMentions(currentQuery)
                                     }
-                                    showHandleSuggestions = false
+                                    lastHashtagIndex > lastSpaceIndex -> {
+                                        queryType = QueryType.HASHTAG
+                                        currentQuery = text.substring(lastHashtagIndex + 1)
+                                        showSuggestions = true
+                                        viewModel.searchHashtags(currentQuery)
+                                    }
                                 }
-                            )
+                            }
                         }
                     }
-                }
-            }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 150.dp),
+                placeholder = { Text("What's on your mind?") },
+                colors = TextFieldDefaults.colors(
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                    focusedContainerColor = MaterialTheme.colorScheme.surface
+                ),
+                visualTransformation = mentionHashtagTransformation
+            )
 
-            // Error message
-            uiState.error?.let { error ->
-                Text(
-                    text = error,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-            }
+            // Character count
+            Text(
+                text = "${300 - postTextFieldValue.text.length} characters remaining",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (postTextFieldValue.text.length > 280)
+                    MaterialTheme.colorScheme.error
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp)
+            )
 
-            // Loading indicator
-            if (isPosting) {
-                LinearProgressIndicator(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp)
+            // Suggestions dropdown
+            if (showSuggestions && suggestions.isNotEmpty()) {
+                SuggestionPopup(
+                    suggestions = suggestions,
+                    onSuggestionSelected = { suggestion ->
+                        val text = postTextFieldValue.text
+                        val newText = when (queryType) {
+                            QueryType.MENTION -> {
+                                val startIndex = text.lastIndexOf('@')
+                                text.substring(0, startIndex) + "@${(suggestion as SuggestionItem.Mention).handle} "
+                            }
+                            QueryType.HASHTAG -> {
+                                val startIndex = text.lastIndexOf('#')
+                                text.substring(0, startIndex) + "#${(suggestion as SuggestionItem.Hashtag).tag} "
+                            }
+                            null -> text
+                        }
+                        postTextFieldValue = TextFieldValue(newText, TextRange(newText.length))
+                        showSuggestions = false
+                    },
+                    onDismiss = { showSuggestions = false }
                 )
             }
         }
     }
+}
+
+private enum class QueryType {
+    MENTION,
+    HASHTAG
 }
 
 @Composable

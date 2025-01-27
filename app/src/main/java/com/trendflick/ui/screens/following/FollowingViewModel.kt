@@ -32,6 +32,9 @@ class FollowingViewModel @Inject constructor(
     private val _likedPosts = MutableStateFlow<Set<String>>(emptySet())
     val likedPosts: StateFlow<Set<String>> = _likedPosts.asStateFlow()
 
+    private val _repostedPosts = MutableStateFlow<Set<String>>(emptySet())
+    val repostedPosts: StateFlow<Set<String>> = _repostedPosts.asStateFlow()
+
     private var currentCursor: String? = null
     private var loadingJob: Job? = null
     private var isLoggedOut = false
@@ -278,7 +281,21 @@ class FollowingViewModel @Inject constructor(
     fun repost(uri: String) {
         viewModelScope.launch {
             try {
-                atProtocolRepository.repost(uri)
+                // First get the post details to get the correct CID
+                val postThread = atProtocolRepository.getPostThread(uri)
+                postThread.onSuccess { threadResponse ->
+                    val post = threadResponse.thread.post
+                    // Now create the repost with the correct CID
+                    atProtocolRepository.repost(post.uri, post.cid)
+                    // Toggle repost state
+                    _repostedPosts.value = if (uri in _repostedPosts.value) {
+                        _repostedPosts.value - uri
+                    } else {
+                        _repostedPosts.value + uri
+                    }
+                }.onFailure { error ->
+                    Log.e(TAG, "Failed to get post details for repost: ${error.message}")
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to repost: ${e.message}")
             }
@@ -288,21 +305,39 @@ class FollowingViewModel @Inject constructor(
     private fun loadInitialLikeStates(posts: List<FeedPost>) {
         viewModelScope.launch {
             try {
-                val currentLiked = _likedPosts.value.toMutableSet()
+                println("DEBUG: TrendFlick 💾 [FOLLOWING] Loading initial like and repost states for ${posts.size} posts")
                 
+                // Keep existing likes and reposts to prevent UI flicker
+                val currentLiked = _likedPosts.value.toMutableSet()
+                val currentReposted = _repostedPosts.value.toMutableSet()
+                println("DEBUG: TrendFlick 💾 [FOLLOWING] Current likes in memory before loading: ${currentLiked.size}")
+                println("DEBUG: TrendFlick 💾 [FOLLOWING] Current reposts in memory before loading: ${currentReposted.size}")
+                
+                // Check each post's like and repost status
                 posts.forEach { feedPost ->
                     try {
+                        println("DEBUG: TrendFlick 🔍 [FOLLOWING] Checking like and repost status for post: ${feedPost.post.uri}")
                         if (atProtocolRepository.isPostLikedByUser(feedPost.post.uri)) {
                             currentLiked.add(feedPost.post.uri)
+                            println("DEBUG: TrendFlick ✅ [FOLLOWING] Post ${feedPost.post.uri} is liked")
+                        }
+                        if (atProtocolRepository.isPostRepostedByUser(feedPost.post.uri)) {
+                            currentReposted.add(feedPost.post.uri)
+                            println("DEBUG: TrendFlick ✅ [FOLLOWING] Post ${feedPost.post.uri} is reposted")
                         }
                     } catch (e: Exception) {
-                        Log.e(TAG, "Failed to check like status: ${e.message}")
+                        println("DEBUG: TrendFlick ❌ [FOLLOWING] Failed to check like/repost status for post ${feedPost.post.uri}: ${e.message}")
                     }
                 }
                 
+                // Update the states
                 _likedPosts.value = currentLiked
+                _repostedPosts.value = currentReposted
+                println("DEBUG: TrendFlick 💾 [FOLLOWING] Updated liked posts set, total liked: ${currentLiked.size}")
+                println("DEBUG: TrendFlick 💾 [FOLLOWING] Updated reposted posts set, total reposted: ${currentReposted.size}")
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to load initial like states: ${e.message}")
+                println("DEBUG: TrendFlick ❌ [FOLLOWING] Failed to load initial like/repost states: ${e.message}")
+                println("DEBUG: TrendFlick ❌ [FOLLOWING] Stack trace: ${e.stackTraceToString()}")
             }
         }
     }

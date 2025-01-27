@@ -41,6 +41,7 @@ import kotlinx.coroutines.delay
 fun ThreadCard(
     feedPost: FeedPost,
     isLiked: Boolean,
+    isReposted: Boolean,
     onLikeClick: () -> Unit,
     onRepostClick: () -> Unit,
     onShareClick: () -> Unit,
@@ -243,13 +244,20 @@ fun ThreadCard(
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         IconButton(
-                            onClick = onRepostClick,
+                            onClick = {
+                                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                onRepostClick()
+                            },
                             modifier = Modifier.size(40.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Repeat,
                                 contentDescription = "Repost",
-                                tint = MaterialTheme.colorScheme.onSurface,
+                                tint = if (isReposted) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                },
                                 modifier = Modifier.size(24.dp)
                             )
                         }

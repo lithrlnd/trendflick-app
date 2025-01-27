@@ -148,12 +148,8 @@ TrendFlick is a BlueSky-compatible social media client that focuses on creating 
    - Post creation with media
    - Support for BlueSky's feed algorithms
    - Custom feed filtering
-   - Rich text rendering with interactive elements:
-     - Clickable @mentions
-     - Clickable #hashtags
-     - Clickable links with underline styling
-     - UTF-8 compliant text processing
-     - Future-proof feature handling
+   - Repost functionality with proper CID validation
+   - Like/Unlike posts with status caching
 
 3. **Media Handling**
    - Video upload and playback
@@ -163,7 +159,7 @@ TrendFlick is a BlueSky-compatible social media client that focuses on creating 
    - EXIF data stripping
 
 4. **Social Interactions**
-   - Likes and reposts
+   - Likes and reposts with proper AT Protocol strong references
    - Threading and replies
    - Quote posts
    - User profiles
@@ -181,15 +177,16 @@ TrendFlick is a BlueSky-compatible social media client that focuses on creating 
    - Proper blob handling
    - Correct JSON structures
    - Handle all required fields
-   - Rich text facet processing
-   - UTF-8 byte offset handling
+   - Strong reference validation for reposts and likes
+   - CID format validation for content references
 
 2. **Performance Goals**
    - Fast feed loading
    - Efficient media caching
    - Smooth scrolling
    - Quick post creation
-   - Responsive text rendering
+   - Optimized like/repost state management
+   - Status caching for improved responsiveness
 
 3. **User Experience**
    - Material 3 design
@@ -197,7 +194,7 @@ TrendFlick is a BlueSky-compatible social media client that focuses on creating 
    - Offline capability
    - Error recovery
    - Clear feedback
-   - Interactive text elements
+   - Immediate UI state updates for social actions
 
 ## Development Priorities
 1. Fix feed loading for Following and Categories

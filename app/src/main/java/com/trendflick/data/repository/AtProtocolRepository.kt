@@ -10,6 +10,7 @@ import com.trendflick.data.model.User
 import com.trendflick.data.model.TrendingHashtag
 import kotlinx.coroutines.flow.Flow
 import java.time.Instant
+import java.time.format.DateTimeFormatter
 
 interface AtProtocolRepository {
     suspend fun createSession(handle: String, password: String): Result<AtSession>
@@ -20,7 +21,8 @@ interface AtProtocolRepository {
     suspend fun getPostThread(uri: String): Result<ThreadResponse>
     suspend fun likePost(uri: String): Boolean
     suspend fun isPostLikedByUser(uri: String): Boolean
-    suspend fun repost(uri: String)
+    suspend fun repost(uri: String, cid: String)
+    suspend fun isPostRepostedByUser(uri: String): Boolean
     fun getUserByDid(did: String): Flow<User?>
     fun getUserByHandle(handle: String): Flow<User?>
     suspend fun createPost(text: String, timestamp: String): Result<CreateRecordResponse>
@@ -37,6 +39,9 @@ interface AtProtocolRepository {
     suspend fun getTrendingHashtags(): List<TrendingHashtag>
     suspend fun getPostsByHashtag(hashtag: String, limit: Int = 50, cursor: String? = null): Result<TimelineResponse>
     suspend fun ensureValidSession(): Boolean
+    suspend fun searchHandles(query: String): List<UserSearchResult>
+    suspend fun searchHashtags(query: String): List<TrendingHashtag>
+    suspend fun createQuotePost(text: String, quotedPostUri: String, quotedPostCid: String): Result<CreateRecordResponse>
 }
 
 // Data classes used by the interface
@@ -58,5 +63,6 @@ data class BlobResult(
 data class UserSearchResult(
     val did: String,
     val handle: String,
-    val displayName: String?
+    val displayName: String?,
+    val avatar: String? = null
 ) 

@@ -38,6 +38,7 @@ class AtProtocolRepositoryImpl @Inject constructor(
     private var consecutiveFailures: Int = 0
     private val baseRetryInterval = 60_000L // 1 minute base interval
     private val likeStatusCache = mutableMapOf<String, Pair<Boolean, Long>>()
+    private val repostStatusCache = mutableMapOf<String, Pair<Boolean, Long>>()
     private val cacheDuration = 60_000L // 1 minute cache
     private val TAG = "TF_Repository"
 
@@ -506,24 +507,107 @@ class AtProtocolRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun repost(uri: String) {
+    override suspend fun repost(uri: String, cid: String) {
         try {
+            Log.d(TAG, "🔄 Attempting to repost content - URI: $uri, CID: $cid")
+            
+            // Validate CID format and presence
+            if (cid.isBlank()) {
+                Log.e(TAG, "❌ Empty CID provided")
+                throw IllegalArgumentException("CID cannot be empty")
+            }
+            if (!cid.startsWith("bafyrei") && !cid.startsWith("bafy")) {
+                Log.e(TAG, "❌ Invalid CID format provided: $cid")
+                throw IllegalArgumentException("Invalid CID format. Expected a valid IPFS CID.")
+            }
+            
             val did = userDao.getCurrentUserDid() ?: sessionManager.getDid() 
                 ?: throw IllegalStateException("No DID found")
-                
-            val request = RepostRequest(
-                repo = did,
-                record = RepostRecord(
-                    subject = PostReference(
-                        uri = uri,
-                        cid = uri.substringAfterLast('/')
+            Log.d(TAG, "👤 Using DID: $did")
+            
+            val isCurrentlyReposted = isPostRepostedByUser(uri)
+            Log.d(TAG, "🔍 Current repost state - isReposted: $isCurrentlyReposted")
+            
+            if (!isCurrentlyReposted) {
+                val request = AtProtocolService.CreateRecordRequest(
+                    repo = did,
+                    collection = "app.bsky.feed.repost",
+                    record = AtProtocolService.RepostRecord(
+                        type = "app.bsky.feed.repost",
+                        subject = AtProtocolService.PostReference(
+                            uri = uri,
+                            cid = cid
+                        ),
+                        createdAt = Instant.now().toString()
                     ),
-                    createdAt = Instant.now().toString()
+                    rkey = generateStableRkey("repost_$cid")
                 )
-            )
-            service.createRepost(request)
+                
+                Log.d(TAG, """
+                    📤 Creating repost record with:
+                    - URI: ${uri}
+                    - CID: ${cid}
+                    - DID: ${did}
+                    - Collection: app.bsky.feed.repost
+                    - RKey: ${generateStableRkey("repost_$cid")}
+                    - Record: ${request.record}
+                """.trimIndent())
+                
+                try {
+                    service.createRecord(request)
+                    repostStatusCache[uri] = true to System.currentTimeMillis()
+                    Log.d(TAG, "✅ Repost record created successfully")
+                } catch (e: HttpException) {
+                    if (e.code() == 409) {
+                        // Record already exists
+                        Log.d(TAG, "⚠️ Repost record already exists (409)")
+                        repostStatusCache[uri] = true to System.currentTimeMillis()
+                    } else {
+                        Log.e(TAG, "❌ Failed to create repost record: ${e.message}")
+                        Log.e(TAG, "Response body: ${e.response()?.errorBody()?.string()}")
+                        throw e
+                    }
+                }
+            } else {
+                // Remove repost by deleting the record
+                Log.d(TAG, "🗑️ Deleting repost record")
+                service.deleteRecord(
+                    repo = did,
+                    collection = "app.bsky.feed.repost",
+                    rkey = generateStableRkey("repost_$cid")
+                )
+                repostStatusCache[uri] = false to System.currentTimeMillis()
+                Log.d(TAG, "✅ Repost record deleted successfully")
+            }
         } catch (e: Exception) {
+            Log.e(TAG, "❌ Repost operation failed: ${e.message}")
+            Log.e(TAG, "Stack trace: ${e.stackTraceToString()}")
             throw e
+        }
+    }
+
+    override suspend fun isPostRepostedByUser(uri: String): Boolean {
+        val cached = repostStatusCache[uri]
+        if (cached != null) {
+            val (status, timestamp) = cached
+            if (System.currentTimeMillis() - timestamp < cacheDuration) {
+                Log.d(TAG, "🔍 Using cached repost status for $uri: $status")
+                return status
+            }
+        }
+
+        return try {
+            Log.d(TAG, "🌐 Fetching repost status from AT Protocol for $uri")
+            val did = userDao.getCurrentUserDid() ?: sessionManager.getDid()
+            val response = service.getReposts(uri, limit = 1)
+            val isReposted = response.repostedBy.any { repost -> repost.did == did }
+            repostStatusCache[uri] = isReposted to System.currentTimeMillis()
+            Log.d(TAG, "✅ Repost status fetched successfully: $isReposted")
+            isReposted
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to fetch repost status: ${e.message}")
+            Log.e(TAG, "Stack trace: ${e.stackTraceToString()}")
+            false
         }
     }
 
@@ -539,13 +623,14 @@ class AtProtocolRepositoryImpl @Inject constructor(
         return try {
             val did = sessionManager.getDid() ?: throw IllegalStateException("No DID found")
             
-            val record = PostRecord(
+            val record = AtProtocolService.PostRecord(
                 text = text,
                 createdAt = timestamp
             )
             
-            val request = CreatePostRequest(
+            val request = AtProtocolService.CreateRecordRequest(
                 repo = did,
+                collection = "app.bsky.feed.post",
                 record = record
             )
             
@@ -567,17 +652,18 @@ class AtProtocolRepositoryImpl @Inject constructor(
             
             val processedText = text
             
-            val record = PostRecord(
+            val record = AtProtocolService.PostRecord(
                 text = processedText,
                 createdAt = timestamp,
-                reply = ReplyReference(
-                    parent = PostReference(uri = parentUri, cid = parentCid),
-                    root = PostReference(uri = parentUri, cid = parentCid)
+                reply = AtProtocolService.ReplyReference(
+                    parent = AtProtocolService.PostReference(uri = parentUri, cid = parentCid),
+                    root = AtProtocolService.PostReference(uri = parentUri, cid = parentCid)
                 )
             )
             
-            val request = CreatePostRequest(
+            val request = AtProtocolService.CreateRecordRequest(
                 repo = did,
+                collection = "app.bsky.feed.post",
                 record = record
             )
             
@@ -595,7 +681,8 @@ class AtProtocolRepositoryImpl @Inject constructor(
                 UserSearchResult(
                     did = user.did,
                     handle = user.handle,
-                    displayName = user.displayName
+                    displayName = user.displayName,
+                    avatar = user.avatar
                 )
             }
         } catch (e: Exception) {
@@ -671,6 +758,7 @@ class AtProtocolRepositoryImpl @Inject constructor(
 
     override fun clearLikeCache() {
         likeStatusCache.clear()
+        repostStatusCache.clear()
     }
 
     override suspend fun deleteSession(refreshJwt: String): Result<Unit> = runCatching {
@@ -723,7 +811,7 @@ class AtProtocolRepositoryImpl @Inject constructor(
             listOf(
                 TrendingHashtag("photography", 1500, "Beautiful captures and visual stories", "📸"),
                 TrendingHashtag("music", 1200, "Latest tracks and music discussions", "🎵"),
-                TrendingHashtag("tech", 1000, "Technology news and discussions", "��"),
+                TrendingHashtag("tech", 1000, "Technology news and discussions", "💻"),
                 TrendingHashtag("art", 900, "Digital and traditional artworks", "🎨"),
                 TrendingHashtag("gaming", 800, "Gaming highlights and discussions", "🎮"),
                 TrendingHashtag("food", 700, "Culinary adventures and recipes", "🍳"),
@@ -784,6 +872,108 @@ class AtProtocolRepositoryImpl @Inject constructor(
             ))
         } catch (e: Exception) {
             Log.e(TAG, "❌ Failed to get posts by hashtag: ${e.message}")
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun searchHandles(query: String): List<UserSearchResult> {
+        return try {
+            if (query.length < 2) return emptyList()
+            
+            val response = service.searchUsers(query)
+            response.users.map { user ->
+                UserSearchResult(
+                    did = user.did,
+                    handle = user.handle,
+                    displayName = user.displayName,
+                    avatar = user.avatar
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to search handles: ${e.message}")
+            emptyList()
+        }
+    }
+
+    override suspend fun searchHashtags(query: String): List<TrendingHashtag> {
+        return try {
+            if (query.length < 2) return emptyList()
+            
+            // First try to get trending hashtags that match the query
+            val trending = getTrendingHashtags()
+                .filter { it.tag.startsWith(query, ignoreCase = true) }
+                .take(5)
+            
+            // Then get recent posts to find more hashtags
+            val recentPosts = getTimeline(limit = 100).getOrNull()?.feed ?: emptyList()
+            
+            // Extract hashtags from recent posts
+            val recentHashtags = recentPosts
+                .flatMap { post -> 
+                    extractHashtags(post.post.record.text)
+                        .filter { it.startsWith(query, ignoreCase = true) }
+                        .map { tag ->
+                            TrendingHashtag(
+                                tag = tag,
+                                count = recentPosts.count { p -> 
+                                    extractHashtags(p.post.record.text).contains(tag) 
+                                }
+                            )
+                        }
+                }
+                .distinctBy { it.tag }
+                .sortedByDescending { it.count }
+                .take(10)
+            
+            // Combine and deduplicate results
+            (trending + recentHashtags)
+                .distinctBy { it.tag }
+                .sortedByDescending { it.count }
+                .take(10)
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to search hashtags: ${e.message}")
+            emptyList()
+        }
+    }
+
+    private fun extractHashtags(text: String): Set<String> {
+        return text.split(' ')
+            .filter { it.startsWith('#') }
+            .map { it.substring(1) }
+            .filter { it.isNotEmpty() }
+            .toSet()
+    }
+
+    override suspend fun createQuotePost(
+        text: String,
+        quotedPostUri: String,
+        quotedPostCid: String
+    ): Result<CreateRecordResponse> {
+        return try {
+            val embed = AtProtocolService.RecordEmbed(
+                type = "app.bsky.embed.record",
+                record = AtProtocolService.StrongRef(
+                    uri = quotedPostUri,
+                    cid = quotedPostCid
+                )
+            )
+            
+            val postRecord = AtProtocolService.PostRecord(
+                type = "app.bsky.feed.post",
+                text = text,
+                createdAt = Instant.now().toString(),
+                embed = embed
+            )
+            
+            val request = AtProtocolService.CreateRecordRequest(
+                repo = getCurrentSession()?.did ?: throw IllegalStateException("No active session"),
+                collection = "app.bsky.feed.post",
+                record = postRecord
+            )
+            
+            val response = service.createRecord(request)
+            Result.success(response)
+        } catch (e: Exception) {
             Result.failure(e)
         }
     }

@@ -35,6 +35,7 @@ fun FollowingScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val likedPosts by viewModel.likedPosts.collectAsState()
+    val repostedPosts by viewModel.repostedPosts.collectAsState()
     val swipeRefreshState = rememberSwipeRefreshState(isRefreshing)
 
     // Log state changes
@@ -123,6 +124,7 @@ fun FollowingScreen(
                                 ThreadCard(
                                     feedPost = thread,
                                     isLiked = likedPosts.contains(thread.post.uri),
+                                    isReposted = repostedPosts.contains(thread.post.uri),
                                     onLikeClick = { viewModel.toggleLike(thread.post.uri) },
                                     onRepostClick = { viewModel.repost(thread.post.uri) },
                                     onShareClick = { /* TODO */ },

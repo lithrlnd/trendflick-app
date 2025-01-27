@@ -61,6 +61,9 @@ class HomeViewModel @Inject constructor(
     private val _likedPosts = MutableStateFlow<Set<String>>(emptySet())
     val likedPosts: StateFlow<Set<String>> = _likedPosts.asStateFlow()
 
+    private val _repostedPosts = MutableStateFlow<Set<String>>(emptySet())
+    val repostedPosts: StateFlow<Set<String>> = _repostedPosts.asStateFlow()
+
     private val _currentThread = MutableStateFlow<ThreadPost?>(null)
     val currentThread: StateFlow<ThreadPost?> = _currentThread.asStateFlow()
 
@@ -520,31 +523,38 @@ class HomeViewModel @Inject constructor(
     private fun loadInitialLikeStates(posts: List<FeedPost>) {
         viewModelScope.launch {
             try {
-                println("DEBUG: TrendFlick 💾 [TRENDS] Loading initial like states for ${posts.size} posts")
+                println("DEBUG: TrendFlick 💾 [TRENDS] Loading initial like and repost states for ${posts.size} posts")
                 
-                // Keep existing likes to prevent UI flicker
+                // Keep existing likes and reposts to prevent UI flicker
                 val currentLiked = _likedPosts.value.toMutableSet()
+                val currentReposted = _repostedPosts.value.toMutableSet()
                 println("DEBUG: TrendFlick 💾 [TRENDS] Current likes in memory before loading: ${currentLiked.size}")
+                println("DEBUG: TrendFlick 💾 [TRENDS] Current reposts in memory before loading: ${currentReposted.size}")
                 
-                // Check each post's like status
+                // Check each post's like and repost status
                 posts.forEach { feedPost ->
                     try {
-                        println("DEBUG: TrendFlick 🔍 [TRENDS] Checking like status for post: ${feedPost.post.uri}")
+                        println("DEBUG: TrendFlick 🔍 [TRENDS] Checking like and repost status for post: ${feedPost.post.uri}")
                         if (atProtocolRepository.isPostLikedByUser(feedPost.post.uri)) {
                             currentLiked.add(feedPost.post.uri)
                             println("DEBUG: TrendFlick ✅ [TRENDS] Post ${feedPost.post.uri} is liked")
                         }
+                        if (atProtocolRepository.isPostRepostedByUser(feedPost.post.uri)) {
+                            currentReposted.add(feedPost.post.uri)
+                            println("DEBUG: TrendFlick ✅ [TRENDS] Post ${feedPost.post.uri} is reposted")
+                        }
                     } catch (e: Exception) {
-                        println("DEBUG: TrendFlick ❌ [TRENDS] Failed to check like status for post ${feedPost.post.uri}: ${e.message}")
+                        println("DEBUG: TrendFlick ❌ [TRENDS] Failed to check like/repost status for post ${feedPost.post.uri}: ${e.message}")
                     }
                 }
                 
-                // Update the state
+                // Update the states
                 _likedPosts.value = currentLiked
+                _repostedPosts.value = currentReposted
                 println("DEBUG: TrendFlick 💾 [TRENDS] Updated liked posts set, total liked: ${currentLiked.size}")
-                println("DEBUG: TrendFlick 💾 [TRENDS] Liked posts URIs: ${currentLiked.joinToString(limit = 5)}")
+                println("DEBUG: TrendFlick 💾 [TRENDS] Updated reposted posts set, total reposted: ${currentReposted.size}")
             } catch (e: Exception) {
-                println("DEBUG: TrendFlick ❌ [TRENDS] Failed to load initial like states: ${e.message}")
+                println("DEBUG: TrendFlick ❌ [TRENDS] Failed to load initial like/repost states: ${e.message}")
                 println("DEBUG: TrendFlick ❌ [TRENDS] Stack trace: ${e.stackTraceToString()}")
             }
         }
@@ -617,9 +627,56 @@ class HomeViewModel @Inject constructor(
     fun repost(uri: String) {
         viewModelScope.launch {
             try {
-                atProtocolRepository.repost(uri)
+                Log.d(TAG, "🔄 Starting repost process for URI: $uri")
+                // First get the post details to get the correct CID
+                val postThread = atProtocolRepository.getPostThread(uri)
+                postThread.onSuccess { threadResponse ->
+                    val post = threadResponse.thread.post
+                    Log.d(TAG, """
+                        📝 Thread Response Details:
+                        Post URI: ${post.uri}
+                        Post CID: ${post.cid}
+                        Raw CID value type: ${post.cid::class.java.simpleName}
+                        Raw Response: $threadResponse
+                    """.trimIndent())
+                    
+                    if (post.cid.startsWith("bafyrei") || post.cid.startsWith("bafy")) {
+                        Log.d(TAG, "📝 Post details retrieved - URI: ${post.uri}, CID: ${post.cid}")
+                        // Now create the repost with the correct CID
+                        atProtocolRepository.repost(post.uri, post.cid)
+                        Log.d(TAG, "✅ Repost request sent successfully")
+                        // Toggle repost state
+                        _repostedPosts.value = if (uri in _repostedPosts.value) {
+                            _repostedPosts.value - uri
+                        } else {
+                            _repostedPosts.value + uri
+                        }
+                    } else {
+                        Log.e(TAG, "❌ Invalid CID format: ${post.cid}")
+                        throw IllegalStateException("Invalid CID format received from server")
+                    }
+                }.onFailure { error ->
+                    Log.e(TAG, "❌ Failed to get post details for repost: ${error.message}")
+                    Log.e(TAG, "Stack trace: ${error.stackTraceToString()}")
+                }
             } catch (e: Exception) {
-                System.err.println("Failed to repost: ${e.message}")
+                Log.e(TAG, "❌ Failed to repost: ${e.message}")
+                Log.e(TAG, "Stack trace: ${e.stackTraceToString()}")
+            }
+        }
+    }
+
+    fun checkRepostStatus(uri: String) {
+        viewModelScope.launch {
+            try {
+                val isReposted = atProtocolRepository.isPostRepostedByUser(uri)
+                if (isReposted) {
+                    _repostedPosts.value = _repostedPosts.value + uri
+                } else {
+                    _repostedPosts.value = _repostedPosts.value - uri
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to check repost status: ${e.message}")
             }
         }
     }

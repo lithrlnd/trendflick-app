@@ -104,7 +104,7 @@ data class ReplyReference(
 @JsonClass(generateAdapter = true)
 data class PostReference(
     @field:Json(name = "uri") val uri: String,
-    @field:Json(name = "cid") val cid: String? = null
+    @field:Json(name = "cid") val cid: String
 )
 
 // Response Models
@@ -112,6 +112,13 @@ data class PostReference(
 data class CreateRecordResponse(
     @field:Json(name = "uri") val uri: String,
     @field:Json(name = "cid") val cid: String
+)
+
+@JsonClass(generateAdapter = true)
+data class GetRepostsResponse(
+    @field:Json(name = "repostedBy") val repostedBy: List<AtProfile>,
+    @field:Json(name = "cursor") val cursor: String?,
+    @field:Json(name = "uri") val uri: String
 )
 
 @JsonClass(generateAdapter = true)

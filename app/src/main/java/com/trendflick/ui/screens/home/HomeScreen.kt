@@ -107,6 +107,7 @@ fun HomeScreen(
     val threads by viewModel.threads.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val likedPosts by viewModel.likedPosts.collectAsState()
+    val repostedPosts by viewModel.repostedPosts.collectAsState()
     val currentThread by viewModel.currentThread.collectAsState()
     val showComments by viewModel.showComments.collectAsState()
     val currentPostComments by viewModel.currentPostComments.collectAsState()
@@ -302,6 +303,7 @@ fun HomeScreen(
                                                     ThreadCard(
                                                         feedPost = thread,
                                                         isLiked = likedPosts.contains(thread.post.uri),
+                                                        isReposted = repostedPosts.contains(thread.post.uri),
                                                         onLikeClick = { viewModel.toggleLike(thread.post.uri) },
                                                         onRepostClick = { viewModel.repost(thread.post.uri) },
                                                         onShareClick = { viewModel.sharePost(thread.post.uri) },

@@ -3,6 +3,7 @@ package com.trendflick.ui.screens.create
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.trendflick.data.repository.AtProtocolRepository
+import com.trendflick.data.model.SuggestionItem
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,8 +20,52 @@ class CreatePostViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(CreatePostUiState())
     val uiState: StateFlow<CreatePostUiState> = _uiState.asStateFlow()
 
-    private val _handleSuggestions = MutableStateFlow<List<HandleSuggestion>>(emptyList())
-    val handleSuggestions: StateFlow<List<HandleSuggestion>> = _handleSuggestions.asStateFlow()
+    private val _suggestions = MutableStateFlow<List<SuggestionItem>>(emptyList())
+    val suggestions: StateFlow<List<SuggestionItem>> = _suggestions.asStateFlow()
+
+    fun searchMentions(query: String) {
+        viewModelScope.launch {
+            try {
+                if (query.length >= 2) {
+                    val handles = atProtocolRepository.searchHandles(query)
+                    _suggestions.value = handles.map { handle ->
+                        SuggestionItem.Mention(
+                            did = handle.did,
+                            handle = handle.handle,
+                            displayName = handle.displayName ?: handle.handle,
+                            avatarUrl = handle.avatar
+                        )
+                    }
+                } else {
+                    _suggestions.value = emptyList()
+                }
+            } catch (e: Exception) {
+                _suggestions.value = emptyList()
+                _uiState.value = CreatePostUiState(error = "Failed to load suggestions")
+            }
+        }
+    }
+
+    fun searchHashtags(query: String) {
+        viewModelScope.launch {
+            try {
+                if (query.length >= 2) {
+                    val hashtags = atProtocolRepository.searchHashtags(query)
+                    _suggestions.value = hashtags.map { tag ->
+                        SuggestionItem.Hashtag(
+                            tag = tag.tag,
+                            postCount = tag.count
+                        )
+                    }
+                } else {
+                    _suggestions.value = emptyList()
+                }
+            } catch (e: Exception) {
+                _suggestions.value = emptyList()
+                _uiState.value = CreatePostUiState(error = "Failed to load suggestions")
+            }
+        }
+    }
 
     fun createPost(text: String) {
         viewModelScope.launch {
@@ -56,30 +101,12 @@ class CreatePostViewModel @Inject constructor(
             }
         }
     }
-
-    fun searchHandles(query: String) {
-        viewModelScope.launch {
-            try {
-                // Call the AT Protocol search endpoint
-                val results = atProtocolRepository.searchUsers(query)
-                _handleSuggestions.value = results.map { user ->
-                    HandleSuggestion(
-                        handle = user.handle,
-                        displayName = user.displayName ?: ""  // Provide default empty string
-                    )
-                }
-            } catch (e: Exception) {
-                // Handle error silently for suggestions
-                _handleSuggestions.value = emptyList()
-            }
-        }
-    }
 }
 
 data class CreatePostUiState(
     val isLoading: Boolean = false,
-    val isPostSuccessful: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val isPostSuccessful: Boolean = false
 )
 
 data class HandleSuggestion(

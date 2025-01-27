@@ -237,10 +237,12 @@ private fun HashtagItem(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(
-                text = hashtag.emoji,
-                fontSize = 24.sp
-            )
+            hashtag.emoji?.let { emoji ->
+                Text(
+                    text = emoji,
+                    fontSize = 24.sp
+                )
+            }
             
             Column {
                 Text(
