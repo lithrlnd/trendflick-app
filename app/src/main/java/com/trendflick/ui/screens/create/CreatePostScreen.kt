@@ -146,6 +146,37 @@ fun CreatePostScreen(
                 .fillMaxSize()
                 .padding(16.dp)
         ) {
+            // Top bar with post button
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = { navController.navigateUp() }) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Close",
+                        tint = Color.White
+                    )
+                }
+                Button(
+                    onClick = {
+                        keyboardController?.hide()
+                        viewModel.createPost(postTextFieldValue.text)
+                    },
+                    enabled = postTextFieldValue.text.isNotBlank() && postTextFieldValue.text.length <= 300,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF6B4EFF),
+                        contentColor = Color.White,
+                        disabledContainerColor = Color(0xFF6B4EFF).copy(alpha = 0.5f)
+                    )
+                ) {
+                    Text("Post")
+                }
+            }
+
             OutlinedTextField(
                 value = postTextFieldValue,
                 onValueChange = { newValue ->
