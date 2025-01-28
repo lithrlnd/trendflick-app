@@ -44,7 +44,8 @@ import com.trendflick.ui.components.RequestPermissions
 fun EmptyState(
     onTestClick: () -> Unit,
     onFolderTestClick: () -> Unit,
-    onSmallFileTestClick: () -> Unit
+    onSmallFileTestClick: () -> Unit,
+    onBlueskyTestClick: () -> Unit
 ) {
     Column(
         modifier = Modifier.fillMaxSize(),
@@ -78,6 +79,14 @@ fun EmptyState(
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4EFF8A))
         ) {
             Text("Test Small File Upload", color = Color.White)
+        }
+
+        Button(
+            onClick = onBlueskyTestClick,
+            modifier = Modifier.padding(top = 8.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4E8AFF))
+        ) {
+            Text("Test Bluesky Post", color = Color.White)
         }
     }
 }
@@ -159,13 +168,15 @@ fun FlicksScreen(
             EmptyState(
                 onTestClick = { /* Disabled until permissions granted */ },
                 onFolderTestClick = { /* Disabled until permissions granted */ },
-                onSmallFileTestClick = { /* Disabled until permissions granted */ }
+                onSmallFileTestClick = { /* Disabled until permissions granted */ },
+                onBlueskyTestClick = { /* Disabled until permissions granted */ }
             )
         } else if (videos.isEmpty()) {
             EmptyState(
-                onTestClick = { /* Disabled for now */ },
-                onFolderTestClick = { /* Disabled for now */ },
-                onSmallFileTestClick = { /* Disabled for now */ }
+                onTestClick = { viewModel.testVideoInFolder() },
+                onFolderTestClick = { viewModel.testFolderAccess() },
+                onSmallFileTestClick = { viewModel.testSmallFileUpload() },
+                onBlueskyTestClick = { viewModel.testBlueskyPost() }
             )
         } else {
             // Show video count for debugging

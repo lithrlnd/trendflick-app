@@ -288,3 +288,63 @@ TrendFlick is a BlueSky-compatible social media client that focuses on creating 
 ## License
 
 [License information...]
+
+## 🎥 Video Upload Feature
+
+TrendFlick now supports video uploads directly to Bluesky! This feature allows users to share videos up to 60 seconds in length with automatic optimization and compression.
+
+### Features
+- Upload videos up to 60 seconds long
+- Automatic video compression and optimization
+- Support for both vertical and horizontal videos
+- Smart quality adjustment to meet Bluesky's size limits
+- Progress tracking and error handling
+- Maintains aspect ratio and video quality
+
+### Technical Specifications
+- **Maximum Duration**: 60 seconds
+- **File Format**: MP4
+- **Maximum File Size**: 50MB
+- **Video Codec**: H.264/AVC
+- **Target Resolution**: Up to 360p (optimized for mobile)
+- **Bitrate**: 250Kbps (adaptive)
+- **Frame Rate**: 20fps
+
+### How to Use
+1. Tap the FAB (Floating Action Button)
+2. Select "Record" or choose an existing video
+3. Add a description
+4. Preview your video
+5. Post to your Bluesky feed
+
+### Implementation Details
+- Automatic video compression if file size exceeds limits
+- Vertical video detection for optimal display
+- Proper error handling and user feedback
+- Progress tracking during upload
+- Compliant with Bluesky's AT Protocol standards
+
+## Core Features
+- Authentication with BlueSky
+- Timeline viewing and interaction
+- Post creation with media support
+- Custom feed filtering
+- Social interactions (likes, reposts, etc.)
+- Profile management
+
+## Technical Requirements
+- Android SDK 24+
+- Kotlin-first development
+- Jetpack Compose UI
+- Material 3 design
+
+## Getting Started
+1. Clone the repository
+2. Add your Bluesky API credentials
+3. Build and run the project
+
+## Contributing
+We welcome contributions! Please read our contributing guidelines before submitting pull requests.
+
+## License
+[Add your license information here]

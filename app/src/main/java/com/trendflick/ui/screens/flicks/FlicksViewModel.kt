@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.trendflick.data.model.Video
 import com.trendflick.data.repository.VideoRepository
 import com.trendflick.data.repository.VideoRepositoryImpl
+import com.trendflick.data.repository.BlueskyRepository
+import com.trendflick.data.repository.AtProtocolRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -15,7 +17,9 @@ import javax.inject.Inject
 
 @HiltViewModel
 class FlicksViewModel @Inject constructor(
-    private val videoRepository: VideoRepository
+    private val videoRepository: VideoRepository,
+    private val blueskyRepository: BlueskyRepository,
+    private val atProtocolRepository: AtProtocolRepository
 ) : ViewModel() {
 
     private val TAG = "TF_FlicksViewModel"
@@ -105,6 +109,30 @@ class FlicksViewModel @Inject constructor(
                 loadVideos() // Refresh the feed after test
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Small file test failed: ${e.message}")
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun testBlueskyPost() {
+        viewModelScope.launch {
+            try {
+                _isLoading.value = true
+                Log.d(TAG, "🔄 Testing Bluesky post...")
+                
+                // First ensure we have a valid session
+                val sessionValid = atProtocolRepository.ensureValidSession()
+                
+                if (sessionValid) {
+                    Log.d(TAG, "✅ Session valid")
+                    // Add your test post logic here if needed
+                } else {
+                    Log.e(TAG, "❌ No valid session")
+                }
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Test post failed: ${e.message}")
             } finally {
                 _isLoading.value = false
             }

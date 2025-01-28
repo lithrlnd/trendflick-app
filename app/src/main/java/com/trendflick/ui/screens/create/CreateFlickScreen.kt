@@ -58,6 +58,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.animation.core.ExperimentalTransitionApi
+import androidx.compose.ui.text.style.TextOverflow
+import android.util.Log
 
 @OptIn(
     ExperimentalMaterial3Api::class,
@@ -80,10 +82,9 @@ fun CreateFlickScreen(
     var isRecording by remember { mutableStateOf(false) }
     var isBackCamera by remember { mutableStateOf(false) }
     var recordingSegments by remember { mutableStateOf(listOf<Float>()) }
-    var selectedDuration by remember { mutableStateOf(60L) }
+    var selectedDuration by remember { mutableStateOf(60L) } // Max 60s for BlueSky
     var recordingProgress by remember { mutableStateOf(0f) }
     var elapsedTime by remember { mutableStateOf(0L) }
-    var postToBlueSky by remember { mutableStateOf(true) }
     var textFieldValue by remember { mutableStateOf(TextFieldValue()) }
     var showSuggestions by remember { mutableStateOf(false) }
     var currentTag by remember { mutableStateOf("") }
@@ -91,23 +92,49 @@ fun CreateFlickScreen(
     var isMentioning by remember { mutableStateOf(false) }
     var showDialog by remember { mutableStateOf(false) }
     
-    val timeOptions = remember { listOf(
-        60L to "60s",
-        180L to "3m",
-        600L to "10m"
-    )}
+    // Define time options
+    val timeOptions = remember { listOf(60L to "60s") } // Only 60s for BlueSky
+    
     val context = LocalContext.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val scrollState = rememberScrollState()
     val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+
+    // Collect UI state
+    val uiState by viewModel.uiState.collectAsState()
+
+    // Add snackbarHostState
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Handle UI state changes
+    LaunchedEffect(uiState) {
+        when {
+            uiState.isPostSuccessful -> {
+                // Navigate back to flicks screen on successful post
+                navController.navigate("flicks") {
+                    popUpTo("create_flick") { inclusive = true }
+                }
+            }
+            uiState.error != null -> {
+                // Show error Snackbar
+                snackbarHostState.showSnackbar(
+                    message = uiState.error!!,
+                    duration = SnackbarDuration.Long
+                )
+            }
+        }
+    }
 
     val videoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         selectedVideoUri = uri
         if (uri != null) {
-            showDescriptionScreen = true
             showCameraPreview = false
+            showPreviewScreen = false
+            showDescriptionScreen = true
+            // Reset description when new video is selected
+            textFieldValue = TextFieldValue()
         }
     }
 
@@ -118,13 +145,14 @@ fun CreateFlickScreen(
         recordingProgress = 0f
         recordingSegments = listOf()
         selectedVideoUri = null
+        textFieldValue = TextFieldValue()
     }
 
     fun discardChanges() {
+        showDialog = false
         showDescriptionScreen = false
         showPreviewScreen = false
         showCameraPreview = true
-        textFieldValue = TextFieldValue()
         resetRecording()
     }
 
@@ -140,6 +168,7 @@ fun CreateFlickScreen(
                     isRecording = false
                     isPaused = false
                     showPreviewScreen = true
+                    showCameraPreview = false
                     break
                 }
             }
@@ -190,95 +219,66 @@ fun CreateFlickScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .verticalScroll(scrollState)
-                        .padding(16.dp)
+                        .background(Color.Black)
+                        .navigationBarsPadding()
+                        .imePadding()
                 ) {
-                    // Top Bar with Discard
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        TextButton(
-                            onClick = {
-                                // Show confirmation dialog
-                                showDialog = true
-                            },
-                            colors = ButtonDefaults.textButtonColors(contentColor = Color.Red)
-                        ) {
-                            Text("Discard")
-                        }
-                        Button(
-                            onClick = {
-                                keyboardController?.hide()
-                                viewModel.createFlick(
-                                    selectedVideoUri!!, 
-                                    textFieldValue.text, 
-                                    postToBlueSky
+                    // Top Bar
+                    TopAppBar(
+                        title = { Text("New Flick", color = Color.White) },
+                        navigationIcon = {
+                            IconButton(onClick = { showDialog = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Close",
+                                    tint = Color.White
                                 )
-                                navController.navigateUp()
-                            },
-                            enabled = textFieldValue.text.isNotBlank(),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6B4EFF))
-                        ) {
-                            Text("Post")
-                        }
-                    }
-
-                    if (showDialog) {
-                        AlertDialog(
-                            onDismissRequest = { showDialog = false },
-                            title = { Text("Discard Changes?") },
-                            text = { Text("Are you sure you want to discard your video and changes?") },
-                            confirmButton = {
-                                TextButton(
-                                    onClick = {
-                                        showDialog = false
-                                        discardChanges()
+                            }
+                        },
+                        actions = {
+                            Button(
+                                onClick = {
+                                    if (textFieldValue.text.isNotEmpty() && selectedVideoUri != null) {
+                                        viewModel.createFlick(selectedVideoUri!!, textFieldValue.text)
                                     }
-                                ) {
-                                    Text("Discard", color = Color.Red)
-                                }
-                            },
-                            dismissButton = {
-                                TextButton(onClick = { showDialog = false }) {
-                                    Text("Cancel")
+                                },
+                                enabled = textFieldValue.text.isNotEmpty() && selectedVideoUri != null && !uiState.isLoading,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF6B4EFF),
+                                    disabledContainerColor = Color(0xFF6B4EFF).copy(alpha = 0.5f)
+                                )
+                            ) {
+                                if (uiState.isLoading) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            color = Color.White
+                                        )
+                                        Text("Posting...")
+                                    }
+                                } else {
+                                    Text("Post")
                                 }
                             }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = Color.Black
                         )
-                    }
+                    )
 
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // BlueSky post toggle - moved to top for better visibility
-                    Row(
+                    // Video preview with loading overlay
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                            .height(200.dp)
+                            .padding(16.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.Black)
                     ) {
-                        Text("Post to BlueSky", color = Color.White)
-                        Switch(
-                            checked = postToBlueSky,
-                            onCheckedChange = { postToBlueSky = it },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color(0xFF6B4EFF),
-                                checkedTrackColor = Color(0xFF6B4EFF).copy(alpha = 0.5f)
-                            )
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Video preview
-                    selectedVideoUri?.let { uri ->
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(if (keyboardVisible) 150.dp else 300.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                        ) {
+                        selectedVideoUri?.let { uri ->
                             AndroidView(
                                 factory = { context ->
                                     VideoView(context).apply {
@@ -292,118 +292,140 @@ fun CreateFlickScreen(
                                 modifier = Modifier.fillMaxSize()
                             )
                         }
-                    }
 
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Suggestions now appear ABOVE the text field when active
-                    if (showSuggestions) {
-                        val suggestions = viewModel.suggestions.collectAsState().value
-                        
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 200.dp)
-                                .background(Color.DarkGray.copy(alpha = 0.9f))
-                                .clip(RoundedCornerShape(8.dp))
-                        ) {
-                            items(suggestions) { suggestion ->
-                                Text(
-                                    text = if (isMentioning) "@$suggestion" else "#$suggestion",
-                                    color = Color.White,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            val prefix = if (isMentioning) "@" else "#"
-                                            val text = textFieldValue.text
-                                            val lastSpaceIndex = text.lastIndexOf(' ').coerceAtLeast(0)
-                                            val newText = text.substring(0, lastSpaceIndex) + 
-                                                (if (lastSpaceIndex > 0) " " else "") +
-                                                prefix + suggestion + " "
-                                            textFieldValue = TextFieldValue(
-                                                text = newText,
-                                                selection = TextRange(newText.length)
-                                            )
-                                            showSuggestions = false
-                                            isTagging = false
-                                            isMentioning = false
-                                            currentTag = ""
-                                        }
-                                        .padding(16.dp)
-                                )
+                        // Loading overlay
+                        if (uiState.isLoading) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.Black.copy(alpha = 0.7f))
+                            ) {
+                                Column(
+                                    modifier = Modifier.align(Alignment.Center),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    CircularProgressIndicator(color = Color.White)
+                                    Text(
+                                        text = "Uploading to BlueSky...",
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    if (uiState.uploadProgress > 0f) {
+                                        Text(
+                                            text = "${(uiState.uploadProgress * 100).toInt()}%",
+                                            color = Color.White,
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                        LinearProgressIndicator(
+                                            progress = uiState.uploadProgress,
+                                            modifier = Modifier
+                                                .width(200.dp)
+                                                .height(4.dp),
+                                            color = Color(0xFF6B4EFF)
+                                        )
+                                    }
+                                }
                             }
                         }
-                        
-                        Spacer(modifier = Modifier.height(8.dp))
                     }
 
+                    // Description input
                     OutlinedTextField(
                         value = textFieldValue,
                         onValueChange = { newValue ->
-                            textFieldValue = newValue
-                            val text = newValue.text
-                            val lastWord = text.substring(text.lastIndexOf(' ').coerceAtLeast(0)).trim()
-                            
-                            when {
-                                lastWord.startsWith("@") -> {
-                                    currentTag = lastWord.substring(1)
-                                    if (currentTag.isNotEmpty()) {
-                                        showSuggestions = true
-                                        isTagging = false
-                                        isMentioning = true
-                                        // Fetch BlueSky users matching the query
-                                        viewModel.searchBlueSkyUsers(currentTag)
-                                    }
-                                }
-                                lastWord.startsWith("#") -> {
-                                    currentTag = lastWord.substring(1)
-                                    if (currentTag.isNotEmpty()) {
-                                        showSuggestions = true
-                                        isTagging = true
-                                        isMentioning = false
-                                        // Fetch trending hashtags or filter local list
-                                        viewModel.searchHashtags(currentTag)
-                                    }
-                                }
-                                lastWord.isEmpty() -> {
-                                    showSuggestions = false
-                                    isTagging = false
-                                    isMentioning = false
-                                    currentTag = ""
-                                }
-                                else -> {
-                                    if (showSuggestions && !lastWord.contains("@") && !lastWord.contains("#")) {
-                                        showSuggestions = false
-                                    }
-                                }
+                            if (newValue.text.length <= 300) {
+                                textFieldValue = newValue
                             }
                         },
                         modifier = Modifier
                             .fillMaxWidth()
+                            .padding(16.dp)
                             .height(120.dp),
-                        placeholder = { Text("Add a description... Use @ to mention users and # for hashtags") },
+                        enabled = !uiState.isLoading,
+                        placeholder = { 
+                            Text(
+                                "What's on your mind? Use @ to mention users and # for hashtags",
+                                color = Color.Gray
+                            )
+                        },
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
+                            focusedContainerColor = Color.Black,
+                            unfocusedContainerColor = Color.Black,
+                            disabledContainerColor = Color.Black,
                             focusedBorderColor = Color(0xFF6B4EFF),
                             unfocusedBorderColor = Color.Gray,
+                            disabledBorderColor = Color.Gray.copy(alpha = 0.5f),
                             focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White
+                            unfocusedTextColor = Color.White,
+                            disabledTextColor = Color.White.copy(alpha = 0.5f)
                         ),
-                        textStyle = TextStyle(fontSize = 16.sp)
+                        textStyle = MaterialTheme.typography.bodyLarge
                     )
+
+                    // Character count and error message
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "${300 - textFieldValue.text.length} characters remaining",
+                            color = if (textFieldValue.text.length > 280) Color.Red else Color.Gray,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+
+                        if (uiState.error != null) {
+                            Text(
+                                text = uiState.error!!,
+                                color = Color.Red,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+
+                    if (showDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showDialog = false },
+                            title = { Text("Discard Changes?") },
+                            text = { Text("Are you sure you want to discard your video and changes?") },
+                            confirmButton = {
+                                TextButton(
+                                    onClick = { discardChanges() }
+                                ) {
+                                    Text("Discard", color = Color.Red)
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showDialog = false }) {
+                                    Text("Cancel")
+                                }
+                            }
+                        )
+                    }
                 }
             }
             showPreviewScreen -> {
                 // Preview Screen
-                Box(modifier = Modifier.fillMaxSize()) {
-                    // Video Preview
+                Box(modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
+                ) {
+                    // Video Preview with error handling
                     selectedVideoUri?.let { uri ->
+                        Log.d("CreateFlickScreen", "Attempting to preview video: $uri")
                         AndroidView(
                             factory = { context ->
                                 VideoView(context).apply {
+                                    setOnErrorListener { _, what, extra ->
+                                        Log.e("CreateFlickScreen", "VideoView error: what=$what, extra=$extra")
+                                        true
+                                    }
                                     setVideoURI(uri)
                                     setOnPreparedListener { mp ->
+                                        Log.d("CreateFlickScreen", "Video prepared successfully")
                                         mp.isLooping = true
                                         start()
                                     }
@@ -411,59 +433,86 @@ fun CreateFlickScreen(
                             },
                             modifier = Modifier.fillMaxSize()
                         )
+                    } ?: run {
+                        Log.e("CreateFlickScreen", "No video URI available in preview screen")
                     }
 
-                    // Preview Controls
-                    Column(
+                    // Overlay for controls with darker background for better visibility
+                    Box(
                         modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = 32.dp)
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.3f))
                     ) {
-                        Row(
+                        // Top bar with back button
+                        TopAppBar(
+                            title = { Text("Preview", color = Color.White) },
+                            navigationIcon = {
+                                IconButton(
+                                    onClick = {
+                                        showPreviewScreen = false
+                                        showCameraPreview = true
+                                        resetRecording()
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowBack,
+                                        contentDescription = "Back",
+                                        tint = Color.White
+                                    )
+                                }
+                            },
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = Color.Black.copy(alpha = 0.6f)
+                            ),
+                            modifier = Modifier.align(Alignment.TopCenter)
+                        )
+
+                        // Preview Controls with more prominent buttons
+                        Column(
                             modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = 120.dp) // Increased bottom padding to move above nav bar
+                                .background(Color.Black.copy(alpha = 0.6f))
+                                .padding(vertical = 16.dp) // Add padding inside the dark background
                                 .fillMaxWidth()
-                                .padding(horizontal = 32.dp),
-                            horizontalArrangement = Arrangement.SpaceEvenly
                         ) {
-                            Button(
-                                onClick = {
-                                    showPreviewScreen = false
-                                    showCameraPreview = true
-                                    resetRecording()
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 32.dp),
+                                horizontalArrangement = Arrangement.SpaceEvenly
                             ) {
-                                Text("Retake")
-                            }
-                            
-                            Button(
-                                onClick = {
-                                    showPreviewScreen = false
-                                    showDescriptionScreen = true
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6B4EFF))
-                            ) {
-                                Text("Use Video")
+                                Button(
+                                    onClick = {
+                                        showPreviewScreen = false
+                                        showCameraPreview = true
+                                        resetRecording()
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(end = 8.dp)
+                                        .height(48.dp) // Make buttons taller
+                                ) {
+                                    Text("Retake", color = Color.White)
+                                }
+                                
+                                Button(
+                                    onClick = {
+                                        Log.d("CreateFlickScreen", "Next button clicked, navigating to description")
+                                        showPreviewScreen = false
+                                        showDescriptionScreen = true
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6B4EFF)),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(start = 8.dp)
+                                        .height(48.dp) // Make buttons taller
+                                ) {
+                                    Text("Next", color = Color.White)
+                                }
                             }
                         }
-                    }
-
-                    // Add back button to preview screen
-                    IconButton(
-                        onClick = {
-                            showPreviewScreen = false
-                            showCameraPreview = true
-                            resetRecording()
-                        },
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .background(Color.Black.copy(alpha = 0.6f), CircleShape)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = "Back",
-                            tint = Color.White
-                        )
                     }
                 }
             }
@@ -474,9 +523,9 @@ fun CreateFlickScreen(
                         CameraPreview(
                             onVideoRecorded = { videoFiles ->
                                 if (videoFiles.isNotEmpty()) {
-                                    selectedVideoUri = Uri.fromFile(videoFiles.last())
-                                    showDescriptionScreen = true
-                                    showCameraPreview = false
+                                    val videoFile = videoFiles.last()
+                                    Log.d("CreateFlickScreen", "Video recorded: ${videoFile.absolutePath}")
+                                    selectedVideoUri = Uri.fromFile(videoFile)
                                 }
                             },
                             modifier = Modifier.fillMaxSize(),
@@ -672,7 +721,15 @@ fun CreateFlickScreen(
                                 IconButton(
                                     onClick = { 
                                         isRecording = false
-                                        showPreviewScreen = true 
+                                        isPaused = false
+                                        if (selectedVideoUri != null) {
+                                            Log.d("CreateFlickScreen", "Navigating to preview with video: $selectedVideoUri")
+                                            showCameraPreview = false
+                                            showDescriptionScreen = false
+                                            showPreviewScreen = true
+                                        } else {
+                                            Log.e("CreateFlickScreen", "No video URI available for preview")
+                                        }
                                     },
                                     modifier = Modifier
                                         .size(48.dp)
@@ -706,5 +763,13 @@ fun CreateFlickScreen(
                 }
             }
         }
+
+        // Snackbar host at the end of the Box
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+        )
     }
 } 
