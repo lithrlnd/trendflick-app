@@ -99,6 +99,7 @@ class CreateFlickViewModel @Inject constructor(
                     // Create BlueSky post with video embed
                     val postResult = atProtocolRepository.createPost(
                         record = mapOf(
+                            "did" to (atProtocolRepository.getDid() ?: throw IllegalStateException("No DID found")),
                             "\$type" to "app.bsky.feed.post",
                             "text" to description,
                             "createdAt" to java.time.Instant.now().toString(),
