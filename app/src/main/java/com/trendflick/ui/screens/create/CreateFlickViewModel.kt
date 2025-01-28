@@ -159,7 +159,7 @@ class CreateFlickViewModel @Inject constructor(
                 Log.d(TAG, "📤 UPLOAD: Starting video upload to Firebase")
                 val videoUrl = uploadVideo(videoUri)
                 Log.d(TAG, "📤 UPLOAD: Success - URL: $videoUrl")
-
+                
                 // 2. Get user info - AT Protocol only needed if posting to BlueSky
                 val currentUser = if (postToBlueSky) {
                     atProtocolRepository.getCurrentSession()
@@ -188,23 +188,23 @@ class CreateFlickViewModel @Inject constructor(
                 // 4. Post to BlueSky if selected
                 if (postToBlueSky) {
                     try {
-                        val facets = extractFacets(description)
-                        val record = mapOf<String, Any>(
-                            "\$type" to "app.bsky.feed.post",
+                val facets = extractFacets(description)
+                val record = mapOf<String, Any>(
+                    "\$type" to "app.bsky.feed.post",
                             "text" to "$description\n\n🎬 Coming soon to Android! Follow us for updates.",
-                            "createdAt" to timestamp,
-                            "facets" to facets,
-                            "embed" to mapOf<String, Any>(
-                                "\$type" to "app.bsky.embed.external",
-                                "external" to mapOf(
+                    "createdAt" to timestamp,
+                    "facets" to facets,
+                    "embed" to mapOf<String, Any>(
+                        "\$type" to "app.bsky.embed.external",
+                        "external" to mapOf(
                                     "uri" to "https://trendflick.app/flick/${video.uri}",
                                     "title" to "Watch on TrendFlick (Coming Soon)",
-                                    "description" to description,
+                            "description" to description,
                                     "thumb" to "" // Optional thumbnail URL
-                                )
                             )
                         )
-                        val postResult = atProtocolRepository.createPost(record)
+                    )
+                val postResult = atProtocolRepository.createPost(record)
                         _uiState.value = CreateFlickUiState(isPostSuccessful = true, video = video)
                     } catch (e: Exception) {
                         _uiState.value = CreateFlickUiState(error = "Failed to post to BlueSky: ${e.message}", video = video)

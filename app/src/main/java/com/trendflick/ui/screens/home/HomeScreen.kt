@@ -96,6 +96,8 @@ import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.ui.text.style.TextAlign
 import com.trendflick.ui.components.RichTextRenderer
 import android.util.Log
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -472,40 +474,63 @@ fun HomeScreen(
                                             )
                                         }
                                         
-                                        // Add refresh button
-                                        IconButton(
-                                            onClick = { 
-                                                currentThread?.post?.uri?.let { uri ->
-                                                    viewModel.loadComments(uri)
-                                                }
-                                            }
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Refresh,
-                                                contentDescription = "Refresh comments",
-                                                tint = Color.White
-                                            )
+                                            // Author-only toggle
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                val showAuthorOnly by viewModel.showAuthorOnly.collectAsState()
+                                                Text(
+                                                    text = if (showAuthorOnly) "Author" else "All",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = Color.White.copy(alpha = 0.7f)
+                                                )
+                                                Switch(
+                                                    checked = showAuthorOnly,
+                                                    onCheckedChange = { viewModel.toggleAuthorOnly() },
+                                                    colors = SwitchDefaults.colors(
+                                                        checkedThumbColor = Color(0xFF6B4EFF),
+                                                        checkedTrackColor = Color(0xFF6B4EFF).copy(alpha = 0.5f),
+                                                        uncheckedThumbColor = Color.White,
+                                                        uncheckedTrackColor = Color.White.copy(alpha = 0.3f)
+                                                    ),
+                                                    modifier = Modifier.scale(0.8f)
+                                                )
+                                            }
+                                            
+                                            // Refresh button
+                                            IconButton(
+                                                onClick = { 
+                                                    currentThread?.post?.uri?.let { uri ->
+                                                        viewModel.loadComments(uri)
+                                                    }
+                                                }
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Refresh,
+                                                    contentDescription = "Refresh comments",
+                                                    tint = Color.White
+                                                )
+                                            }
                                         }
                                     }
 
-                                    // Comments list
-                                    LazyColumn(
+                                    // Comments list with author filter
+                                    Box(
                                         modifier = Modifier
                                             .weight(1f)
-                                            .fillMaxWidth(),
-                                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                                            .fillMaxWidth()
                                     ) {
-                                        val thread = currentThread
-                                        if (thread != null) {
-                                            thread.replies?.forEach { reply ->
-                                                item {
-                                                    CommentItem(
-                                                        comment = reply,
-                                                        onProfileClick = { did -> onNavigateToProfile(did) },
-                                                        originalPostAuthorDid = thread.post.author.did
-                                                    )
-                                                }
-                                            }
+                                        currentThread?.let { thread ->
+                                            FilteredCommentsList(
+                                                thread = thread,
+                                                viewModel = viewModel,
+                                                onProfileClick = onNavigateToProfile
+                                            )
                                         }
                                     }
 
@@ -1166,7 +1191,7 @@ fun VideoFeedSection(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(vertical = 8.dp)
                 ) {
-                    itemsIndexed(videos) { index, video ->
+                    items(videos) { video ->
                         VideoItem(
                             video = video,
                             isLiked = false,
@@ -1177,9 +1202,6 @@ fun VideoFeedSection(
                             isVisible = true,
                             onLongPress = { /* TODO: Implement long press action */ }
                         )
-                        if (index < videos.size - 1) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                        }
                     }
                 }
             }
@@ -1200,6 +1222,47 @@ fun VideoFeedSection(
                 contentDescription = "Create new flick",
                 modifier = Modifier.size(24.dp)
             )
+        }
+    }
+}
+
+@Composable
+private fun FilteredCommentsList(
+    thread: ThreadPost,
+    viewModel: HomeViewModel,
+    onProfileClick: (String) -> Unit
+) {
+    val showAuthorOnly by viewModel.showAuthorOnly.collectAsState()
+    val allCommentsState = rememberLazyListState()
+    val authorCommentsState = rememberLazyListState()
+    
+    val filteredReplies = remember(thread, showAuthorOnly) {
+        if (showAuthorOnly) {
+            thread.replies?.filter { reply ->
+                reply.post.author.did == thread.post.author.did
+            }
+        } else {
+            thread.replies
+        }
+    }
+    
+    LazyColumn(
+        state = if (showAuthorOnly) authorCommentsState else allCommentsState,
+        modifier = Modifier
+            .fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        filteredReplies?.let { replies ->
+            items(
+                items = replies,
+                key = { reply -> reply.post.uri }
+            ) { reply ->
+                CommentItem(
+                    comment = reply,
+                    onProfileClick = onProfileClick,
+                    originalPostAuthorDid = thread.post.author.did
+                )
+            }
         }
     }
 } 

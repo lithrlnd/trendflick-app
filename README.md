@@ -218,3 +218,73 @@ TrendFlick is a BlueSky-compatible social media client that focuses on creating 
 ## Development Notes
 
 - Firebase Storage must have `/videos`
+
+## Features
+
+### Core Features
+- BlueSky account integration
+- Video and image sharing
+- Feed management
+- Social interactions
+
+### Enhanced Comments System
+- Smart comment filtering with author-only view
+- State-preserving scroll position
+- Seamless toggle between all comments and author responses
+- Real-time comment updates
+- Rich text support in comments
+
+### Media Handling
+- Video upload and playback
+- Image sharing (up to 4 images per post)
+- Blob reference management
+- Media size limit compliance (1MB per image)
+- EXIF data stripping
+
+### Social Interactions
+- Likes and reposts
+- Threading and replies
+- Quote posts
+- User profiles
+- Following/Follower management
+
+### UI/UX Features
+- Material 3 design implementation
+- Dark/Light theme support
+- Smooth animations and transitions
+- State preservation across view changes
+- Responsive layout design
+
+## Technical Details
+
+### AT Protocol Integration
+- Full lexicon specification compliance
+- Proper blob handling
+- Correct JSON structures
+- Handle resolution
+- Feed algorithms support
+
+### Performance
+- Efficient state management
+- Scroll position preservation
+- Smart recomposition handling
+- Optimized list rendering
+- Memory efficient media handling
+
+### Security
+- Secure authentication
+- API rate limiting
+- Data validation
+- Safe media handling
+
+## Development Setup
+
+[Development setup instructions...]
+
+## Contributing
+
+[Contributing guidelines...]
+
+## License
+
+[License information...]

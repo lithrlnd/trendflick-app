@@ -412,8 +412,15 @@ fun CommentItem(
     comment: ThreadPost,
     onProfileClick: () -> Unit,
     modifier: Modifier = Modifier,
-    level: Int = 0
+    level: Int = 0,
+    authorDid: String? = null,
+    showAuthorOnly: Boolean = false
 ) {
+    // Skip non-author comments when in author-only mode
+    if (showAuthorOnly && authorDid != null && comment.post.author.did != authorDid) {
+        return
+    }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -526,9 +533,66 @@ fun CommentItem(
                     CommentItem(
                         comment = reply,
                         onProfileClick = onProfileClick,
-                        level = level + 1
+                        level = level + 1,
+                        authorDid = authorDid,
+                        showAuthorOnly = showAuthorOnly
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun CommentsSection(
+    comments: List<ThreadPost>,
+    onProfileClick: () -> Unit,
+    authorDid: String,
+    modifier: Modifier = Modifier
+) {
+    var showAuthorOnly by remember { mutableStateOf(false) }
+
+    Column(modifier = modifier) {
+        // Filter toggle
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Comments",
+                style = MaterialTheme.typography.titleMedium
+            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = if (showAuthorOnly) "Author Only" else "All Comments",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Switch(
+                    checked = showAuthorOnly,
+                    onCheckedChange = { showAuthorOnly = it },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = MaterialTheme.colorScheme.primary,
+                        checkedTrackColor = MaterialTheme.colorScheme.primaryContainer
+                    )
+                )
+            }
+        }
+
+        // Comments list
+        comments.forEach { comment ->
+            key(comment.post.uri) {
+                CommentItem(
+                    comment = comment,
+                    onProfileClick = onProfileClick,
+                    authorDid = authorDid,
+                    showAuthorOnly = showAuthorOnly
+                )
             }
         }
     }

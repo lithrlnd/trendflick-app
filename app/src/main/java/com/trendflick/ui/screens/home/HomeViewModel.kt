@@ -116,6 +116,9 @@ class HomeViewModel @Inject constructor(
     private val _shareEvent = MutableSharedFlow<Intent>()
     val shareEvent = _shareEvent.asSharedFlow()
 
+    private val _showAuthorOnly = MutableStateFlow(false)
+    val showAuthorOnly = _showAuthorOnly.asStateFlow()
+
     companion object {
         private const val MAX_COMMENT_LENGTH = 300 // BlueSky character limit
     }
@@ -1071,6 +1074,10 @@ class HomeViewModel @Inject constructor(
     fun clearHashtagFilter() {
         _currentHashtag.value = null
         loadThreads(isRefresh = true)
+    }
+
+    fun toggleAuthorOnly() {
+        _showAuthorOnly.value = !_showAuthorOnly.value
     }
 }
 
