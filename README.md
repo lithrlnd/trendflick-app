@@ -70,6 +70,19 @@ A Material 3 Android client for BlueSky that focuses on rich media sharing and s
 - ✅ Firebase integration for state persistence
 - ✅ Background processing for media uploads
 
+### Enhanced Post Creation
+- ✅ AI-powered content enhancement
+  - Smart post improvement suggestions
+  - Automatic hashtag recommendations
+  - One-click content optimization
+  - Character limit compliance (300 chars)
+- ✅ Rich text support in posts
+  - @mentions with suggestions
+  - #hashtags with trending topics
+  - Smart formatting
+- ✅ Visual post preview
+- ✅ Character counter with visual feedback
+
 ## Technical Stack
 - **Language**: Kotlin
 - **UI Framework**: Jetpack Compose

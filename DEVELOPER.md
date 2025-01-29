@@ -94,6 +94,41 @@ Video upload process follows AT Protocol's blob storage:
 3. Create post with video reference
 4. Handle response and user feedback
 
+## AI Features
+
+### Post Enhancement
+The app includes AI-powered post enhancement capabilities using OpenAI integration:
+
+#### Implementation
+- Located in `CreatePostScreen.kt` and `CreatePostViewModel.kt`
+- Uses existing OpenAI Firebase Function for processing
+- Maintains character limit compliance
+
+#### Usage
+```kotlin
+// Example of AI enhancement call
+viewModel.enhancePostWithAI(currentText: String)
+
+// Response handling through AIEnhancementState
+sealed class AIEnhancementState {
+    object Idle : AIEnhancementState()
+    object Loading : AIEnhancementState()
+    data class Success(val enhancement: AIEnhancement) : AIEnhancementState()
+    data class Error(val message: String) : AIEnhancementState()
+}
+```
+
+#### Features
+- Content improvement suggestions
+- Automatic hashtag recommendations
+- Smart formatting
+- Error handling and loading states
+
+#### Integration Points
+- Uses `OpenAIRepository` for API communication
+- Integrates with existing post creation flow
+- Preserves mention/hashtag functionality
+
 ## Testing
 
 ### Unit Tests
