@@ -410,7 +410,7 @@ fun HomeScreen(
                                 imageVector = Icons.Default.Add,
                                 contentDescription = "Create new post",
                                 modifier = Modifier.size(24.dp)
-                            )
+                        )
                         }
                     } else {
                         // Only show VideoFeedSection when on Flicks tab

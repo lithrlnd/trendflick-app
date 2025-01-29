@@ -8,6 +8,7 @@
 
 package com.trendflick.ui.screens.create
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -77,6 +78,7 @@ private fun rememberMentionHashtagTransformation(highlightColor: Color): VisualT
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreatePostScreen(
     navController: NavController,
@@ -91,10 +93,11 @@ fun CreatePostScreen(
     var currentQuery by remember { mutableStateOf("") }
     var queryType by remember { mutableStateOf<QueryType?>(null) }
     val suggestions by viewModel.suggestions.collectAsState()
+    val aiEnhancedContent by viewModel.aiEnhancedContent.collectAsState()
     
     val keyboardController = LocalSoftwareKeyboardController.current
     val uiState by viewModel.uiState.collectAsState()
-
+    
     // Get the highlight color from the theme
     val highlightColor = MaterialTheme.colorScheme.primary
     val mentionHashtagTransformation = rememberMentionHashtagTransformation(highlightColor)
@@ -140,6 +143,23 @@ fun CreatePostScreen(
         }
     }
 
+    // Handle AI enhancement state
+    LaunchedEffect(aiEnhancedContent) {
+        when (aiEnhancedContent) {
+            is AIEnhancementState.Success -> {
+                val enhancement = (aiEnhancedContent as AIEnhancementState.Success).enhancement
+                postTextFieldValue = TextFieldValue(
+                    text = enhancement.enhancedPost + " " + enhancement.hashtags.joinToString(" ") { "#$it" },
+                    selection = TextRange(enhancement.enhancedPost.length)
+                )
+            }
+            is AIEnhancementState.Error -> {
+                // You might want to show a snackbar or toast here
+            }
+            else -> {}
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -157,23 +177,57 @@ fun CreatePostScreen(
                 IconButton(onClick = { navController.navigateUp() }) {
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = "Close",
-                        tint = Color.White
+                        contentDescription = "Close"
                     )
                 }
-                Button(
-                    onClick = {
-                        keyboardController?.hide()
-                        viewModel.createPost(postTextFieldValue.text)
-                    },
-                    enabled = postTextFieldValue.text.isNotBlank() && postTextFieldValue.text.length <= 300,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF6B4EFF),
-                        contentColor = Color.White,
-                        disabledContainerColor = Color(0xFF6B4EFF).copy(alpha = 0.5f)
-                    )
-                ) {
-                    Text("Post")
+                
+                Row {
+                    // AI Enhancement Button
+                    Button(
+                        onClick = { 
+                            if (postTextFieldValue.text.isNotBlank()) {
+                                viewModel.enhancePostWithAI(postTextFieldValue.text)
+                            }
+                        },
+                        enabled = postTextFieldValue.text.isNotBlank() && 
+                                aiEnhancedContent !is AIEnhancementState.Loading,
+                        modifier = Modifier.padding(end = 8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = if (aiEnhancedContent is AIEnhancementState.Loading)
+                                    Icons.Default.Refresh
+                                else
+                                    Icons.Default.AutoAwesome,
+                                contentDescription = "Enhance with AI"
+                            )
+                            Text("Enhance")
+                        }
+                    }
+                    
+                    // Post Button
+                    Button(
+                        onClick = {
+                            keyboardController?.hide()
+                            viewModel.createPost(postTextFieldValue.text)
+                        },
+                        enabled = postTextFieldValue.text.isNotBlank() && 
+                                postTextFieldValue.text.length <= 300,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF6B4EFF),
+                            contentColor = Color.White,
+                            disabledContainerColor = Color(0xFF6B4EFF).copy(alpha = 0.5f)
+                        )
+                    ) {
+                        Text("Post")
+                    }
                 }
             }
 
@@ -182,46 +236,46 @@ fun CreatePostScreen(
                 onValueChange = { newValue ->
                     if (newValue.text.length <= 300) {
                         postTextFieldValue = newValue
-                        
-                        // Check for @ or # triggers
-                        val lastChar = newValue.text.lastOrNull()
-                        when (lastChar) {
-                            '@' -> {
-                                queryType = QueryType.MENTION
-                                currentQuery = ""
-                                showSuggestions = true
-                                viewModel.searchMentions("")
-                            }
-                            '#' -> {
-                                queryType = QueryType.HASHTAG
-                                currentQuery = ""
-                                showSuggestions = true
-                                viewModel.searchHashtags("")
-                            }
-                            ' ' -> {
-                                showSuggestions = false
-                                queryType = null
-                            }
-                            else -> {
-                                // Check if we're in the middle of a mention/hashtag
-                                val text = newValue.text
-                                val lastMentionIndex = text.lastIndexOf('@')
-                                val lastHashtagIndex = text.lastIndexOf('#')
-                                val lastSpaceIndex = text.lastIndexOf(' ')
-                                
-                                when {
-                                    lastMentionIndex > lastSpaceIndex -> {
-                                        queryType = QueryType.MENTION
-                                        currentQuery = text.substring(lastMentionIndex + 1)
-                                        showSuggestions = true
-                                        viewModel.searchMentions(currentQuery)
-                                    }
-                                    lastHashtagIndex > lastSpaceIndex -> {
-                                        queryType = QueryType.HASHTAG
-                                        currentQuery = text.substring(lastHashtagIndex + 1)
-                                        showSuggestions = true
-                                        viewModel.searchHashtags(currentQuery)
-                                    }
+                    }
+                    
+                    // Check for @ or # triggers
+                    val lastChar = newValue.text.lastOrNull()
+                    when (lastChar) {
+                        '@' -> {
+                            queryType = QueryType.MENTION
+                            currentQuery = ""
+                            showSuggestions = true
+                            viewModel.searchMentions("")
+                        }
+                        '#' -> {
+                            queryType = QueryType.HASHTAG
+                            currentQuery = ""
+                            showSuggestions = true
+                            viewModel.searchHashtags("")
+                        }
+                        ' ' -> {
+                            showSuggestions = false
+                            queryType = null
+                        }
+                        else -> {
+                            // Check if we're in the middle of a mention/hashtag
+                            val text = newValue.text
+                            val lastMentionIndex = text.lastIndexOf('@')
+                            val lastHashtagIndex = text.lastIndexOf('#')
+                            val lastSpaceIndex = text.lastIndexOf(' ')
+                            
+                            when {
+                                lastMentionIndex > lastSpaceIndex -> {
+                                    queryType = QueryType.MENTION
+                                    currentQuery = text.substring(lastMentionIndex + 1)
+                                    showSuggestions = true
+                                    viewModel.searchMentions(currentQuery)
+                                }
+                                lastHashtagIndex > lastSpaceIndex -> {
+                                    queryType = QueryType.HASHTAG
+                                    currentQuery = text.substring(lastHashtagIndex + 1)
+                                    showSuggestions = true
+                                    viewModel.searchHashtags(currentQuery)
                                 }
                             }
                         }
@@ -237,7 +291,7 @@ fun CreatePostScreen(
                 ),
                 visualTransformation = mentionHashtagTransformation
             )
-
+                
             // Character count
             Text(
                 text = "${300 - postTextFieldValue.text.length} characters remaining",
@@ -246,7 +300,7 @@ fun CreatePostScreen(
                     MaterialTheme.colorScheme.error
                 else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp)
-            )
+                )
 
             // Suggestions dropdown
             if (showSuggestions && suggestions.isNotEmpty()) {
@@ -269,6 +323,20 @@ fun CreatePostScreen(
                         showSuggestions = false
                     },
                     onDismiss = { showSuggestions = false }
+                )
+            }
+        }
+        
+        // Loading indicator for AI enhancement
+        if (aiEnhancedContent is AIEnhancementState.Loading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.3f)),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
         }
