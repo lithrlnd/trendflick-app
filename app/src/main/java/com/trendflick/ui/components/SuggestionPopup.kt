@@ -17,8 +17,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Surface
-import com.trendflick.data.model.SuggestionItem
+import com.trendflick.ui.model.SuggestionItem
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Tag
+import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.ui.layout.ContentScale
 
 @Composable
 fun SuggestionPopup(
@@ -46,7 +52,7 @@ fun SuggestionPopup(
                         onClick = { onSuggestionSelected(suggestion) }
                     )
                 }
-                androidx.compose.material3.Divider(
+                Divider(
                     color = MaterialTheme.colorScheme.outlineVariant,
                     thickness = 0.5.dp
                 )
@@ -68,19 +74,27 @@ private fun MentionItem(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        AsyncImage(
-            model = mention.avatarUrl,
-            contentDescription = null,
-            modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(20.dp))
-        )
-        Column {
-            Text(
-                text = mention.displayName,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface
+        mention.avatar?.let { avatarUrl ->
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(avatarUrl)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = null,
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(20.dp)),
+                contentScale = ContentScale.Crop
             )
+        }
+        Column {
+            mention.displayName?.let { displayName ->
+                Text(
+                    text = displayName,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
             Text(
                 text = "@${mention.handle}",
                 style = MaterialTheme.typography.bodyMedium,
@@ -95,23 +109,48 @@ private fun HashtagItem(
     hashtag: SuggestionItem.Hashtag,
     onClick: () -> Unit
 ) {
-    Row(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        color = Color.Transparent
     ) {
-        Text(
-            text = "#${hashtag.tag}",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-        Spacer(modifier = Modifier.weight(1f))
-        Text(
-            text = "${hashtag.postCount} posts",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "#${hashtag.tag}",
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontWeight = FontWeight.Medium
+                    ),
+                    color = MaterialTheme.colorScheme.primary
+                )
+                hashtag.postCount?.let { count ->
+                    if (count > 0) {
+                        Text(
+                            text = "${count} posts",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            
+            // Add a small indicator if the tag is trending
+            hashtag.postCount?.let { count ->
+                if (count > 1000) {
+                    Icon(
+                        imageVector = Icons.Default.TrendingUp,
+                        contentDescription = "Trending",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        }
     }
 } 

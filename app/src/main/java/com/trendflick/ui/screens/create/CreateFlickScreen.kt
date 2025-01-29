@@ -1,3 +1,11 @@
+@file:Suppress("EXPERIMENTAL_IS_NOT_ENABLED")
+@file:OptIn(
+    ExperimentalMaterial3Api::class,
+    ExperimentalLayoutApi::class,
+    ExperimentalFoundationApi::class,
+    ExperimentalComposeUiApi::class
+)
+
 package com.trendflick.ui.screens.create
 
 import android.net.Uri
@@ -70,8 +78,8 @@ import android.util.Log
 )
 @Composable
 fun CreateFlickScreen(
-    navController: NavController,
-    viewModel: CreateFlickViewModel = hiltViewModel()
+    viewModel: CreateFlickViewModel = hiltViewModel(),
+    onNavigateBack: () -> Unit
 ) {
     var showCameraPreview by remember { mutableStateOf(true) }
     var selectedVideoUri by remember { mutableStateOf<Uri?>(null) }
@@ -86,10 +94,6 @@ fun CreateFlickScreen(
     var recordingProgress by remember { mutableStateOf(0f) }
     var elapsedTime by remember { mutableStateOf(0L) }
     var textFieldValue by remember { mutableStateOf(TextFieldValue()) }
-    var showSuggestions by remember { mutableStateOf(false) }
-    var currentTag by remember { mutableStateOf("") }
-    var isTagging by remember { mutableStateOf(false) }
-    var isMentioning by remember { mutableStateOf(false) }
     var showDialog by remember { mutableStateOf(false) }
     
     // Define time options
@@ -111,9 +115,7 @@ fun CreateFlickScreen(
         when {
             uiState.isPostSuccessful -> {
                 // Navigate back to flicks screen on successful post
-                navController.navigate("flicks") {
-                    popUpTo("create_flick") { inclusive = true }
-                }
+                onNavigateBack()
             }
             uiState.error != null -> {
                 // Show error Snackbar
@@ -170,39 +172,6 @@ fun CreateFlickScreen(
                     showPreviewScreen = true
                     showCameraPreview = false
                     break
-                }
-            }
-        }
-    }
-
-    // Detect when user is typing @ or #
-    LaunchedEffect(textFieldValue.text) {
-        val lastChar = textFieldValue.text.lastOrNull()
-        val beforeLastChar = if (textFieldValue.text.length > 1) 
-            textFieldValue.text[textFieldValue.text.length - 2] else null
-        
-        when {
-            lastChar == '@' && (beforeLastChar == null || beforeLastChar.isWhitespace()) -> {
-                isMentioning = true
-                isTagging = false
-                currentTag = ""
-                showSuggestions = true
-            }
-            lastChar == '#' && (beforeLastChar == null || beforeLastChar.isWhitespace()) -> {
-                isTagging = true
-                isMentioning = false
-                currentTag = ""
-                showSuggestions = true
-            }
-            lastChar?.isWhitespace() == true -> {
-                isTagging = false
-                isMentioning = false
-                showSuggestions = false
-            }
-            isTagging || isMentioning -> {
-                if (lastChar != null && !lastChar.isWhitespace()) {
-                    currentTag += lastChar
-                    // Here you would typically fetch suggestions based on currentTag
                 }
             }
         }
@@ -311,79 +280,55 @@ fun CreateFlickScreen(
                                         color = Color.White,
                                         style = MaterialTheme.typography.bodyMedium
                                     )
-                                    if (uiState.uploadProgress > 0f) {
-                                        Text(
-                                            text = "${(uiState.uploadProgress * 100).toInt()}%",
-                                            color = Color.White,
-                                            style = MaterialTheme.typography.bodySmall
-                                        )
-                                        LinearProgressIndicator(
-                                            progress = uiState.uploadProgress,
-                                            modifier = Modifier
-                                                .width(200.dp)
-                                                .height(4.dp),
-                                            color = Color(0xFF6B4EFF)
-                                        )
-                                    }
                                 }
                             }
                         }
                     }
 
                     // Description input
-                    OutlinedTextField(
-                        value = textFieldValue,
-                        onValueChange = { newValue ->
-                            if (newValue.text.length <= 300) {
-                                textFieldValue = newValue
-                            }
-                        },
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(16.dp)
-                            .height(120.dp),
-                        enabled = !uiState.isLoading,
-                        placeholder = { 
-                            Text(
-                                "What's on your mind? Use @ to mention users and # for hashtags",
-                                color = Color.Gray
-                            )
-                        },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color.Black,
-                            unfocusedContainerColor = Color.Black,
-                            disabledContainerColor = Color.Black,
-                            focusedBorderColor = Color(0xFF6B4EFF),
-                            unfocusedBorderColor = Color.Gray,
-                            disabledBorderColor = Color.Gray.copy(alpha = 0.5f),
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            disabledTextColor = Color.White.copy(alpha = 0.5f)
-                        ),
-                        textStyle = MaterialTheme.typography.bodyLarge
-                    )
-
-                    // Character count and error message
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        OutlinedTextField(
+                            value = textFieldValue,
+                            onValueChange = { newValue ->
+                                if (newValue.text.length <= 300) {
+                                    textFieldValue = newValue
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(120.dp),
+                            enabled = !uiState.isLoading,
+                            placeholder = { 
+                                Text(
+                                    "What's on your mind?",
+                                    color = Color.Gray
+                                )
+                            },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color.Black,
+                                unfocusedContainerColor = Color.Black,
+                                disabledContainerColor = Color.Black,
+                                focusedBorderColor = Color(0xFF6B4EFF),
+                                unfocusedBorderColor = Color.Gray,
+                                disabledBorderColor = Color.Gray.copy(alpha = 0.5f),
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                disabledTextColor = Color.White.copy(alpha = 0.5f)
+                            ),
+                            textStyle = MaterialTheme.typography.bodyLarge
+                        )
+
+                        // Character count
                         Text(
                             text = "${300 - textFieldValue.text.length} characters remaining",
                             color = if (textFieldValue.text.length > 280) Color.Red else Color.Gray,
-                            style = MaterialTheme.typography.bodySmall
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 8.dp)
                         )
-
-                        if (uiState.error != null) {
-                            Text(
-                                text = uiState.error!!,
-                                color = Color.Red,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
                     }
 
                     if (showDialog) {
@@ -571,7 +516,7 @@ fun CreateFlickScreen(
                     ) {
                         // Close button
                         IconButton(
-                            onClick = { navController.navigateUp() },
+                            onClick = { onNavigateBack() },
                             modifier = Modifier
                                 .background(Color.Black.copy(alpha = 0.6f), CircleShape)
                         ) {
@@ -770,6 +715,30 @@ fun CreateFlickScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
+        )
+    }
+
+    // Show loading indicator
+    if (uiState.isLoading) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator()
+        }
+    }
+
+    // Show error message if any
+    uiState.error?.let { error ->
+        AlertDialog(
+            onDismissRequest = { /* Clear error */ },
+            title = { Text("Error") },
+            text = { Text(error) },
+            confirmButton = {
+                TextButton(onClick = { /* Clear error */ }) {
+                    Text("OK")
+                }
+            }
         )
     }
 } 

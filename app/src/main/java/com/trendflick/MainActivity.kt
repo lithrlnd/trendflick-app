@@ -98,7 +98,9 @@ class MainActivity : ComponentActivity() {
                                     modifier = Modifier.fillMaxSize(),
                                     color = Color.Black
                                 ) {
-                                    CreateFlickScreen(navController = navController)
+                                    CreateFlickScreen(
+                                        onNavigateBack = { navController.navigateUp() }
+                                    )
                                 }
                             }
                             composable(Screen.CreatePost.route) {

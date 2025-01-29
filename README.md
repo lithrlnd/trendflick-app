@@ -403,3 +403,72 @@ The app implements AT Protocol's rich text specification with the following feat
 - Implements proper byte-to-character index mapping
 - Handles edge cases and invalid facets gracefully
 - Provides comprehensive logging for debugging
+
+### Posts
+- Create text posts with rich text support
+- Mention users with @ suggestions
+- Add hashtags with # suggestions
+- Support for BlueSky's facet system
+- Character limit compliance (300 characters)
+
+### Video Sharing
+- Record and share videos up to 60 seconds
+- Upload videos from gallery
+- Video preview and playback
+- Automatic video duration validation
+- EXIF data stripping
+
+### Social Features
+- User mentions with real-time suggestions
+- Hashtag support with trending suggestions
+- Profile viewing and management
+- Follow/Unfollow functionality
+- Like and repost interactions
+
+### Authentication
+- BlueSky account login/signup
+- Session management
+- Secure credential handling
+
+## Technical Details
+
+### AT Protocol Integration
+- Full compliance with AT Protocol standards
+- Rich text handling with facets
+- Proper blob handling for media
+- Rate limit handling
+- Error recovery
+
+### User Experience
+- Material 3 design language
+- Dark/Light theme support
+- Real-time suggestions for mentions and hashtags
+- Smooth video recording and playback
+- Error feedback and recovery
+
+### Performance
+- Efficient media caching
+- Optimized video handling
+- Fast feed loading
+- Smooth scrolling
+
+## Development Setup
+
+1. Clone the repository
+2. Open in Android Studio
+3. Sync Gradle dependencies
+4. Run on an Android device or emulator
+
+## Requirements
+
+- Android SDK 24+
+- Kotlin 1.8+
+- BlueSky account for testing
+
+## Contributing
+
+Please read our contributing guidelines before submitting pull requests.
+
+## License
+
+[Your License Here]

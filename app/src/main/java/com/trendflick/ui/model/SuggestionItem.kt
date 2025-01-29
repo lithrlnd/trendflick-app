@@ -1,11 +1,10 @@
-package com.trendflick.data.model
+package com.trendflick.ui.model
 
 sealed class SuggestionItem {
     data class Mention(
-        val did: String,
         val handle: String,
-        val displayName: String?,
-        val avatarUrl: String?
+        val displayName: String? = null,
+        val avatar: String? = null
     ) : SuggestionItem()
 
     data class Hashtag(

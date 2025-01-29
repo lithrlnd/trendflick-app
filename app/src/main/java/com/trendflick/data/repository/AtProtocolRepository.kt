@@ -11,6 +11,7 @@ import com.trendflick.data.model.TrendingHashtag
 import kotlinx.coroutines.flow.Flow
 import java.time.Instant
 import java.time.format.DateTimeFormatter
+import com.trendflick.ui.model.AIEnhancement
 
 interface AtProtocolRepository {
     suspend fun createSession(handle: String, password: String): Result<AtSession>
@@ -27,7 +28,7 @@ interface AtProtocolRepository {
     fun getUserByHandle(handle: String): Flow<User?>
     suspend fun createPost(text: String, timestamp: String): Result<CreateRecordResponse>
     suspend fun createReply(text: String, parentUri: String, parentCid: String, timestamp: String): Result<CreateRecordResponse>
-    suspend fun searchUsers(query: String): List<UserSearchResult>
+    suspend fun searchUsers(query: String): SearchUsersResponse
     suspend fun getCurrentSession(): AtProtocolUser?
     suspend fun createPost(record: Map<String, Any>): AtProtocolPostResult
     suspend fun identityResolveHandle(handle: String): String
@@ -42,6 +43,9 @@ interface AtProtocolRepository {
     suspend fun searchHandles(query: String): List<UserSearchResult>
     suspend fun searchHashtags(query: String): List<TrendingHashtag>
     suspend fun createQuotePost(text: String, quotedPostUri: String, quotedPostCid: String): Result<CreateRecordResponse>
+    suspend fun enhancePostWithAI(text: String): AIEnhancement
+    suspend fun parseFacets(text: String): List<Facet>?
+    suspend fun createPost(text: String, timestamp: String, facets: List<Facet>? = null)
 }
 
 // Data classes used by the interface
@@ -65,4 +69,25 @@ data class UserSearchResult(
     val handle: String,
     val displayName: String?,
     val avatar: String? = null
-) 
+)
+
+data class HashtagSearchResult(
+    val tag: String,
+    val count: Int
+)
+
+data class Facet(
+    val index: ByteIndex,
+    val features: List<Feature>
+)
+
+data class ByteIndex(
+    val byteStart: Int,
+    val byteEnd: Int
+)
+
+sealed class Feature {
+    data class Mention(val did: String) : Feature()
+    data class Link(val uri: String) : Feature()
+    data class Tag(val tag: String) : Feature()
+} 

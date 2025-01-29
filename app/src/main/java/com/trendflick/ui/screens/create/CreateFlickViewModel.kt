@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.trendflick.data.repository.AtProtocolRepository
+import com.trendflick.data.repository.UserSearchResult
 import com.trendflick.data.model.Video
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,12 +20,15 @@ import com.trendflick.data.repository.BlueskyRepository
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import org.json.JSONObject
+import com.trendflick.data.model.TrendingHashtag
 
 data class CreateFlickUiState(
     val isLoading: Boolean = false,
     val uploadProgress: Float = 0f,
     val isPostSuccessful: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val userSuggestions: List<UserSearchResult> = emptyList(),
+    val hashtagSuggestions: List<TrendingHashtag> = emptyList()
 )
 
 @HiltViewModel
@@ -37,8 +41,14 @@ class CreateFlickViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(CreateFlickUiState())
     val uiState: StateFlow<CreateFlickUiState> = _uiState.asStateFlow()
 
-    private val _suggestions = MutableStateFlow<List<String>>(emptyList())
-    val suggestions: StateFlow<List<String>> = _suggestions.asStateFlow()
+    private val _currentQuery = MutableStateFlow("")
+    val currentQuery: StateFlow<String> = _currentQuery.asStateFlow()
+
+    private val _userSuggestions = MutableStateFlow<List<UserSearchResult>>(emptyList())
+    val userSuggestions: StateFlow<List<UserSearchResult>> = _userSuggestions.asStateFlow()
+
+    private val _hashtagSuggestions = MutableStateFlow<List<TrendingHashtag>>(emptyList())
+    val hashtagSuggestions: StateFlow<List<TrendingHashtag>> = _hashtagSuggestions.asStateFlow()
 
     private val TAG = "TF_CreateFlickViewModel"
 
@@ -143,32 +153,116 @@ class CreateFlickViewModel @Inject constructor(
         }
     }
 
-    fun searchBlueSkyUsers(query: String) {
+    fun updateQuery(newText: String) {
         viewModelScope.launch {
-            try {
-                val users = atProtocolRepository.searchUsers(query)
-                _suggestions.value = users.map { "${it.handle}" }
-            } catch (e: Exception) {
-                _suggestions.value = emptyList()
+            _currentQuery.value = newText
+            
+            // Check if we're looking for mentions or hashtags
+            when {
+                newText.contains("@") -> {
+                    val query = newText.substringAfterLast("@")
+                    if (query.isNotEmpty()) {
+                        searchUsers(query)
+                    }
+                }
+                newText.contains("#") -> {
+                    val query = newText.substringAfterLast("#")
+                    if (query.isNotEmpty()) {
+                        searchHashtags(query)
+                    }
+                }
             }
         }
     }
 
-    fun searchHashtags(query: String) {
+    private suspend fun searchUsers(query: String) {
+        try {
+            val users = atProtocolRepository.searchHandles(query)
+            _userSuggestions.value = users
+            _hashtagSuggestions.value = emptyList()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error searching users: ${e.message}")
+            _userSuggestions.value = emptyList()
+            _hashtagSuggestions.value = emptyList()
+        }
+    }
+
+    private suspend fun searchHashtags(query: String) {
+        try {
+            val hashtags = atProtocolRepository.searchHashtags(query)
+            _userSuggestions.value = emptyList()
+            _hashtagSuggestions.value = hashtags
+        } catch (e: Exception) {
+            Log.e(TAG, "Error searching hashtags: ${e.message}")
+            _userSuggestions.value = emptyList()
+            _hashtagSuggestions.value = emptyList()
+        }
+    }
+
+    fun createTextPost(text: String) {
         viewModelScope.launch {
             try {
-                _suggestions.value = listOf(
-                    "trending",
-                    "viral",
-                    "fyp",
-                    "foryou",
-                    "trendflick",
-                    "video",
-                    "reels"
-                ).filter { it.contains(query, ignoreCase = true) }
+                _uiState.value = CreateFlickUiState(isLoading = true)
+                
+                // Ensure valid session
+                if (!atProtocolRepository.ensureValidSession()) {
+                    throw IllegalStateException("BlueSky session is invalid. Please log in again.")
+                }
+
+                // Parse facets (mentions, hashtags, links)
+                val facets = atProtocolRepository.parseFacets(text)
+                
+                // Create the post with facets
+                atProtocolRepository.createPost(
+                    text = text,
+                    timestamp = Instant.now().toString(),
+                    facets = facets
+                )
+
+                Log.d(TAG, """
+                    ✅ Text post created successfully:
+                    Text: $text
+                    Facets: ${facets?.size ?: 0}
+                """.trimIndent())
+                
+                _uiState.value = CreateFlickUiState(isPostSuccessful = true)
+                
             } catch (e: Exception) {
-                _suggestions.value = emptyList()
+                Log.e(TAG, """
+                    ❌ Error creating text post:
+                    Error: ${e.message}
+                    Stack: ${e.stackTraceToString()}
+                """.trimIndent())
+                
+                _uiState.value = CreateFlickUiState(
+                    error = e.message ?: "Failed to create post"
+                )
             }
         }
+    }
+
+    fun insertMention(user: UserSearchResult): String {
+        val currentText = _currentQuery.value
+        val beforeMention = currentText.substringBeforeLast("@")
+        val afterMention = currentText.substringAfterLast("@").substringAfter(" ", "")
+        val newText = "$beforeMention@${user.handle} $afterMention"
+        _currentQuery.value = newText
+        clearSuggestions()
+        return newText
+    }
+
+    fun insertHashtag(hashtag: TrendingHashtag): String {
+        val currentText = _currentQuery.value
+        val beforeHashtag = currentText.substringBeforeLast("#")
+        val afterHashtag = currentText.substringAfterLast("#").substringAfter(" ", "")
+        val newText = "$beforeHashtag#${hashtag.tag} $afterHashtag"
+        _currentQuery.value = newText
+        clearSuggestions()
+        return newText
+    }
+
+    private fun clearSuggestions() {
+        _userSuggestions.value = emptyList()
+        _hashtagSuggestions.value = emptyList()
     }
 } 

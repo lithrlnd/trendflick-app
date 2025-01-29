@@ -3,71 +3,76 @@ package com.trendflick.ui.screens.create
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.trendflick.data.repository.AtProtocolRepository
-import com.trendflick.data.model.SuggestionItem
+import com.trendflick.ui.model.AIEnhancementState
+import com.trendflick.ui.model.AIEnhancement
+import com.trendflick.ui.model.SuggestionItem
 import com.trendflick.app.repository.OpenAIRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import java.time.Instant
 import javax.inject.Inject
 
 @HiltViewModel
 class CreatePostViewModel @Inject constructor(
-    private val atProtocolRepository: AtProtocolRepository,
+    private val repository: AtProtocolRepository,
     private val openAIRepository: OpenAIRepository
 ) : ViewModel() {
-
-    private val _uiState = MutableStateFlow(CreatePostUiState())
-    val uiState: StateFlow<CreatePostUiState> = _uiState.asStateFlow()
 
     private val _suggestions = MutableStateFlow<List<SuggestionItem>>(emptyList())
     val suggestions: StateFlow<List<SuggestionItem>> = _suggestions.asStateFlow()
 
-    private val _aiEnhancedContent = MutableStateFlow<AIEnhancementState>(AIEnhancementState.Idle)
+    private val _aiEnhancedContent = MutableStateFlow<AIEnhancementState>(AIEnhancementState.Initial)
     val aiEnhancedContent: StateFlow<AIEnhancementState> = _aiEnhancedContent.asStateFlow()
 
+    private val _uiState = MutableStateFlow(CreatePostUiState())
+    val uiState: StateFlow<CreatePostUiState> = _uiState.asStateFlow()
+
+    private var searchJob: Job? = null
+
     fun searchMentions(query: String) {
-        viewModelScope.launch {
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
             try {
-                if (query.length >= 2) {
-                    val handles = atProtocolRepository.searchHandles(query)
-                    _suggestions.value = handles.map { handle ->
-                        SuggestionItem.Mention(
-                            did = handle.did,
-                            handle = handle.handle,
-                            displayName = handle.displayName ?: handle.handle,
-                            avatarUrl = handle.avatar
-                        )
-                    }
-                } else {
-                    _suggestions.value = emptyList()
+                // Add debounce to avoid too many API calls
+                delay(300)
+                val results = repository.searchUsers(query)
+                _suggestions.value = results.actors.map { actor ->
+                    SuggestionItem.Mention(
+                        handle = actor.handle,
+                        displayName = actor.displayName,
+                        avatar = actor.avatar
+                    )
                 }
             } catch (e: Exception) {
                 _suggestions.value = emptyList()
-                _uiState.value = CreatePostUiState(error = "Failed to load suggestions")
             }
         }
     }
 
     fun searchHashtags(query: String) {
-        viewModelScope.launch {
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
             try {
-                if (query.length >= 2) {
-                    val hashtags = atProtocolRepository.searchHashtags(query)
-                    _suggestions.value = hashtags.map { tag ->
+                // Add debounce to avoid too many API calls
+                delay(300)
+                if (query.isNotBlank()) {
+                    val results = repository.searchHashtags(query)
+                    _suggestions.value = results.map { hashtag ->
                         SuggestionItem.Hashtag(
-                            tag = tag.tag,
-                            postCount = tag.count
+                            tag = hashtag.tag,
+                            postCount = hashtag.count
                         )
-                    }
+                    }.sortedByDescending { it.postCount }
                 } else {
                     _suggestions.value = emptyList()
                 }
             } catch (e: Exception) {
                 _suggestions.value = emptyList()
-                _uiState.value = CreatePostUiState(error = "Failed to load suggestions")
             }
         }
     }
@@ -75,14 +80,26 @@ class CreatePostViewModel @Inject constructor(
     fun createPost(text: String) {
         viewModelScope.launch {
             try {
-                _uiState.value = CreatePostUiState(isLoading = true)
-                
+                _uiState.value = _uiState.value.copy(isLoading = true)
                 val timestamp = Instant.now().toString()
-                val result = atProtocolRepository.createPost(text, timestamp)
                 
-                _uiState.value = CreatePostUiState(isPostSuccessful = true)
+                // Parse facets for mentions and links before creating post
+                val facets = repository.parseFacets(text)
+                repository.createPost(
+                    text = text,
+                    timestamp = timestamp,
+                    facets = facets
+                )
+                
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    isPostSuccessful = true
+                )
             } catch (e: Exception) {
-                _uiState.value = CreatePostUiState(error = e.message ?: "Failed to create post")
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Failed to create post"
+                )
             }
         }
     }
@@ -90,66 +107,39 @@ class CreatePostViewModel @Inject constructor(
     fun createReply(text: String, parentUri: String, parentCid: String) {
         viewModelScope.launch {
             try {
-                _uiState.value = CreatePostUiState(isLoading = true)
-                
+                _uiState.value = _uiState.value.copy(isLoading = true)
                 val timestamp = Instant.now().toString()
-                val result = atProtocolRepository.createReply(
+                repository.createReply(
                     text = text,
                     parentUri = parentUri,
                     parentCid = parentCid,
                     timestamp = timestamp
                 )
-                
-                _uiState.value = CreatePostUiState(isPostSuccessful = true)
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    isPostSuccessful = true
+                )
             } catch (e: Exception) {
-                _uiState.value = CreatePostUiState(error = e.message ?: "Failed to create reply")
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Failed to create reply"
+                )
             }
         }
     }
 
-    fun enhancePostWithAI(currentText: String) {
+    fun clearSuggestions() {
+        _suggestions.value = emptyList()
+    }
+
+    fun enhancePostWithAI(text: String) {
         viewModelScope.launch {
+            _aiEnhancedContent.value = AIEnhancementState.Loading
             try {
-                _aiEnhancedContent.value = AIEnhancementState.Loading
-                
-                val prompt = """
-                    Enhance this social media post and suggest relevant hashtags. 
-                    Keep the total length under 300 characters.
-                    Original post: $currentText
-                    
-                    Format the response as JSON:
-                    {
-                        "enhancedPost": "the enhanced post text",
-                        "hashtags": ["hashtag1", "hashtag2", ...]
-                    }
-                """.trimIndent()
-                
-                openAIRepository.generateAIResponse(prompt).fold(
-                    onSuccess = { jsonResponse ->
-                        _aiEnhancedContent.value = AIEnhancementState.Success(
-                            try {
-                                val json = org.json.JSONObject(jsonResponse)
-                                AIEnhancement(
-                                    enhancedPost = json.getString("enhancedPost"),
-                                    hashtags = json.getJSONArray("hashtags").let { array ->
-                                        List(array.length()) { array.getString(it) }
-                                    }
-                                )
-                            } catch (e: Exception) {
-                                throw Exception("Failed to parse AI response")
-                            }
-                        )
-                    },
-                    onFailure = { error ->
-                        _aiEnhancedContent.value = AIEnhancementState.Error(
-                            error.message ?: "Failed to enhance post"
-                        )
-                    }
-                )
+                val enhancement = repository.enhancePostWithAI(text)
+                _aiEnhancedContent.value = AIEnhancementState.Success(enhancement)
             } catch (e: Exception) {
-                _aiEnhancedContent.value = AIEnhancementState.Error(
-                    e.message ?: "Failed to enhance post"
-                )
+                _aiEnhancedContent.value = AIEnhancementState.Error(e.message ?: "Failed to enhance post")
             }
         }
     }
@@ -157,23 +147,11 @@ class CreatePostViewModel @Inject constructor(
 
 data class CreatePostUiState(
     val isLoading: Boolean = false,
-    val error: String? = null,
-    val isPostSuccessful: Boolean = false
+    val isPostSuccessful: Boolean = false,
+    val error: String? = null
 )
 
 data class HandleSuggestion(
     val handle: String,
     val displayName: String? = null
-)
-
-data class AIEnhancement(
-    val enhancedPost: String,
-    val hashtags: List<String>
-)
-
-sealed class AIEnhancementState {
-    object Idle : AIEnhancementState()
-    object Loading : AIEnhancementState()
-    data class Success(val enhancement: AIEnhancement) : AIEnhancementState()
-    data class Error(val message: String) : AIEnhancementState()
-} 
+) 

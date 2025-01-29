@@ -276,6 +276,8 @@ object NetworkModule {
     @Singleton
     fun provideMoshi(): Moshi {
         return Moshi.Builder()
+            .add(RecordJsonAdapter.FACTORY)
+            .add(FacetFeatureJsonAdapter.FACTORY)
             .add(FacetAdapter())
             .add(ExternalEmbedAdapter())
             .addLast(KotlinJsonAdapterFactory())

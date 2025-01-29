@@ -7,6 +7,7 @@ import com.trendflick.data.api.*
 import com.trendflick.data.local.UserDao
 import com.trendflick.data.model.AtSession
 import com.trendflick.data.model.User
+import com.trendflick.data.model.TrendingHashtag
 import kotlinx.coroutines.flow.Flow
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
@@ -23,7 +24,10 @@ import kotlinx.coroutines.withContext
 import android.util.Log
 import kotlinx.coroutines.delay
 import com.trendflick.data.auth.BlueskyCredentialsManager
-import com.trendflick.data.model.TrendingHashtag
+import java.text.SimpleDateFormat
+import java.util.*
+import com.trendflick.ui.model.AIEnhancement
+import java.nio.charset.StandardCharsets
 
 @Singleton
 class AtProtocolRepositoryImpl @Inject constructor(
@@ -433,7 +437,7 @@ class AtProtocolRepositoryImpl @Inject constructor(
                             uri = uri,
                             cid = post.cid
                         ),
-                        createdAt = Instant.now().toString()
+                        createdAt = getCurrentTimestamp()
                     ),
                     rkey = generateStableRkey(uri)
                 )
@@ -509,79 +513,26 @@ class AtProtocolRepositoryImpl @Inject constructor(
 
     override suspend fun repost(uri: String, cid: String) {
         try {
-            Log.d(TAG, "🔄 Attempting to repost content - URI: $uri, CID: $cid")
+            val did = sessionManager.getDid() ?: throw IllegalStateException("No DID found")
             
-            // Validate CID format and presence
-            if (cid.isBlank()) {
-                Log.e(TAG, "❌ Empty CID provided")
-                throw IllegalArgumentException("CID cannot be empty")
-            }
-            if (!cid.startsWith("bafyrei") && !cid.startsWith("bafy")) {
-                Log.e(TAG, "❌ Invalid CID format provided: $cid")
-                throw IllegalArgumentException("Invalid CID format. Expected a valid IPFS CID.")
-            }
-            
-            val did = userDao.getCurrentUserDid() ?: sessionManager.getDid() 
-                ?: throw IllegalStateException("No DID found")
-            Log.d(TAG, "👤 Using DID: $did")
-            
-            val isCurrentlyReposted = isPostRepostedByUser(uri)
-            Log.d(TAG, "🔍 Current repost state - isReposted: $isCurrentlyReposted")
-            
-            if (!isCurrentlyReposted) {
-                val request = AtProtocolService.CreateRecordRequest(
-                    repo = did,
-                    collection = "app.bsky.feed.repost",
-                    record = AtProtocolService.RepostRecord(
-                        type = "app.bsky.feed.repost",
-                        subject = AtProtocolService.PostReference(
-                            uri = uri,
-                            cid = cid
-                        ),
-                        createdAt = Instant.now().toString()
-                    ),
-                    rkey = generateStableRkey("repost_$cid")
+            val record = AtProtocolService.RepostRecord(
+                createdAt = getCurrentTimestamp(),
+                subject = AtProtocolService.PostReference(
+                    uri = uri,
+                    cid = cid
                 )
-                
-                Log.d(TAG, """
-                    📤 Creating repost record with:
-                    - URI: ${uri}
-                    - CID: ${cid}
-                    - DID: ${did}
-                    - Collection: app.bsky.feed.repost
-                    - RKey: ${generateStableRkey("repost_$cid")}
-                    - Record: ${request.record}
-                """.trimIndent())
-                
-                try {
-                    service.createRecord(request)
-                    repostStatusCache[uri] = true to System.currentTimeMillis()
-                    Log.d(TAG, "✅ Repost record created successfully")
-                } catch (e: HttpException) {
-                    if (e.code() == 409) {
-                        // Record already exists
-                        Log.d(TAG, "⚠️ Repost record already exists (409)")
-                        repostStatusCache[uri] = true to System.currentTimeMillis()
-                    } else {
-                        Log.e(TAG, "❌ Failed to create repost record: ${e.message}")
-                        Log.e(TAG, "Response body: ${e.response()?.errorBody()?.string()}")
-                        throw e
-                    }
-                }
-            } else {
-                // Remove repost by deleting the record
-                Log.d(TAG, "🗑️ Deleting repost record")
-                service.deleteRecord(
-                    repo = did,
-                    collection = "app.bsky.feed.repost",
-                    rkey = generateStableRkey("repost_$cid")
-                )
-                repostStatusCache[uri] = false to System.currentTimeMillis()
-                Log.d(TAG, "✅ Repost record deleted successfully")
-            }
+            )
+            
+            val request = AtProtocolService.CreateRecordRequest(
+                repo = did,
+                collection = "app.bsky.feed.repost",
+                record = record,
+                rkey = generateStableRkey("repost_$cid")
+            )
+            
+            service.createRecord(request)
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Repost operation failed: ${e.message}")
-            Log.e(TAG, "Stack trace: ${e.stackTraceToString()}")
+            Log.e(TAG, "Failed to create repost: ${e.message}")
             throw e
         }
     }
@@ -625,7 +576,7 @@ class AtProtocolRepositoryImpl @Inject constructor(
             
             val record = AtProtocolService.PostRecord(
                 text = text,
-                createdAt = timestamp
+                createdAt = timestamp.ifEmpty { getCurrentTimestamp() }
             )
             
             val request = AtProtocolService.CreateRecordRequest(
@@ -654,7 +605,7 @@ class AtProtocolRepositoryImpl @Inject constructor(
             
             val record = AtProtocolService.PostRecord(
                 text = processedText,
-                createdAt = timestamp,
+                createdAt = timestamp.ifEmpty { getCurrentTimestamp() },
                 reply = AtProtocolService.ReplyReference(
                     parent = AtProtocolService.PostReference(uri = parentUri, cid = parentCid),
                     root = AtProtocolService.PostReference(uri = parentUri, cid = parentCid)
@@ -674,20 +625,8 @@ class AtProtocolRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun searchUsers(query: String): List<UserSearchResult> {
-        return try {
-            val response = service.searchUsers(query)
-            response.users.map { user ->
-                UserSearchResult(
-                    did = user.did,
-                    handle = user.handle,
-                    displayName = user.displayName,
-                    avatar = user.avatar
-                )
-            }
-        } catch (e: Exception) {
-            emptyList()
-        }
+    override suspend fun searchUsers(query: String): SearchUsersResponse {
+        return service.searchUsers(query = query)
     }
 
     override suspend fun getCurrentSession(): AtProtocolUser? {
@@ -714,7 +653,7 @@ class AtProtocolRepositoryImpl @Inject constructor(
 
     override suspend fun createPost(record: Map<String, Any>): AtProtocolPostResult {
         val did = record["did"] as? String ?: throw IllegalArgumentException("Missing did in record")
-        val timestamp = Instant.now().toString()
+        val timestamp = getCurrentTimestamp()
         val postId = timestamp.hashCode().toString()
         
         return AtProtocolPostResult(
@@ -881,12 +820,12 @@ class AtProtocolRepositoryImpl @Inject constructor(
             if (query.length < 2) return emptyList()
             
             val response = service.searchUsers(query)
-            response.users.map { user ->
+            response.actors.map { actor ->
                 UserSearchResult(
-                    did = user.did,
-                    handle = user.handle,
-                    displayName = user.displayName,
-                    avatar = user.avatar
+                    did = actor.did,
+                    handle = actor.handle,
+                    displayName = actor.displayName,
+                    avatar = actor.avatar
                 )
             }
         } catch (e: Exception) {
@@ -896,52 +835,13 @@ class AtProtocolRepositoryImpl @Inject constructor(
     }
 
     override suspend fun searchHashtags(query: String): List<TrendingHashtag> {
-        return try {
-            if (query.length < 2) return emptyList()
-            
-            // First try to get trending hashtags that match the query
-            val trending = getTrendingHashtags()
-                .filter { it.tag.startsWith(query, ignoreCase = true) }
-                .take(5)
-            
-            // Then get recent posts to find more hashtags
-            val recentPosts = getTimeline(limit = 100).getOrNull()?.feed ?: emptyList()
-            
-            // Extract hashtags from recent posts
-            val recentHashtags = recentPosts
-                .flatMap { post -> 
-                    extractHashtags(post.post.record.text)
-                        .filter { it.startsWith(query, ignoreCase = true) }
-                        .map { tag ->
-                            TrendingHashtag(
-                                tag = tag,
-                                count = recentPosts.count { p -> 
-                                    extractHashtags(p.post.record.text).contains(tag) 
-                                }
-                            )
-                        }
-                }
-                .distinctBy { it.tag }
-                .sortedByDescending { it.count }
-                .take(10)
-            
-            // Combine and deduplicate results
-            (trending + recentHashtags)
-                .distinctBy { it.tag }
-                .sortedByDescending { it.count }
-                .take(10)
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Failed to search hashtags: ${e.message}")
-            emptyList()
-        }
-    }
-
-    private fun extractHashtags(text: String): Set<String> {
-        return text.split(' ')
-            .filter { it.startsWith('#') }
-            .map { it.substring(1) }
-            .filter { it.isNotEmpty() }
-            .toSet()
+            // TODO: Implement actual hashtag search when AT Protocol adds support
+            // For now, return mock data
+        return listOf(
+                TrendingHashtag("trending", 1000),
+                TrendingHashtag("popular", 500),
+                TrendingHashtag(query, 100)
+            )
     }
 
     override suspend fun createQuotePost(
@@ -961,7 +861,7 @@ class AtProtocolRepositoryImpl @Inject constructor(
             val postRecord = AtProtocolService.PostRecord(
                 type = "app.bsky.feed.post",
                 text = text,
-                createdAt = Instant.now().toString(),
+                createdAt = getCurrentTimestamp(),
                 embed = embed
             )
             
@@ -976,6 +876,111 @@ class AtProtocolRepositoryImpl @Inject constructor(
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    override suspend fun createPost(text: String, timestamp: String, facets: List<Facet>?) {
+        try {
+            val did = sessionManager.getDid() ?: throw IllegalStateException("No DID found")
+            
+            val record = AtProtocolService.PostRecord(
+                text = text,
+                createdAt = timestamp.ifEmpty { getCurrentTimestamp() },
+                facets = facets?.map { facet ->
+                    AtProtocolService.Facet(
+                        index = AtProtocolService.ByteIndex(
+                            byteStart = facet.index.byteStart,
+                            byteEnd = facet.index.byteEnd
+                        ),
+                        features = facet.features.map { feature ->
+                            when (feature) {
+                                is Feature.Mention -> AtProtocolService.Feature.Mention(did = feature.did)
+                                is Feature.Link -> AtProtocolService.Feature.Link(uri = feature.uri)
+                                is Feature.Tag -> AtProtocolService.Feature.Tag(tag = feature.tag)
+                            }
+                        }
+                    )
+                }
+            )
+            
+            val request = AtProtocolService.CreateRecordRequest(
+                repo = did,
+                collection = "app.bsky.feed.post",
+                record = record
+            )
+            
+            service.createRecord(request)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create post: ${e.message}")
+            throw e
+        }
+    }
+
+    override suspend fun parseFacets(text: String): List<Facet>? {
+        val facets = mutableListOf<Facet>()
+        val textBytes = text.toByteArray(StandardCharsets.UTF_8)
+
+        // Parse mentions using AT Protocol regex
+        val mentionRegex = Regex("""(?:^|\s)(@([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)""")
+        mentionRegex.findAll(text).forEach { matchResult ->
+            val handle = matchResult.groupValues[1].substring(1) // Remove @ symbol
+            try {
+                val response = service.identityResolveHandle(handle)
+                val startIndex = text.substring(0, matchResult.range.first + 1).toByteArray(StandardCharsets.UTF_8).size
+                val endIndex = startIndex + matchResult.value.substring(1).toByteArray(StandardCharsets.UTF_8).size
+                
+                facets.add(Facet(
+                    index = ByteIndex(startIndex, endIndex),
+                    features = listOf(Feature.Mention(response.did))
+                ))
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to resolve handle $handle: ${e.message}")
+            }
+        }
+
+        // Parse URLs with AT Protocol URL regex
+        val urlRegex = Regex("""(?:^|\s)(https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*[-a-zA-Z0-9@%_\+~#//=])?)""")
+        urlRegex.findAll(text).forEach { matchResult ->
+            val url = matchResult.groupValues[1]
+            val startIndex = text.substring(0, matchResult.range.first + 1).toByteArray(StandardCharsets.UTF_8).size
+            val endIndex = startIndex + url.toByteArray(StandardCharsets.UTF_8).size
+            
+            facets.add(Facet(
+                index = ByteIndex(startIndex, endIndex),
+                features = listOf(Feature.Link(url))
+            ))
+        }
+
+        // Parse hashtags with AT Protocol tag regex
+        val hashtagRegex = Regex("""(?:^|\s)(#[^\d\s]\S*)(?=\s|$)""")
+        hashtagRegex.findAll(text).forEach { matchResult ->
+            val tag = matchResult.groupValues[1].substring(1) // Remove # symbol
+            if (tag.length <= 64) { // AT Protocol max length
+                val startIndex = text.substring(0, matchResult.range.first + 1).toByteArray(StandardCharsets.UTF_8).size
+                val endIndex = startIndex + matchResult.value.substring(1).toByteArray(StandardCharsets.UTF_8).size
+                
+                facets.add(Facet(
+                    index = ByteIndex(startIndex, endIndex),
+                    features = listOf(Feature.Tag(tag))
+                ))
+            }
+        }
+
+        return if (facets.isNotEmpty()) facets else null
+    }
+
+    private fun getCurrentTimestamp(): String {
+        val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
+        sdf.timeZone = TimeZone.getTimeZone("UTC")
+        return sdf.format(Date())
+    }
+
+    override suspend fun enhancePostWithAI(text: String): AIEnhancement {
+        // For now, return a simple enhancement
+        // In a real implementation, this would call an AI service
+        return AIEnhancement(
+            enhancedPost = text,
+            hashtags = emptyList()
+        )
     }
 
     companion object {

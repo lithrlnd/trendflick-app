@@ -3,6 +3,21 @@ package com.trendflick.data.api
 import com.trendflick.data.model.AtSession
 import okhttp3.MultipartBody
 import retrofit2.http.*
+import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
+
+@JsonClass(generateAdapter = true)
+data class SearchUsersResponse(
+    val actors: List<UserProfile>
+)
+
+@JsonClass(generateAdapter = true)
+data class UserProfile(
+    val did: String,
+    val handle: String,
+    val displayName: String?,
+    val avatar: String? = null
+)
 
 interface AtProtocolService {
     @POST("xrpc/com.atproto.server.createSession")
@@ -77,22 +92,11 @@ interface AtProtocolService {
         @Query("cursor") cursor: String? = null
     ): GetRepostedByResponse
 
-    data class SearchUsersResponse(
-        val users: List<UserProfile>
-    )
-
-    data class UserProfile(
-        val did: String,
-        val handle: String,
-        val displayName: String?,
-        val avatar: String? = null
-    )
-
     @GET("xrpc/app.bsky.actor.searchActors")
-    suspend fun searchUsers(
-        @Query("term") query: String,
-        @Query("limit") limit: Int = 10
-    ): SearchUsersResponse
+    suspend fun searchUsers(@Query("term") query: String): SearchUsersResponse
+
+    @GET("xrpc/app.bsky.feed.searchPosts")
+    suspend fun searchHashtags(@Query("term") query: String): HashtagSearchResponse
 
     @GET("xrpc/com.atproto.identity.resolveHandle")
     suspend fun identityResolveHandle(
@@ -109,27 +113,68 @@ interface AtProtocolService {
         @Query("cursor") cursor: String? = null
     ): FollowsResponse
 
+    // Base record type for all AT Protocol records
+    sealed class Record {
+        abstract val type: String
+        abstract val createdAt: String
+    }
+
+    @JsonClass(generateAdapter = true)
+    data class PostRecord(
+        @Json(name = "\$type") override val type: String = "app.bsky.feed.post",
+        override val createdAt: String,
+        val text: String,
+        val facets: List<Facet>? = null,
+        val reply: ReplyReference? = null,
+        val embed: RecordEmbed? = null
+    ) : Record()
+
+    @JsonClass(generateAdapter = true)
+    data class RepostRecord(
+        @Json(name = "\$type") override val type: String = "app.bsky.feed.repost",
+        override val createdAt: String,
+        val subject: PostReference
+    ) : Record()
+
     data class CreateRecordRequest(
         val repo: String,
         val collection: String,
-        val record: Any,
-        val rkey: String? = null,
-        val validate: Boolean = true,
-        val swapCommit: String? = null
+        val record: Record,
+        val rkey: String? = null
     )
 
-    data class RepostRecord(
-        val type: String = "app.bsky.feed.repost",
-        val subject: PostReference,
-        val createdAt: String
+    data class Facet(
+        val index: ByteIndex,
+        val features: List<Feature>
     )
 
-    data class PostRecord(
-        val type: String = "app.bsky.feed.post",
-        val text: String,
-        val createdAt: String,
-        val reply: ReplyReference? = null,
-        val embed: RecordEmbed? = null
+    data class ByteIndex(
+        val byteStart: Int,
+        val byteEnd: Int
+    )
+
+    sealed class Feature {
+        @JsonClass(generateAdapter = true)
+        data class Mention(
+            @Json(name = "\$type") val type: String = "app.bsky.richtext.facet#mention",
+            val did: String
+        ) : Feature()
+
+        @JsonClass(generateAdapter = true)
+        data class Link(
+            @Json(name = "\$type") val type: String = "app.bsky.richtext.facet#link",
+            val uri: String
+        ) : Feature()
+
+        @JsonClass(generateAdapter = true)
+        data class Tag(
+            @Json(name = "\$type") val type: String = "app.bsky.richtext.facet#tag",
+            val tag: String
+        ) : Feature()
+    }
+
+    data class ResolveHandleResponse(
+        val did: String
     )
 
     data class RecordEmbed(
@@ -176,5 +221,14 @@ interface AtProtocolService {
         val reposts: List<RepostView>,
         val cursor: String?,
         val viewer: RepostViewer?
+    )
+
+    data class HashtagSearchResponse(
+        val tags: List<HashtagResult>
+    )
+
+    data class HashtagResult(
+        val tag: String,
+        val count: Int
     )
 } 
