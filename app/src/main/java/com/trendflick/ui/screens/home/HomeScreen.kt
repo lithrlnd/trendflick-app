@@ -370,7 +370,7 @@ fun HomeScreen(
                                         isOpen = isDrawerOpen,
                                         onCategorySelected = { category ->
                                             selectedCategory.value = category
-                                            viewModel.filterByCategory(category.lowercase())
+                                            viewModel.filterByCategory(category)
                                         },
                                         onHashtagSelected = { hashtag ->
                                             viewModel.setCurrentHashtag(hashtag)

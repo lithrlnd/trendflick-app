@@ -1,6 +1,15 @@
-# TrendFlick App
+# TrendFlick - Modern BlueSky Social Client
 
-A modern BlueSky-compatible social media client focused on creating a seamless video and image sharing experience while strictly adhering to the AT Protocol standards.
+A Material 3 Android client for BlueSky that focuses on rich media sharing and seamless social interactions, built with Jetpack Compose and AT Protocol compliance.
+
+## 🌟 Key Features
+- 📱 Modern Material 3 UI with Jetpack Compose
+- 🎥 Seamless video and image sharing
+- 🔄 AT Protocol-compliant rich text support
+- 🏷️ Smart category and hashtag system
+- 💬 Advanced threading and replies
+- 🎨 Dark/Light theme support
+- 🔒 Secure authentication
 
 ## Implemented Features
 
@@ -72,6 +81,7 @@ A modern BlueSky-compatible social media client focused on creating a seamless v
   - Room Database (local cache)
 - **DI**: Hilt
 - **Async**: Coroutines + Flow
+- **Rich Text**: Custom AT Protocol facet implementation
 
 ## Project Structure
 ```
@@ -85,6 +95,7 @@ app/
 ├── di/              # Dependency injection modules
 ├── ui/
 │   ├── components/  # Reusable UI components
+│   │   └── RichTextRenderer.kt  # AT Protocol rich text implementation
 │   ├── screens/     # Screen implementations
 │   └── theme/       # App theming
 └── utils/           # Utility classes
@@ -348,3 +359,34 @@ We welcome contributions! Please read our contributing guidelines before submitt
 
 ## License
 [Add your license information here]
+
+## Rich Text Implementation
+- ✅ Full AT Protocol compliance for rich text facets
+- ✅ Proper UTF-8 byte indexing for international text
+- ✅ Support for mentions, links, and hashtags
+- ✅ Efficient facet processing and rendering
+- ✅ Proper handling of overlapping facets
+- ✅ Clickable text elements with proper styling
+- ✅ Error-resistant facet processing
+- ✅ Comprehensive logging for debugging
+
+## Rich Text Architecture
+The app implements AT Protocol's rich text specification with the following features:
+
+### Facet Processing
+- Proper UTF-8 byte indexing for international text support
+- Efficient facet validation and filtering
+- Smart handling of overlapping facets
+- Proper character-to-byte mapping for accurate indices
+
+### Supported Features
+- @mentions with proper DID resolution
+- #hashtags with category integration
+- URLs with proper styling and validation
+- Proper handling of emoji and special characters
+
+### Implementation Details
+- Uses Jetpack Compose's AnnotatedString for efficient rendering
+- Implements proper byte-to-character index mapping
+- Handles edge cases and invalid facets gracefully
+- Provides comprehensive logging for debugging

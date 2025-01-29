@@ -42,6 +42,9 @@ import com.trendflick.data.model.Category
 import com.trendflick.data.model.categories
 import kotlin.Comparable
 import kotlin.comparisons.compareByDescending
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import java.time.Duration
 
 @OptIn(kotlin.experimental.ExperimentalTypeInference::class)
 @HiltViewModel
@@ -79,7 +82,6 @@ class HomeViewModel @Inject constructor(
 
     // Add Firebase references with proper typing
     private var database: FirebaseDatabase? = null
-    private var likesRef: DatabaseReference? = null
 
     private val _selectedFeed = MutableStateFlow("Trends")
     val selectedFeed: StateFlow<String> = _selectedFeed.asStateFlow()
@@ -100,9 +102,9 @@ class HomeViewModel @Inject constructor(
     private val _videoLoadError = MutableStateFlow<String?>(null)
     val videoLoadError: StateFlow<String?> = _videoLoadError.asStateFlow()
 
-    private val TAG = "TF_Home"  // Add this at the top of the class
+    private val TAG = "TrendFlick_HomeVM"
 
-    private var isLoggedOut = false // Add this at the top with other properties
+    private var isLoggedOut = false
 
     private val _trendingHashtags = MutableStateFlow<List<TrendingHashtag>>(emptyList())
     val trendingHashtags: StateFlow<List<TrendingHashtag>> = _trendingHashtags.asStateFlow()
@@ -120,26 +122,21 @@ class HomeViewModel @Inject constructor(
     val showAuthorOnly = _showAuthorOnly.asStateFlow()
 
     companion object {
-        private const val MAX_COMMENT_LENGTH = 300 // BlueSky character limit
+        private const val MAX_COMMENT_LENGTH = 300
     }
 
     init {
-        // Restore selected feed from saved state
         savedStateHandle.get<String>("selectedFeed")?.let { feed ->
             _selectedFeed.value = feed
         }
 
-        // Use a single parent coroutine for initialization
         viewModelScope.launch {
             try {
                 Log.d(TAG, "🚀 Starting HomeViewModel initialization")
                 
-                // Step 1: Initialize Firebase and ensure anonymous auth
                 try {
                     database = Firebase.database
-                    likesRef = database?.getReference("user_likes")
                     
-                    // Ensure Firebase Auth is initialized and we have an anonymous user
                     val auth = FirebaseAuth.getInstance()
                     if (auth.currentUser == null) {
                         auth.signInAnonymously().await()
@@ -150,7 +147,6 @@ class HomeViewModel @Inject constructor(
                     Log.e(TAG, "❌ Firebase initialization failed: ${e.message}")
                 }
                 
-                // Step 2: Initialize session and load data sequentially
                 try {
                     val handle = credentialsManager.getHandle()
                     val password = credentialsManager.getPassword()
@@ -160,18 +156,14 @@ class HomeViewModel @Inject constructor(
                     if (!handle.isNullOrEmpty() && !password.isNullOrEmpty()) {
                         Log.d(TAG, "🔑 Found credentials, creating session")
                         
-                        // Create session and wait for result
                         val sessionResult = atProtocolRepository.createSession(handle, password)
                         
                         sessionResult.onSuccess { session ->
                             Log.d(TAG, "✅ Session created for ${session.handle}")
                             isLoggedOut = false
                             
-                            // Load data sequentially to prevent race conditions
-                            loadPersistedLikes()
-                            delay(500) // Give time for likes to load
+                            delay(500)
                             
-                            // Load initial threads
                             loadThreads()
                         }.onFailure { e ->
                             Log.e(TAG, "❌ Session creation failed: ${e.message}")
@@ -182,12 +174,11 @@ class HomeViewModel @Inject constructor(
                         isLoggedOut = true
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "❌ Session initialization failed: ${e.message}")
-                    isLoggedOut = true
+                    Log.e(TAG, "❌ Error initializing BlueSky: ${e.message}")
+                    Log.e(TAG, "Stack trace: ${e.stackTraceToString()}")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "❌ HomeViewModel initialization failed: ${e.message}")
-                isLoggedOut = true
             }
         }
 
@@ -225,7 +216,6 @@ class HomeViewModel @Inject constructor(
         try {
             Log.d(TAG, "🔐 Starting session validation")
             
-            // First check if we have valid credentials
             val (handle, password) = credentialsManager.getCredentials()
             if (handle.isNullOrEmpty() || password.isNullOrEmpty()) {
                 Log.e(TAG, "❌ No valid credentials found")
@@ -233,7 +223,6 @@ class HomeViewModel @Inject constructor(
                 return
             }
             
-            // Then check if we have a valid session
             val currentSession = atProtocolRepository.getCurrentSession()
             if (currentSession != null) {
                 Log.d(TAG, "✅ Found existing valid session for handle: ${currentSession.handle}")
@@ -241,7 +230,6 @@ class HomeViewModel @Inject constructor(
                 return
             }
             
-            // If no valid session, try to create one
             Log.d(TAG, "🔍 No valid session found, attempting to create new session")
             
             atProtocolRepository.createSession(handle, password)
@@ -287,7 +275,6 @@ class HomeViewModel @Inject constructor(
         try {
             _isLoading.value = true
             
-            // Ensure we have a valid session before proceeding
             ensureValidSession()
             
             if (isLoggedOut) {
@@ -295,21 +282,17 @@ class HomeViewModel @Inject constructor(
                 return
             }
             
-            // Clear cursor but keep existing threads to avoid flicker
             if (isRefresh) {
                 currentCursor = null
                 _threads.value = emptyList()
             }
             
-            // Add delay to ensure session is properly established
             delay(500)
             
-            // Single attempt with proper error handling
             try {
                 loadMoreThreads(isRefresh)
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Thread load failed: ${e.message}")
-                // If it's a connection closed error, wait and retry once
                 if (e.message?.contains("closed") == true) {
                     Log.d(TAG, "🔄 Connection closed, retrying after delay")
                     delay(1000)
@@ -353,9 +336,6 @@ class HomeViewModel @Inject constructor(
                 
                 result.onSuccess { response ->
                     val filteredPosts = response.feed.filter { post ->
-                        // Only include posts that:
-                        // 1. Have valid URI and CID
-                        // 2. Are not replies (don't have a reply.parent field)
                         post.post.uri.isNotEmpty() && 
                         post.post.cid.isNotEmpty() &&
                         post.post.record.reply == null
@@ -376,152 +356,160 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    // Function to retry loading if it failed
     fun retryLoading() {
-        loadThreads()
+        val currentCategory = _selectedFeed.value
+        if (currentCategory != null) {
+            filterByCategory(currentCategory)
+        } else {
+            loadThreads()
+        }
     }
 
     fun filterByCategory(category: String) {
         viewModelScope.launch {
             try {
+                Log.d(TAG, "🔍 [AT Protocol] Starting category filter for: '$category'")
                 _isLoading.value = true
                 currentCursor = null
                 _threads.value = emptyList()
                 
-                // Update selected feed
                 _selectedFeed.value = category
+                Log.d(TAG, "📌 [AT Protocol] Selected feed updated to: '$category'")
                 
-                // Get hashtags for the selected category
-                val categoryHashtags = categories.find { it.name.lowercase() == category.lowercase() }?.hashtags
+                val categoryHashtags = categories.find { 
+                    it.name.equals(category, ignoreCase = true) 
+                }?.hashtags
+                
+                Log.d(TAG, "📋 [AT Protocol] Category hashtags: ${categoryHashtags?.joinToString() ?: "none found"}")
 
                 val result = when {
-                    category.lowercase() == "fyp" -> atProtocolRepository.getTimeline(
-                        algorithm = "whats-hot",
-                        limit = 50
-                    )
-                    category.lowercase() == "following" -> atProtocolRepository.getTimeline(
-                        algorithm = "reverse-chronological",
-                        limit = 50
-                    )
-                    categoryHashtags != null -> {
-                        Log.d(TAG, """
-                            🔍 Category Feed Request:
-                            • Category: $category
-                            • Hashtags: ${categoryHashtags.joinToString()}
-                        """.trimIndent())
+                    category.equals("FYP", ignoreCase = true) -> {
+                        Log.d(TAG, "📱 [AT Protocol] Loading FYP feed with whats-hot algorithm")
+                        atProtocolRepository.getTimeline(algorithm = "whats-hot", limit = 50)
+                    }
+                    category.equals("Following", ignoreCase = true) -> {
+                        Log.d(TAG, "👥 [AT Protocol] Loading Following feed with reverse-chronological algorithm")
+                        atProtocolRepository.getTimeline(algorithm = "reverse-chronological", limit = 50)
+                    }
+                    !categoryHashtags.isNullOrEmpty() -> {
+                        Log.d(TAG, "🏷️ [AT Protocol] Loading posts for category: $category with ${categoryHashtags.size} hashtags")
                         
-                        // Get a larger feed to ensure we have enough posts after filtering
-                        val result = atProtocolRepository.getTimeline(
-                            algorithm = "whats-hot",
-                            limit = 100
-                        )
+                        var foundPosts = false
+                        var finalResult: Result<TimelineResponse>? = null
                         
-                        result.map { response ->
-                            // Filter posts that contain any of the category hashtags
-                            val filteredPosts = response.feed.filter { feedPost ->
-                                categoryHashtags.any { hashtag ->
-                                    feedPost.post.record.text.lowercase().contains("#${hashtag.lowercase()}")
+                        // Try each hashtag in parallel for better performance
+                        val hashtagResults = categoryHashtags.map { hashtag ->
+                            async {
+                                try {
+                                    Log.d(TAG, "🔍 [AT Protocol] Searching hashtag: #$hashtag")
+                                    val result = atProtocolRepository.getPostsByHashtag(
+                                        hashtag = hashtag,
+                                        limit = 100  // Increased limit for better results
+                                    )
+                                    Log.d(TAG, "📥 [AT Protocol] Result for #$hashtag: ${result.isSuccess}")
+                                    result to hashtag
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "❌ [AT Protocol] Error searching #$hashtag: ${e.message}")
+                                    null
                                 }
-                            }.take(50)
+                            }
+                        }.awaitAll().filterNotNull()
+                        
+                        // Combine all successful results
+                        val allPosts = hashtagResults.flatMap { (result, hashtag) ->
+                            result.getOrNull()?.feed?.map { it to hashtag } ?: emptyList()
+                        }
+                        
+                        Log.d(TAG, "📊 [AT Protocol] Found ${allPosts.size} total posts across all hashtags")
+                        
+                        if (allPosts.isNotEmpty()) {
+                            // Group posts by their hashtags for better filtering
+                            val postsByHashtag = allPosts.groupBy { it.second }
                             
-                            Log.d(TAG, """
-                                ✅ Category feed assembled:
-                                • Total posts: ${filteredPosts.size}
-                                • From hashtags: ${categoryHashtags.joinToString()}
-                            """.trimIndent())
+                            // Filter and deduplicate posts
+                            val filteredPosts = allPosts.map { it.first }
+                                .distinctBy { it.post.uri }
+                                .filter { feedPost ->
+                                    val postText = feedPost.post.record.text.lowercase()
+                                    Log.d(TAG, "📝 [AT Protocol] Checking post: ${postText.take(100)}...")
+                                    
+                                    categoryHashtags.any { tag ->
+                                        val variations = listOf(
+                                            "#${tag.lowercase()}",
+                                            "#${tag.lowercase().replace(" ", "")}",
+                                            "#${tag.lowercase().replace("&", "and")}",
+                                            "#${tag.lowercase().replace(" ", "_")}",
+                                            tag.lowercase()  // Also match without hashtag for context
+                                        )
+                                        
+                                        val containsVariation = variations.any { variation -> 
+                                            postText.contains(variation)
+                                        }
+                                        
+                                        if (containsVariation) {
+                                            Log.d(TAG, "✅ [AT Protocol] Post matches hashtag: #$tag")
+                                        }
+                                        
+                                        containsVariation
+                                    }
+                                }
                             
-                            TimelineResponse(
-                                feed = filteredPosts,
-                                cursor = response.cursor
-                            )
+                            Log.d(TAG, "✨ [AT Protocol] After filtering: ${filteredPosts.size} unique relevant posts")
+                            
+                            if (filteredPosts.isNotEmpty()) {
+                                // Sort by engagement and recency
+                                val sortedPosts = filteredPosts.sortedByDescending { post ->
+                                    val engagement = (post.post.likeCount ?: 0) + (post.post.repostCount ?: 0)
+                                    val age = Duration.between(
+                                        Instant.parse(post.post.record.createdAt),
+                                        Instant.now()
+                                    ).toHours()
+                                    engagement.toDouble() / (age + 1) // Add 1 to avoid division by zero
+                                }
+                                
+                                finalResult = Result.success(TimelineResponse(
+                                    feed = sortedPosts.take(50),
+                                    cursor = null  // We'll handle pagination differently for combined results
+                                ))
+                            }
+                        }
+                        
+                        finalResult ?: run {
+                            Log.d(TAG, "⚠️ [AT Protocol] No posts found with hashtags, trying timeline")
+                            atProtocolRepository.getTimeline(
+                                algorithm = "whats-hot",
+                                limit = 200
+                            ).map { response ->
+                                TimelineResponse(
+                                    feed = response.feed.filter { feedPost ->
+                                        val postText = feedPost.post.record.text.lowercase()
+                                        categoryHashtags.any { tag ->
+                                            postText.contains(tag.lowercase())
+                                        }
+                                    }.take(50),
+                                    cursor = response.cursor
+                                )
+                            }
                         }
                     }
-                    else -> atProtocolRepository.getTimeline(
-                        algorithm = "reverse-chronological",
-                        limit = 50
-                    )
+                    else -> {
+                        Log.d(TAG, "⚠️ [AT Protocol] No category hashtags found, defaulting to timeline")
+                        atProtocolRepository.getTimeline(algorithm = "whats-hot", limit = 50)
+                    }
                 }
 
                 result.onSuccess { response ->
+                    Log.d(TAG, "✅ [AT Protocol] Successfully loaded ${response.feed.size} posts for category $category")
                     _threads.value = response.feed
                     currentCursor = response.cursor
-                    
-                    // Load like states for the new posts
                     loadInitialLikeStates(response.feed)
                 }.onFailure { e ->
-                    Log.e(TAG, "❌ Failed to filter by category: ${e.message}")
+                    Log.e(TAG, "❌ [AT Protocol] Failed to filter by category: ${e.message}")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "❌ Failed to filter by category: ${e.message}")
+                Log.e(TAG, "❌ [AT Protocol] Failed to filter by category: ${e.message}")
             } finally {
                 _isLoading.value = false
-            }
-        }
-    }
-
-    private fun loadPersistedLikes() {
-        val userId = credentialsManager.getDid() ?: return
-        println("DEBUG: TrendFlick 💾 Loading persisted likes for user: $userId")
-        
-        likesRef?.child(userId)?.addValueEventListener(object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                val likes = snapshot.children.mapNotNull { it.key }.toSet()
-                println("DEBUG: TrendFlick 💾 Loaded ${likes.size} persisted likes")
-                _likedPosts.value = likes
-            }
-
-            override fun onCancelled(error: DatabaseError) {
-                println("DEBUG: TrendFlick ❌ Failed to load persisted likes: ${error.message}")
-            }
-        })
-    }
-
-    fun toggleLike(postUri: String) {
-        Log.d(TAG, "💜 [TRENDS] Toggle like called for post: $postUri")
-        val userId = credentialsManager.getDid()
-        if (userId == null) {
-            Log.e(TAG, "❌ [TRENDS] Cannot toggle like - user not logged in")
-            return
-        }
-
-        viewModelScope.launch {
-            try {
-                val currentLikes = _likedPosts.value
-                val isCurrentlyLiked = currentLikes.contains(postUri)
-                Log.d(TAG, "🔍 [TRENDS] Current like state - isLiked: $isCurrentlyLiked")
-
-                // Call AT Protocol first to ensure network state is updated
-                Log.d(TAG, "🌐 [TRENDS] Calling AT Protocol like endpoint")
-                try {
-                    val likeResult = atProtocolRepository.likePost(postUri)
-                    if (likeResult != isCurrentlyLiked) {
-                        // Update local state only after successful AT Protocol operation
-                        _likedPosts.value = if (likeResult) {
-                            currentLikes + postUri
-                        } else {
-                            currentLikes - postUri
-                        }
-                        Log.d(TAG, "✅ [TRENDS] Local state updated after successful AT Protocol operation")
-                        
-                        // Update Firebase to match AT Protocol state
-                        Log.d(TAG, "💾 [TRENDS] Syncing Firebase with AT Protocol state")
-                        likesRef?.child(userId)?.child(postUri)?.setValue(likeResult)
-                            ?.addOnSuccessListener {
-                                Log.d(TAG, "✅ [TRENDS] Firebase synced with AT Protocol state")
-                            }
-                            ?.addOnFailureListener { e ->
-                                Log.e(TAG, "❌ [TRENDS] Failed to sync Firebase: ${e.message}")
-                            }
-                    } else {
-                        Log.d(TAG, "ℹ️ [TRENDS] No state change needed - AT Protocol matches current state")
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "❌ [TRENDS] AT Protocol operation failed: ${e.message}")
-                    // Don't update local state if AT Protocol operation fails
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "❌ [TRENDS] Error in toggleLike: ${e.message}")
-                Log.e(TAG, "❌ [TRENDS] Stack trace: ${e.stackTraceToString()}")
             }
         }
     }
@@ -531,13 +519,11 @@ class HomeViewModel @Inject constructor(
             try {
                 println("DEBUG: TrendFlick 💾 [TRENDS] Loading initial like and repost states for ${posts.size} posts")
                 
-                // Keep existing likes and reposts to prevent UI flicker
                 val currentLiked = _likedPosts.value.toMutableSet()
                 val currentReposted = _repostedPosts.value.toMutableSet()
                 println("DEBUG: TrendFlick 💾 [TRENDS] Current likes in memory before loading: ${currentLiked.size}")
                 println("DEBUG: TrendFlick 💾 [TRENDS] Current reposts in memory before loading: ${currentReposted.size}")
                 
-                // Check each post's like and repost status
                 posts.forEach { feedPost ->
                     try {
                         println("DEBUG: TrendFlick 🔍 [TRENDS] Checking like and repost status for post: ${feedPost.post.uri}")
@@ -554,7 +540,6 @@ class HomeViewModel @Inject constructor(
                     }
                 }
                 
-                // Update the states
                 _likedPosts.value = currentLiked
                 _repostedPosts.value = currentReposted
                 println("DEBUG: TrendFlick 💾 [TRENDS] Updated liked posts set, total liked: ${currentLiked.size}")
@@ -581,12 +566,10 @@ class HomeViewModel @Inject constructor(
             try {
                 val threadResult = fetchThreadDetails(threadUri)
                 threadResult.onSuccess { threadResponse ->
-                    // Extract posts from the thread response
                     val threadPosts = threadResponse.thread.replies?.map { reply ->
                         FeedPost(post = reply.post)
                     } ?: emptyList()
                     
-                    // Update threads with the new posts
                     _threads.value = threadPosts
                 }.onFailure { error ->
                     _threads.value = emptyList()
@@ -605,15 +588,12 @@ class HomeViewModel @Inject constructor(
                 threadResult.onSuccess { response ->
                     _currentThread.value = response.thread
                     
-                    // Update like states for the thread and its replies
                     val currentLiked = _likedPosts.value.toMutableSet()
                     
-                    // Check main post
                     if (atProtocolRepository.isPostLikedByUser(response.thread.post.uri)) {
                         currentLiked.add(response.thread.post.uri)
                     }
                     
-                    // Check replies if they exist
                     response.thread.replies?.forEach { reply: ThreadPost ->
                         if (atProtocolRepository.isPostLikedByUser(reply.post.uri)) {
                             currentLiked.add(reply.post.uri)
@@ -634,7 +614,6 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 Log.d(TAG, "🔄 Starting repost process for URI: $uri")
-                // First get the post details to get the correct CID
                 val postThread = atProtocolRepository.getPostThread(uri)
                 postThread.onSuccess { threadResponse ->
                     val post = threadResponse.thread.post
@@ -648,10 +627,8 @@ class HomeViewModel @Inject constructor(
                     
                     if (post.cid.startsWith("bafyrei") || post.cid.startsWith("bafy")) {
                         Log.d(TAG, "📝 Post details retrieved - URI: ${post.uri}, CID: ${post.cid}")
-                        // Now create the repost with the correct CID
                         atProtocolRepository.repost(post.uri, post.cid)
                         Log.d(TAG, "✅ Repost request sent successfully")
-                        // Toggle repost state
                         _repostedPosts.value = if (uri in _repostedPosts.value) {
                             _repostedPosts.value - uri
                         } else {
@@ -690,22 +667,18 @@ class HomeViewModel @Inject constructor(
     fun sharePost(uri: String) {
         viewModelScope.launch {
             try {
-                // Get the post details to create a proper share URL
                 val threadResult = atProtocolRepository.getPostThread(uri)
                 threadResult.onSuccess { response ->
                     val post = response.thread.post
                     val handle = post.author.handle
                     
-                    // Create the BlueSky post URL
                     val rkey = uri.substringAfterLast('/')
                     val shareUrl = "https://bsky.app/profile/$handle/post/$rkey"
                     
-                    // Create a preview of the post content (limited to 100 chars)
                     val postPreview = post.record.text.take(100).let {
                         if (post.record.text.length > 100) "$it..." else it
                     }
                     
-                    // Create share text with TrendFlick branding
                     val shareText = """
                         📱 Shared via TrendFlick
                         
@@ -717,14 +690,12 @@ class HomeViewModel @Inject constructor(
                         Download TrendFlick: [Coming Soon to Play Store]
                     """.trimIndent()
                     
-                    // Create share intent
                     val shareIntent = Intent().apply {
                         action = Intent.ACTION_SEND
                         type = "text/plain"
                         putExtra(Intent.EXTRA_TEXT, shareText)
                     }
                     
-                    // Emit the share intent to be handled by the UI
                     _shareEvent.emit(shareIntent)
                 }
             } catch (e: Exception) {
@@ -734,7 +705,6 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    // Function to toggle comments visibility
     fun toggleComments(show: Boolean) {
         _showComments.value = show
     }
@@ -748,23 +718,17 @@ class HomeViewModel @Inject constructor(
                 threadResult.onSuccess { response ->
                     _currentThread.value = response.thread
                     
-                    // Store the original post's author DID
                     val originalAuthorDid = response.thread.post.author.did
                     println("DEBUG: TrendFlick - Original poster DID: $originalAuthorDid")
                     
-                    // Process all replies
                     val comments = mutableListOf<ThreadPost>()
                     
-                    // First add the original post
                     comments.add(response.thread)
                     
-                    // Then process replies
                     response.thread.replies?.forEach { reply ->
-                        // Add debug logging
                         println("DEBUG: TrendFlick - Reply from: ${reply.post.author.did}, isOP: ${reply.post.author.did == originalAuthorDid}")
                         comments.add(reply)
                         
-                        // Process nested replies
                         reply.replies?.forEach { nestedReply ->
                             println("DEBUG: TrendFlick - Nested reply from: ${nestedReply.post.author.did}, isOP: ${nestedReply.post.author.did == originalAuthorDid}")
                             comments.add(nestedReply)
@@ -783,7 +747,6 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    // Function to post a new comment
     fun postComment(parentUri: String, text: String) {
         if (text.length > MAX_COMMENT_LENGTH) {
             viewModelScope.launch {
@@ -809,7 +772,6 @@ class HomeViewModel @Inject constructor(
                         timestamp = timestamp
                     ).onSuccess {
                         Log.d(TAG, "✅ Reply created successfully")
-                        // Give network time to propagate
                         delay(1000)
                         loadComments(parentUri)
                     }.onFailure { error ->
@@ -836,8 +798,6 @@ class HomeViewModel @Inject constructor(
     )
 
     private fun buildReplyReferences(threadPost: ThreadPost): ReplyReferences {
-        // If this is a reply to a reply, use the original post as root
-        // Otherwise, use the parent as root
         val rootRef = threadPost.parent?.post ?: threadPost.post
         
         return ReplyReferences(
@@ -858,7 +818,6 @@ class HomeViewModel @Inject constructor(
                 )
                 
                 result.onSuccess {
-                    // Refresh the thread after successful reply
                     handleThreadFetch(parentUri)
                 }.onFailure { error ->
                     _threads.value = emptyList()
@@ -869,7 +828,6 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    // Update selectedFeed value
     fun updateSelectedFeed(feed: String) {
         viewModelScope.launch {
             _selectedFeed.value = feed
@@ -882,20 +840,16 @@ class HomeViewModel @Inject constructor(
             try {
                 _isRefreshing.value = true
                 
-                // First clean up test videos
                 if (videoRepository is VideoRepositoryImpl) {
                     Log.d(TAG, "🧹 Starting cleanup of test videos...")
                     (videoRepository as VideoRepositoryImpl).cleanupTestVideos()
                 }
                 
-                // Refresh videos
                 val refreshedVideos = videoRepository.getVideos()
                 _videos.value = refreshedVideos
                 
-                // Refresh likes states
                 refreshLikeStates()
                 
-                // Verify credentials and session
                 verifyCredentials()
                 
             } catch (e: Exception) {
@@ -976,10 +930,8 @@ class HomeViewModel @Inject constructor(
             try {
                 Log.d(TAG, "🔐 Initializing BlueSky credentials")
                 
-                // Save credentials
                 credentialsManager.saveCredentials(handle, password)
                 
-                // Create initial session
                 if (credentialsManager.hasValidCredentials()) {
                     Log.d(TAG, "🔑 Creating initial session")
                     atProtocolRepository.createSession(handle, password)
@@ -990,7 +942,6 @@ class HomeViewModel @Inject constructor(
                                 DID: ${session.did}
                             """.trimIndent())
                             
-                            // Load initial data
                             loadThreads()
                         }
                         .onFailure { e ->
@@ -1023,7 +974,6 @@ class HomeViewModel @Inject constructor(
                 _isLoading.value = true
                 _currentHashtag.value = hashtag
                 
-                // Update selected feed to show hashtag
                 if (hashtag != null) {
                     _selectedFeed.value = "#$hashtag"
                 }
@@ -1053,7 +1003,6 @@ class HomeViewModel @Inject constructor(
                 currentCursor = null
                 _threads.value = emptyList()
                 
-                // Load posts for hashtag
                 atProtocolRepository.getPostsByHashtag(hashtag)
                     .onSuccess { response ->
                         val filteredPosts = response.feed.filter { post ->
@@ -1079,6 +1028,40 @@ class HomeViewModel @Inject constructor(
     fun toggleAuthorOnly() {
         _showAuthorOnly.value = !_showAuthorOnly.value
     }
+
+    fun toggleLike(postUri: String) {
+        Log.d(TAG, "💜 [TRENDS] Toggle like called for post: $postUri")
+        val userId = credentialsManager.getDid()
+        if (userId == null) {
+            Log.e(TAG, "❌ [TRENDS] Cannot toggle like - user not logged in")
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                val currentLikes = _likedPosts.value
+                val isCurrentlyLiked = currentLikes.contains(postUri)
+                Log.d(TAG, "🔍 [TRENDS] Current like state - isLiked: $isCurrentlyLiked")
+
+                Log.d(TAG, "🌐 [TRENDS] Calling AT Protocol like endpoint")
+                try {
+                    val likeResult = atProtocolRepository.likePost(postUri)
+                    _likedPosts.value = if (likeResult) {
+                        currentLikes + postUri
+                    } else {
+                        currentLikes - postUri
+                    }
+                    Log.d(TAG, "✅ [TRENDS] Local state updated after successful AT Protocol operation")
+                } catch (e: Exception) {
+                    Log.e(TAG, "❌ [TRENDS] AT Protocol operation failed: ${e.message}")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ [TRENDS] Error in toggleLike: ${e.message}")
+                Log.e(TAG, "❌ [TRENDS] Stack trace: ${e.stackTraceToString()}")
+            }
+        }
+    }
 }
 
+   
    

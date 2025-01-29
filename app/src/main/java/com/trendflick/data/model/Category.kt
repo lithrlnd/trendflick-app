@@ -23,41 +23,67 @@ val mainFeeds = listOf(
 )
 
 val categories = listOf(
-    Category("Tech & AI", "💻", setOf(
-        "tech", "ai", "coding", "startup", "innovation",
-        "technology", "artificialintelligence", "programming",
-        "developer", "machinelearning"
+    Category("Tech & AI", "��", setOf(
+        "tech", "ai", "technology", "coding", 
+        "programming", "artificialintelligence", "chatgpt", "gpt",
+        "web3", "blockchain", "innovation", "software",
+        "machinelearning", "ml", "developer", "tech",
+        "computerscience", "future", "startup", "digital"
+    )),
+    Category("Politics", "🗳️", setOf(
+        "politics", "news", "democracy", "political",
+        "election2025", "vote2025", "congress", "government",
+        "policy", "activism", "campaign", "climateaction",
+        "current", "world", "breaking", "senate",
+        "house", "law", "justice", "reform"
     )),
     Category("Entertainment", "🎬", setOf(
-        "movies", "tv", "streaming", "cinema", "entertainment",
-        "film", "series", "netflix", "hollywood", "shows"
+        "entertainment", "movies", "tv", "film",
+        "netflix", "streaming", "hollywood", "series",
+        "show", "tvshow", "bingeworthy", "cinema",
+        "actor", "actress", "director", "premiere",
+        "newmovie", "television", "drama", "comedy"
     )),
     Category("Gaming", "🎮", setOf(
-        "gaming", "esports", "streamer", "gameplay", "gamer",
-        "twitch", "videogames", "ps5", "xbox", "nintendoswitch"
+        "gaming", "games", "gamer", "videogames",
+        "esports", "twitch", "streamer", "ps5",
+        "xbox", "nintendoswitch", "pcgaming", "steam",
+        "gamedev", "gaming", "rpg", "fps",
+        "indiegame", "retrogaming", "gamingcommunity", "gameplay"
     )),
     Category("Art & Design", "🎨", setOf(
-        "art", "design", "illustration", "creative", "artist",
-        "digitalart", "graphicdesign", "artwork", "drawing",
-        "animation"
+        "art", "artist", "design", "artwork",
+        "illustration", "creative", "digitalart", "artistsofbsky",
+        "graphicdesign", "contemporary", "aiart", "modernart",
+        "drawing", "painting", "sketch", "artistic",
+        "artgallery", "artonbsky", "artcommunity", "create"
     )),
     Category("Beauty", "💄", setOf(
-        "beauty", "makeup", "skincare", "fashion", "style",
-        "cosmetics", "beautytips", "selfcare", "glam",
-        "beautycommunity"
+        "beauty", "makeup", "skincare", "selfcare",
+        "beautytips", "glam", "mua", "beautycommunity",
+        "cosmetics", "beautycare", "makeupartist", "skincareroutine",
+        "beautyblog", "makeuptutorial", "beautyproducts", "natural",
+        "organic", "wellness", "beautytips", "glow"
     )),
     Category("Music", "🎵", setOf(
-        "music", "newmusic", "artist", "songs", "musician",
-        "spotify", "hiphop", "rap", "indie", "livemusic"
+        "music", "newmusic", "spotify", "musician",
+        "hiphop", "rap", "indie", "rock",
+        "pop", "musicproducer", "livemusic", "song",
+        "album", "artist", "band", "concert",
+        "musicproduction", "singer", "producer", "dj"
     )),
     Category("Food", "🍳", setOf(
-        "food", "cooking", "recipe", "foodie", "chef",
-        "homecooking", "foodphotography", "baking", "cuisine",
-        "foodlover"
+        "food", "foodie", "cooking", "recipe",
+        "homecooking", "foodphotography", "chef", "healthyfood",
+        "foodblog", "foodlover", "cuisine", "baking",
+        "vegan", "vegetarian", "dinner", "lunch",
+        "breakfast", "foodstagram", "delicious", "tasty"
     )),
     Category("Fitness", "💪", setOf(
-        "fitness", "health", "workout", "wellness", "gym",
-        "training", "motivation", "exercise", "healthy",
-        "fitnessmotivation"
+        "fitness", "gym", "workout", "health",
+        "wellness", "training", "nutrition", "mindfulness",
+        "exercise", "fitnessmotivation", "healthy", "fit",
+        "bodybuilding", "yoga", "running", "strength",
+        "personaltrainer", "fitlife", "active", "lifestyle"
     ))
 ) 
