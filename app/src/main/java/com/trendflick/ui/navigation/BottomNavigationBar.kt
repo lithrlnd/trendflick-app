@@ -70,11 +70,11 @@ fun BottomNavigationBar(
             )
             
             NavigationBarItem(
-                icon = { Icon(Icons.Default.People, contentDescription = "Following") },
-                label = { Text("Following") },
-                selected = currentRoute == Screen.Following.route,
+                icon = { Icon(Icons.Default.Message, contentDescription = "Messages") },
+                label = { Text("Messages") },
+                selected = currentRoute == Screen.Messages.route,
                 onClick = {
-                    navController.navigate(Screen.Following.route) {
+                    navController.navigate(Screen.Messages.route) {
                         launchSingleTop = true
                     }
                 },

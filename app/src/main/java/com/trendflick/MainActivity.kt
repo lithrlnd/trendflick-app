@@ -21,6 +21,7 @@ import com.trendflick.ui.screens.profile.ProfileScreen
 import com.trendflick.ui.screens.splash.SplashScreen
 import com.trendflick.ui.screens.login.LoginScreen
 import com.trendflick.ui.screens.ai.AIScreen
+import com.trendflick.ui.screens.messages.MessagesScreen
 import com.trendflick.ui.theme.TrendFlickTheme
 import dagger.hilt.android.AndroidEntryPoint
 import androidx.compose.material.icons.Icons
@@ -37,7 +38,6 @@ import android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
 import androidx.compose.ui.graphics.Color
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.trendflick.ui.viewmodels.SharedViewModel
-import com.trendflick.ui.screens.following.FollowingScreen
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -88,19 +88,9 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
                             }
-                            composable(Screen.Following.route) {
+                            composable(Screen.Messages.route) {
                                 Box(modifier = Modifier.padding(bottom = 80.dp)) {
-                                    FollowingScreen(
-                                        onNavigateToProfile = { did ->
-                                            navController.navigate("profile/$did")
-                                        },
-                                        onNavigateToCreatePost = {
-                                            navController.navigate(Screen.CreatePost.route)
-                                        },
-                                        onCreatePost = {
-                                            navController.navigate(Screen.CreatePost.route)
-                                        }
-                                    )
+                                    MessagesScreen(navController = navController)
                                 }
                             }
                             composable(Screen.CreateFlick.route) {
@@ -114,20 +104,6 @@ class MainActivity : ComponentActivity() {
                             composable(Screen.CreatePost.route) {
                                 Box(modifier = Modifier.padding(bottom = 80.dp)) {
                                     CreatePostScreen(navController = navController)
-                                }
-                            }
-                            composable(Screen.Chat.route) {
-                                Box(modifier = Modifier.padding(bottom = 80.dp)) {
-                                    Column(
-                                        modifier = Modifier.fillMaxSize(),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.Center
-                                    ) {
-                                        Text(
-                                            text = "Messages Coming Soon",
-                                            style = MaterialTheme.typography.headlineMedium
-                                        )
-                                    }
                                 }
                             }
                             composable(Screen.Profile.route) {
