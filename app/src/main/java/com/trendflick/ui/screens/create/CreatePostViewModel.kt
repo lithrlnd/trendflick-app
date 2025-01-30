@@ -83,8 +83,13 @@ class CreatePostViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(isLoading = true)
                 val timestamp = Instant.now().toString()
                 
-                // Parse facets for mentions and links before creating post
-                val facets = repository.parseFacets(text)
+                // Make facets optional
+                val facets = try {
+                    repository.parseFacets(text)
+                } catch (e: Exception) {
+                    null // If facet parsing fails, continue without facets
+                }
+                
                 repository.createPost(
                     text = text,
                     timestamp = timestamp,

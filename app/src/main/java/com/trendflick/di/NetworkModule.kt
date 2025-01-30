@@ -278,6 +278,7 @@ object NetworkModule {
         return Moshi.Builder()
             .add(RecordJsonAdapter.FACTORY)
             .add(FacetFeatureJsonAdapter.FACTORY)
+            .add(FeatureJsonAdapter.FACTORY)
             .add(FacetAdapter())
             .add(ExternalEmbedAdapter())
             .addLast(KotlinJsonAdapterFactory())
