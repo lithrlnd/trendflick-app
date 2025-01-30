@@ -68,6 +68,16 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.animation.core.ExperimentalTransitionApi
 import androidx.compose.ui.text.style.TextOverflow
 import android.util.Log
+import androidx.compose.material.icons.filled.Tag
+import androidx.compose.runtime.remember
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.trendflick.domain.model.UserProfile
+import com.trendflick.domain.model.Hashtag
+import androidx.compose.ui.text.font.FontWeight
 
 @OptIn(
     ExperimentalMaterial3Api::class,
@@ -285,7 +295,7 @@ fun CreateFlickScreen(
                         }
                     }
 
-                    // Description input
+                    // Description input with suggestions support
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -296,6 +306,38 @@ fun CreateFlickScreen(
                             onValueChange = { newValue ->
                                 if (newValue.text.length <= 300) {
                                     textFieldValue = newValue
+                                    
+                                    // Check for @ or # triggers
+                                    val lastChar = newValue.text.lastOrNull()
+                                    when (lastChar) {
+                                        '@' -> {
+                                            viewModel.updateQuery("@")
+                                        }
+                                        '#' -> {
+                                            viewModel.updateQuery("#")
+                                        }
+                                        ' ' -> {
+                                            viewModel.clearSuggestions()
+                                        }
+                                        else -> {
+                                            // Check if we're in the middle of a mention/hashtag
+                                            val text = newValue.text
+                                            val lastMentionIndex = text.lastIndexOf('@')
+                                            val lastHashtagIndex = text.lastIndexOf('#')
+                                            val lastSpaceIndex = text.lastIndexOf(' ')
+                                            
+                                            when {
+                                                lastMentionIndex > lastSpaceIndex -> {
+                                                    val query = text.substring(lastMentionIndex + 1)
+                                                    viewModel.updateQuery("@$query")
+                                                }
+                                                lastHashtagIndex > lastSpaceIndex -> {
+                                                    val query = text.substring(lastHashtagIndex + 1)
+                                                    viewModel.updateQuery("#$query")
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             },
                             modifier = Modifier
@@ -319,7 +361,8 @@ fun CreateFlickScreen(
                                 unfocusedTextColor = Color.White,
                                 disabledTextColor = Color.White.copy(alpha = 0.5f)
                             ),
-                            textStyle = MaterialTheme.typography.bodyLarge
+                            textStyle = MaterialTheme.typography.bodyLarge,
+                            visualTransformation = rememberMentionHashtagTransformation(MaterialTheme.colorScheme.primary)
                         )
 
                         // Character count
@@ -329,6 +372,59 @@ fun CreateFlickScreen(
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.padding(top = 8.dp)
                         )
+
+                        // Suggestions dropdown
+                        val userSuggestions by viewModel.userSuggestions.collectAsStateWithLifecycle()
+                        val hashtagSuggestions by viewModel.hashtagSuggestions.collectAsStateWithLifecycle()
+                        
+                        if (userSuggestions.isNotEmpty() || hashtagSuggestions.isNotEmpty()) {
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 200.dp),
+                                shape = MaterialTheme.shapes.medium,
+                                tonalElevation = 2.dp,
+                                shadowElevation = 4.dp
+                            ) {
+                                LazyColumn {
+                                    items(userSuggestions) { user ->
+                                        ListItem(
+                                            headlineContent = { Text(user.handle) },
+                                            supportingContent = { user.displayName?.let { Text(it) } },
+                                            modifier = Modifier.clickable {
+                                                val newText = viewModel.insertMention(user)
+                                                textFieldValue = TextFieldValue(
+                                                    text = newText,
+                                                    selection = TextRange(newText.length)
+                                                )
+                                            }
+                                        )
+                                        Divider()
+                                    }
+                                    
+                                    items(hashtagSuggestions) { hashtag ->
+                                        ListItem(
+                                            headlineContent = { Text("#${hashtag.tag}") },
+                                            leadingContent = {
+                                                Icon(
+                                                    Icons.Filled.Tag,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary
+                                                )
+                                            },
+                                            modifier = Modifier.clickable {
+                                                val newText = viewModel.insertHashtag(hashtag)
+                                                textFieldValue = TextFieldValue(
+                                                    text = newText,
+                                                    selection = TextRange(newText.length)
+                                                )
+                                            }
+                                        )
+                                        Divider()
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     if (showDialog) {
@@ -740,5 +836,91 @@ fun CreateFlickScreen(
                 }
             }
         )
+    }
+}
+
+private class MentionHashtagTransformation(private val highlightColor: Color) : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        return TransformedText(
+            buildAnnotatedString {
+                var currentIndex = 0
+                var startIndex = 0
+                
+                while (currentIndex < text.text.length) {
+                    when {
+                        // Handle hashtags
+                        text.text[currentIndex] == '#' && (currentIndex == 0 || text.text[currentIndex - 1].isWhitespace()) -> {
+                            append(text.text.substring(startIndex, currentIndex))
+                            
+                            val remaining = text.text.substring(currentIndex)
+                            val tag = remaining.takeWhile { it.isLetterOrDigit() || it == '_' }
+                            
+                            if (tag.isNotEmpty()) {
+                                // Check tag length (max 64 chars not including #)
+                                if (tag.length <= 65) {
+                                    withStyle(
+                                        SpanStyle(
+                                            color = highlightColor,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    ) {
+                                        append("#$tag")
+                                    }
+                                    currentIndex += tag.length + 1
+                                    startIndex = currentIndex
+                                } else {
+                                    append("#")
+                                    currentIndex++
+                                    startIndex = currentIndex
+                                }
+                            } else {
+                                append("#")
+                                currentIndex++
+                                startIndex = currentIndex
+                            }
+                        }
+                        // Handle mentions with AT Protocol regex
+                        text.text[currentIndex] == '@' && (currentIndex == 0 || text.text[currentIndex - 1].isWhitespace()) -> {
+                            append(text.text.substring(startIndex, currentIndex))
+                            
+                            val remaining = text.text.substring(currentIndex)
+                            // AT Protocol mention regex
+                            val mentionMatch = Regex("""@([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?""").find(remaining)
+                            
+                            if (mentionMatch != null) {
+                                withStyle(
+                                    SpanStyle(
+                                        color = highlightColor,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                ) {
+                                    append(mentionMatch.value)
+                                }
+                                currentIndex += mentionMatch.value.length
+                                startIndex = currentIndex
+                            } else {
+                                append("@")
+                                currentIndex++
+                                startIndex = currentIndex
+                            }
+                        }
+                        else -> currentIndex++
+                    }
+                }
+                
+                // Append remaining text
+                if (startIndex < text.text.length) {
+                    append(text.text.substring(startIndex))
+                }
+            },
+            OffsetMapping.Identity
+        )
+    }
+}
+
+@Composable
+private fun rememberMentionHashtagTransformation(highlightColor: Color): VisualTransformation {
+    return remember(highlightColor) {
+        MentionHashtagTransformation(highlightColor)
     }
 } 

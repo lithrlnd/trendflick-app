@@ -21,6 +21,8 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import org.json.JSONObject
 import com.trendflick.data.model.TrendingHashtag
+import com.trendflick.domain.model.UserProfile
+import com.trendflick.domain.model.Hashtag
 
 data class CreateFlickUiState(
     val isLoading: Boolean = false,
@@ -44,11 +46,11 @@ class CreateFlickViewModel @Inject constructor(
     private val _currentQuery = MutableStateFlow("")
     val currentQuery: StateFlow<String> = _currentQuery.asStateFlow()
 
-    private val _userSuggestions = MutableStateFlow<List<UserSearchResult>>(emptyList())
-    val userSuggestions: StateFlow<List<UserSearchResult>> = _userSuggestions.asStateFlow()
+    private val _userSuggestions = MutableStateFlow<List<UserProfile>>(emptyList())
+    val userSuggestions: StateFlow<List<UserProfile>> = _userSuggestions.asStateFlow()
 
-    private val _hashtagSuggestions = MutableStateFlow<List<TrendingHashtag>>(emptyList())
-    val hashtagSuggestions: StateFlow<List<TrendingHashtag>> = _hashtagSuggestions.asStateFlow()
+    private val _hashtagSuggestions = MutableStateFlow<List<Hashtag>>(emptyList())
+    val hashtagSuggestions: StateFlow<List<Hashtag>> = _hashtagSuggestions.asStateFlow()
 
     private val TAG = "TF_CreateFlickViewModel"
 
@@ -106,24 +108,38 @@ class CreateFlickViewModel @Inject constructor(
                         throw IllegalStateException("Failed to upload video: No blob reference returned")
                     }
 
-                    // Create BlueSky post with video embed
-                    val postResult = atProtocolRepository.createPost(
-                        record = mapOf(
-                            "did" to (atProtocolRepository.getDid() ?: throw IllegalStateException("No DID found")),
-                            "\$type" to "app.bsky.feed.post",
-                            "text" to description,
-                            "createdAt" to java.time.Instant.now().toString(),
-                            "embed" to mapOf(
-                                "\$type" to "app.bsky.embed.video",
-                                "video" to uploadResult.blobRef
-                            )
+                    // Parse facets for mentions and hashtags in description
+                    val facets = try {
+                        atProtocolRepository.parseFacets(description)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to parse facets: ${e.message}")
+                        null
+                    }
+
+                    // Create BlueSky post with video embed and facets
+                    val record = mutableMapOf(
+                        "did" to (atProtocolRepository.getDid() ?: throw IllegalStateException("No DID found")),
+                        "\$type" to "app.bsky.feed.post",
+                        "text" to description,
+                        "createdAt" to java.time.Instant.now().toString(),
+                        "embed" to mapOf(
+                            "\$type" to "app.bsky.embed.video",
+                            "video" to uploadResult.blobRef
                         )
                     )
+                    
+                    // Add facets if available
+                    if (facets != null) {
+                        record["facets"] = facets
+                    }
+
+                    val postResult = atProtocolRepository.createPost(record)
 
                     Log.d(TAG, """
                         ✅ Post created successfully:
                         URI: ${uploadResult.postUri}
                         Description: $description
+                        Facets: ${facets?.size ?: 0}
                     """.trimIndent())
                     _uiState.value = CreateFlickUiState(isPostSuccessful = true)
 
@@ -178,7 +194,14 @@ class CreateFlickViewModel @Inject constructor(
     private suspend fun searchUsers(query: String) {
         try {
             val users = atProtocolRepository.searchHandles(query)
-            _userSuggestions.value = users
+            _userSuggestions.value = users.map { result ->
+                UserProfile(
+                    did = result.did,
+                    handle = result.handle,
+                    displayName = result.displayName,
+                    avatar = result.avatar
+                )
+            }
             _hashtagSuggestions.value = emptyList()
         } catch (e: Exception) {
             Log.e(TAG, "Error searching users: ${e.message}")
@@ -191,7 +214,12 @@ class CreateFlickViewModel @Inject constructor(
         try {
             val hashtags = atProtocolRepository.searchHashtags(query)
             _userSuggestions.value = emptyList()
-            _hashtagSuggestions.value = hashtags
+            _hashtagSuggestions.value = hashtags.map { trending ->
+                Hashtag(
+                    tag = trending.tag,
+                    postCount = 0  // Default to 0 since we don't have this info from BlueSky
+                )
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error searching hashtags: ${e.message}")
             _userSuggestions.value = emptyList()
@@ -241,27 +269,27 @@ class CreateFlickViewModel @Inject constructor(
         }
     }
 
-    fun insertMention(user: UserSearchResult): String {
+    fun insertMention(user: UserProfile): String {
         val currentText = _currentQuery.value
-        val beforeMention = currentText.substringBeforeLast("@")
-        val afterMention = currentText.substringAfterLast("@").substringAfter(" ", "")
-        val newText = "$beforeMention@${user.handle} $afterMention"
-        _currentQuery.value = newText
-        clearSuggestions()
-        return newText
+        val lastAtIndex = currentText.lastIndexOf('@')
+        return if (lastAtIndex >= 0) {
+            currentText.substring(0, lastAtIndex) + "@${user.handle} "
+        } else {
+            currentText
+        }
     }
 
-    fun insertHashtag(hashtag: TrendingHashtag): String {
+    fun insertHashtag(hashtag: Hashtag): String {
         val currentText = _currentQuery.value
-        val beforeHashtag = currentText.substringBeforeLast("#")
-        val afterHashtag = currentText.substringAfterLast("#").substringAfter(" ", "")
-        val newText = "$beforeHashtag#${hashtag.tag} $afterHashtag"
-        _currentQuery.value = newText
-        clearSuggestions()
-        return newText
+        val lastHashIndex = currentText.lastIndexOf('#')
+        return if (lastHashIndex >= 0) {
+            currentText.substring(0, lastHashIndex) + "#${hashtag.tag} "
+        } else {
+            currentText
+        }
     }
 
-    private fun clearSuggestions() {
+    fun clearSuggestions() {
         _userSuggestions.value = emptyList()
         _hashtagSuggestions.value = emptyList()
     }
