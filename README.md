@@ -382,12 +382,6 @@ We welcome contributions! Please read our contributing guidelines before submitt
 - ✅ Clickable text elements with proper styling
 - ✅ Error-resistant facet processing
 - ✅ Comprehensive logging for debugging
-- ✅ Emoji and special character support
-- ✅ Accurate byte-to-character position mapping
-- ✅ Smart hashtag handling with '#' symbol inclusion
-- ✅ Proper multi-byte character handling
-- ✅ Efficient text range validation
-- ✅ Robust facet overlap prevention
 
 ## Rich Text Architecture
 The app implements AT Protocol's rich text specification with the following features:
@@ -397,26 +391,18 @@ The app implements AT Protocol's rich text specification with the following feat
 - Efficient facet validation and filtering
 - Smart handling of overlapping facets
 - Proper character-to-byte mapping for accurate indices
-- Comprehensive debug logging system
-- Multi-byte character support for emoji and special characters
-- Efficient text range validation and correction
 
 ### Supported Features
 - @mentions with proper DID resolution
-- #hashtags with category integration and proper symbol handling
+- #hashtags with category integration
 - URLs with proper styling and validation
 - Proper handling of emoji and special characters
-- Click handling for all interactive elements
-- Visual feedback for interactive elements
 
 ### Implementation Details
 - Uses Jetpack Compose's AnnotatedString for efficient rendering
 - Implements proper byte-to-character index mapping
 - Handles edge cases and invalid facets gracefully
 - Provides comprehensive logging for debugging
-- Maintains AT Protocol compliance for all text processing
-- Efficient overlap detection and prevention
-- Smart text range validation and correction
 
 ### Posts
 - Create text posts with rich text support

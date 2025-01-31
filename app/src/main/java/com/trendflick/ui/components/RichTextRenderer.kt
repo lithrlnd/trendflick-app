@@ -22,72 +22,41 @@ fun RichTextRenderer(
     modifier: Modifier = Modifier
 ) {
     val annotatedString = buildAnnotatedString {
+        // Convert text to UTF-8 bytes for proper indexing
+        val utf8Bytes = text.toByteArray(StandardCharsets.UTF_8)
+        val charToByteMap = mutableMapOf<Int, Int>()
+        val byteToCharMap = mutableMapOf<Int, Int>()
+        
+        var charIndex = 0
+        var byteIndex = 0
+        text.forEach { char ->
+            charToByteMap[charIndex] = byteIndex
+            byteToCharMap[byteIndex] = charIndex
+            byteIndex += char.toString().toByteArray(StandardCharsets.UTF_8).size
+            charIndex++
+        }
+
         append(text)
 
-        // Create byte-to-character position mapping
-        val utf8Bytes = text.toByteArray(StandardCharsets.UTF_8)
-        val byteToCharMap = mutableMapOf<Int, Int>()
-        var charPos = 0
-        var bytePos = 0
-        
-        // Pre-calculate all character byte lengths
-        val charByteLengths = text.map { it.toString().toByteArray(StandardCharsets.UTF_8).size }
-        
-        // Build the mapping
-        text.forEachIndexed { index, _ ->
-            byteToCharMap[bytePos] = charPos
-            bytePos += charByteLengths[index]
-            charPos++
-        }
-        // Add final position
-        byteToCharMap[bytePos] = charPos
-
-        // Debug logging for facet ranges
-        facets.forEach { facet ->
-            Log.d("RichTextRenderer", "Facet range: ${facet.index.start}-${facet.index.end}, " +
-                "Text: '${text.substring(
-                    byteToCharMap[facet.index.start] ?: 0,
-                    byteToCharMap[facet.index.end] ?: text.length
-                )}'")
-        }
-
-        // Sort and validate facets
-        val sortedFacets = facets
-            .sortedBy { it.index.start }
+        // Sort facets by byte index for proper processing
+        val sortedFacets = facets.sortedWith(compareBy { it.index.start })
             .filter { facet ->
                 val startChar = byteToCharMap[facet.index.start]
                 val endChar = byteToCharMap[facet.index.end]
                 if (startChar == null || endChar == null || 
                     startChar < 0 || endChar > text.length || 
                     startChar >= endChar) {
-                    Log.w("RichTextRenderer", 
-                        "Invalid facet range: start=$startChar, end=$endChar, " +
-                        "byteStart=${facet.index.start}, byteEnd=${facet.index.end}, " +
-                        "textLength=${text.length}")
+                    Log.w("RichTextRenderer", "Invalid facet indices: start=$startChar, end=$endChar, text length=${text.length}")
                     false
                 } else {
                     true
                 }
             }
 
-        // Track processed ranges to avoid overlaps
-        var lastEnd = -1
-
+        // Apply styles to facets
         sortedFacets.forEach { facet ->
             val startChar = byteToCharMap[facet.index.start] ?: return@forEach
             val endChar = byteToCharMap[facet.index.end] ?: return@forEach
-
-            // Skip if this facet overlaps with a previous one
-            if (startChar < lastEnd) {
-                Log.w("RichTextRenderer", "Skipping overlapping facet at position $startChar")
-                return@forEach
-            }
-
-            lastEnd = endChar
-
-            // Extract the actual text being decorated
-            val facetText = text.substring(startChar, endChar)
-            Log.d("RichTextRenderer", "Applying facet to text: '$facetText'")
 
             facet.features.forEach { feature ->
                 when (feature) {
@@ -124,20 +93,18 @@ fun RichTextRenderer(
                         )
                     }
                     is TagFeature -> {
-                        // Make sure hashtag includes the # symbol
-                        val tagStart = if (facetText.startsWith("#")) startChar else startChar - 1
                         addStyle(
                             style = SpanStyle(
                                 color = MaterialTheme.colorScheme.primary,
                                 textDecoration = TextDecoration.None
                             ),
-                            start = tagStart,
+                            start = startChar,
                             end = endChar
                         )
                         addStringAnnotation(
                             tag = "hashtag",
                             annotation = feature.tag,
-                            start = tagStart,
+                            start = startChar,
                             end = endChar
                         )
                     }

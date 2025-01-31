@@ -116,11 +116,6 @@ app/
 - Blob handling
 - Feed algorithms
 - Record management
-- Rich Text Processing:
-  - UTF-8 byte-based facet handling
-  - Mention, link, and hashtag support
-  - Proper emoji and special character handling
-  - Facet overlap prevention
 
 ### Implementation Details
 - Session management
@@ -132,39 +127,6 @@ app/
   - Reference resolution
   - Rich text parsing
   - Character validation
-
-### Rich Text Handling
-TrendFlick implements AT Protocol's rich text specification using Jetpack Compose's AnnotatedString system:
-
-1. **Facet Processing**
-   - Handles UTF-8 byte-based indices
-   - Supports mentions (@user), hashtags (#tag), and links
-   - Validates and filters invalid facets
-   - Prevents facet overlaps
-   - Proper emoji and special character support
-
-2. **Text Rendering**
-   - Converts between UTF-8 bytes and character positions
-   - Maintains accurate byte-to-character mapping
-   - Handles multi-byte characters (emoji, special characters)
-   - Applies appropriate styling for each facet type
-
-3. **Interaction Handling**
-   - Click detection for mentions, hashtags, and links
-   - Proper navigation and action handling
-   - Error handling for invalid interactions
-
-4. **Debug Support**
-   - Detailed logging of facet ranges
-   - Invalid facet reporting
-   - Text extraction verification
-   - Position mapping validation
-
-5. **Common Issues**
-   - Handles partial facet rendering
-   - Manages overlapping facets
-   - Processes multi-byte characters correctly
-   - Validates facet ranges
 
 ## Development Guidelines
 
