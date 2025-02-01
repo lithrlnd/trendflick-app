@@ -2,9 +2,11 @@ package com.trendflick.data.repository
 
 import android.content.Context
 import com.trendflick.data.api.AtProtocolService
+import com.trendflick.data.api.SessionManager
 import com.trendflick.data.local.UserDao
 import com.trendflick.data.model.AtSession
 import com.trendflick.data.model.User
+import com.trendflick.data.auth.BlueskyCredentialsManager
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -29,6 +31,8 @@ class AtProtocolRepositoryTest {
     private lateinit var service: AtProtocolService
     private lateinit var userDao: UserDao
     private lateinit var context: Context
+    private lateinit var sessionManager: SessionManager
+    private lateinit var credentialsManager: BlueskyCredentialsManager
 
     // Following AT Protocol DID format
     private val testDid = "did:plc:test123456789"
@@ -49,7 +53,15 @@ class AtProtocolRepositoryTest {
         service = mockk(relaxed = true)
         userDao = mockk(relaxed = true)
         context = mockk(relaxed = true)
-        repository = AtProtocolRepository(service, userDao, context)
+        sessionManager = mockk(relaxed = true)
+        credentialsManager = mockk(relaxed = true)
+        repository = AtProtocolRepositoryImpl(
+            service = service,
+            userDao = userDao,
+            context = context,
+            sessionManager = sessionManager,
+            credentialsManager = credentialsManager
+        )
     }
 
     @Test

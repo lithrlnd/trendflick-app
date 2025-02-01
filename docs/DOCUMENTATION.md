@@ -63,10 +63,27 @@ app/
 ## Core Components
 
 ### Authentication
-- Handles BlueSky authentication
-- Manages session tokens
-- Implements refresh token logic
-- Stores credentials securely
+- Handles BlueSky authentication through AT Protocol:
+  - **App Password Authentication**
+    - Implements Bluesky's app-specific password system
+    - Format validation (xxxx-xxxx-xxxx-xxxx)
+    - Secure storage and handling
+    - Revocable access management
+  - **Session Management**
+    - Automated token refresh
+    - Session state persistence
+    - Error recovery mechanisms
+    - Rate limit handling
+  - **Components**
+    - SessionManager for token lifecycle
+    - CredentialsManager for app password handling
+    - Repository layer integration
+    - Secure storage implementation
+  - **Testing**
+    - Comprehensive unit test coverage
+    - Mock-based authentication testing
+    - Session lifecycle verification
+    - Error scenario validation
 
 ### Feed Management
 - Implements multiple feed types
@@ -181,7 +198,17 @@ TrendFlick implements AT Protocol's rich text specification using Jetpack Compos
 - Conventional commits
 
 ### Testing
-- Unit tests for repositories
+- Unit tests for repositories:
+  - **Authentication Testing**
+    - Mock SessionManager and CredentialsManager
+    - App password format validation
+    - Session creation/refresh flows
+    - Credential persistence testing
+  - **Repository Testing**
+    - API interaction verification
+    - Data persistence validation
+    - Error handling scenarios
+    - Cache management
 - UI tests for screens
 - Integration tests
 - Performance testing
@@ -189,7 +216,10 @@ TrendFlick implements AT Protocol's rich text specification using Jetpack Compos
 ## Security Considerations
 
 ### Authentication
-- Secure credential storage
+- Secure credential storage:
+  - App password management
+  - Encrypted storage
+  - Scoped access control
 - Token management
 - Session handling
 - Rate limiting

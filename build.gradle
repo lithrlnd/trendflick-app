@@ -3,13 +3,14 @@ buildscript {
         compose_version = '1.5.4'
         hilt_version = '2.48'
         kotlin_version = '1.9.0'
+        gradle_version = '8.8.0'
     }
     repositories {
         google()
         mavenCentral()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.1.0'
+        classpath "com.android.tools.build:gradle:$gradle_version"
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
         classpath "com.google.dagger:hilt-android-gradle-plugin:$hilt_version"
         classpath 'com.google.gms:google-services:4.4.0'
@@ -22,6 +23,6 @@ plugins {
     id 'com.google.dagger.hilt.android' version '2.48' apply false
 }
 
-task clean(type: Delete) {
+tasks.register('clean', Delete) {
     delete rootProject.buildDir
 } 
