@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Reply
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -37,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.compose.rememberImagePainter
 import com.trendflick.data.api.*
 import com.trendflick.utils.DateUtils
 import kotlinx.coroutines.delay
@@ -44,6 +46,14 @@ import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.lazy.items
 import com.trendflick.ui.components.CategoryDrawer
 import com.trendflick.ui.screens.home.HomeViewModel
+import android.util.Log
+import coil.ImageLoader
+import coil.request.CachePolicy
+import coil.request.ImageRequest
+import coil.size.Size
+import coil.compose.AsyncImage
+import coil.compose.rememberImagePainter
+import coil.transition.CrossfadeTransition
 
 @Composable
 fun ThreadCard(
@@ -194,22 +204,11 @@ fun ThreadCard(
                         }
 
                         // Post media if exists
-                        feedPost.post.record.embed?.images?.firstOrNull()?.let { image ->
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp)
-                            ) {
-                                AsyncImage(
-                                    model = image.image,
-                                    contentDescription = image.alt,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .aspectRatio(ratio = (image.aspectRatio ?: 1.77).toFloat())
-                                        .clip(RoundedCornerShape(8.dp)),
-                                    contentScale = ContentScale.Crop
-                                )
-                            }
+                        feedPost.post.record.embed?.let { embed ->
+                            MediaContent(
+                                embed = embed,
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
                     }
                 }
@@ -332,22 +331,11 @@ fun ThreadCard(
                         }
 
                         // Post media if exists
-                        feedPost.post.record.embed?.images?.firstOrNull()?.let { image ->
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp)
-                            ) {
-                                AsyncImage(
-                                    model = image.image,
-                                    contentDescription = image.alt,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .aspectRatio(ratio = (image.aspectRatio ?: 1.77).toFloat())
-                                        .clip(RoundedCornerShape(8.dp)),
-                                    contentScale = ContentScale.Crop
-                                )
-                            }
+                        feedPost.post.record.embed?.let { embed ->
+                            MediaContent(
+                                embed = embed,
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
                     }
 
@@ -621,12 +609,14 @@ fun EmbeddedLink(
     url: String,
     onClick: () -> Unit
 ) {
+    val context = LocalContext.current
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp)
-            .pointerInput(Unit) {
-                detectTapGestures(onTap = { onClick() })
+            .clickable { 
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                context.startActivity(intent)
             },
         shape = RoundedCornerShape(12.dp)
     ) {
@@ -637,13 +627,7 @@ fun EmbeddedLink(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // Thumbnail
-            val thumbnailUrl = when {
-                thumbnail.thumbUrl != null -> thumbnail.thumbUrl
-                thumbnail.thumbBlob?.link != null -> "https://cdn.bsky.app/img/feed_thumbnail/plain/${thumbnail.thumbBlob.link}@jpeg"
-                else -> null
-            }
-            
-            thumbnailUrl?.let { url ->
+            thumbnail.thumbnailUrl.takeIf { it.isNotEmpty() }?.let { url ->
                 AsyncImage(
                     model = url,
                     contentDescription = "Link thumbnail",
@@ -663,13 +647,14 @@ fun EmbeddedLink(
                     text = title,
                     style = MaterialTheme.typography.titleSmall,
                     maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    color = Color.White
                 )
                 description?.let {
                     Text(
                         text = it,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = Color.White.copy(alpha = 0.7f),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -677,7 +662,7 @@ fun EmbeddedLink(
                 Text(
                     text = Uri.parse(url).host ?: url,
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = Color(0xFF6B4EFF)
                 )
             }
         }
@@ -986,6 +971,242 @@ private fun FilteredCommentsList(
                     originalPostAuthorDid = thread.post.author.did,
                     showAuthorOnly = showAuthorOnly
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MediaContent(
+    embed: Embed?,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val imageLoader = remember {
+        ImageLoader.Builder(context)
+            .crossfade(true)
+            .build()
+    }
+    
+    embed?.let { safeEmbed ->
+        // Handle images
+        safeEmbed.images?.let { images ->
+            Column(
+                modifier = modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+            ) {
+                images.forEach { image ->
+                    var isLoading by remember { mutableStateOf(true) }
+                    var isError by remember { mutableStateOf(false) }
+                    
+                    Log.d("MediaContent", "Raw image ref: ${image.imageObj?.ref}")
+                    Log.d("MediaContent", "Image type: ${image.imageObj?.type}")
+                    Log.d("MediaContent", "Image mime type: ${image.imageObj?.mimeType}")
+                    Log.d("MediaContent", "Constructed image URL: ${image.image}")
+                    
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(image.aspectRatio.toFloat())
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.DarkGray.copy(alpha = 0.3f))
+                            .clickable {
+                                if (image.image.isNotEmpty()) {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(image.image))
+                                    context.startActivity(intent)
+                                }
+                            }
+                    ) {
+                        if (image.image.isNotEmpty()) {
+                            AsyncImage(
+                                model = ImageRequest.Builder(context)
+                                    .data(image.image)
+                                    .crossfade(true)
+                                    .size(Size.ORIGINAL)
+                                    .memoryCachePolicy(CachePolicy.ENABLED)
+                                    .diskCachePolicy(CachePolicy.ENABLED)
+                                    .build(),
+                                imageLoader = imageLoader,
+                                contentDescription = image.alt,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop,
+                                onLoading = { isLoading = true },
+                                onSuccess = { 
+                                    isLoading = false
+                                    Log.d("MediaContent", "Successfully loaded image: ${image.image}")
+                                },
+                                onError = {
+                                    isLoading = false
+                                    isError = true
+                                    Log.e("MediaContent", "Error loading image: ${image.image}", it.result.throwable)
+                                }
+                            )
+                        }
+                        
+                        // Loading indicator
+                        if (isLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .align(Alignment.Center),
+                                color = Color(0xFF6B4EFF)
+                            )
+                        }
+                        
+                        // Error state
+                        if (isError) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Text(
+                                    text = "Unable to load image",
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+            }
+        }
+
+        // Handle media embeds (images and videos)
+        safeEmbed.media?.let { media ->
+            Column(
+                modifier = modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+            ) {
+                // Handle media images
+                media.images?.forEach { image ->
+                    Log.d("MediaContent", "Loading media image: ${image.image}")
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio((media.aspectRatio).toFloat())
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.DarkGray.copy(alpha = 0.3f))
+                            .clickable {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(image.image))
+                                context.startActivity(intent)
+                            }
+                    ) {
+                        AsyncImage(
+                            model = ImageRequest.Builder(context)
+                                .data(image.image)
+                                .crossfade(true)
+                                .size(Size.ORIGINAL)
+                                .memoryCachePolicy(CachePolicy.ENABLED)
+                                .diskCachePolicy(CachePolicy.ENABLED)
+                                .build(),
+                            imageLoader = imageLoader,
+                            contentDescription = media.alt ?: image.alt,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                            onError = {
+                                Log.e("MediaContent", "Error loading media image: ${image.image}", it.result.throwable)
+                            }
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                // Handle video
+                media.video?.let { video ->
+                    Log.d("MediaContent", "Loading video: ${video.link}")
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(media.aspectRatio.toFloat())
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.Black)
+                            .clickable {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(media.videoUrl))
+                                context.startActivity(intent)
+                            }
+                    ) {
+                        // Video thumbnail
+                        AsyncImage(
+                            model = ImageRequest.Builder(context)
+                                .data(media.thumbnailUrl)
+                                .crossfade(true)
+                                .size(Size.ORIGINAL)
+                                .memoryCachePolicy(CachePolicy.ENABLED)
+                                .diskCachePolicy(CachePolicy.ENABLED)
+                                .build(),
+                            imageLoader = imageLoader,
+                            contentDescription = media.alt ?: "Video",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                            onError = {
+                                Log.e("MediaContent", "Error loading video thumbnail: ${media.thumbnailUrl}", it.result.throwable)
+                            }
+                        )
+                        
+                        // Play button overlay
+                        Icon(
+                            imageVector = Icons.Default.PlayCircle,
+                            contentDescription = "Play video",
+                            modifier = Modifier
+                                .size(48.dp)
+                                .align(Alignment.Center),
+                            tint = Color.White.copy(alpha = 0.9f)
+                        )
+                    }
+                }
+            }
+        }
+
+        // Handle external embeds (link previews)
+        safeEmbed.external?.let { external ->
+            EmbeddedLink(
+                title = external.title,
+                description = external.description,
+                thumbnail = external,
+                url = external.uri,
+                onClick = {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(external.uri))
+                    context.startActivity(intent)
+                }
+            )
+        }
+
+        // Handle record embeds (quoted posts)
+        safeEmbed.record?.let { record ->
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp)
+                ) {
+                    // Quoted post content
+                    record.text?.let { text ->
+                        Text(
+                            text = text,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White
+                        )
+                    }
+                    
+                    // Handle any media in the quoted post
+                    record.embed?.let { quotedEmbed ->
+                        MediaContent(
+                            embed = quotedEmbed,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                }
             }
         }
     }

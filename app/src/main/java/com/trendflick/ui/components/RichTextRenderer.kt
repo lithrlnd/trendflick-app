@@ -26,14 +26,19 @@ fun RichTextRenderer(
 
         // Sort facets by start index to process them in order
         val sortedFacets = facets.sortedBy { it.index.start }
-
+        
+        Log.d("RichTextRenderer", "Processing ${facets.size} facets for text: $text")
+        
         sortedFacets.forEach { facet ->
             val start = facet.index.start
             val end = facet.index.end
+            
+            Log.d("RichTextRenderer", "Processing facet at $start to $end")
 
             facet.features.forEach { feature ->
                 when (feature) {
                     is MentionFeature -> {
+                        Log.d("RichTextRenderer", "Found mention: ${feature.did}")
                         addStyle(
                             style = SpanStyle(
                                 color = Color(0xFF6B4EFF),
@@ -50,6 +55,7 @@ fun RichTextRenderer(
                         )
                     }
                     is LinkFeature -> {
+                        Log.d("RichTextRenderer", "Found link: ${feature.uri}")
                         addStyle(
                             style = SpanStyle(
                                 color = Color(0xFF6B4EFF),
@@ -66,6 +72,7 @@ fun RichTextRenderer(
                         )
                     }
                     is TagFeature -> {
+                        Log.d("RichTextRenderer", "Found hashtag: ${feature.tag}")
                         addStyle(
                             style = SpanStyle(
                                 color = Color(0xFF6B4EFF),

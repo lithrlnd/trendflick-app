@@ -72,9 +72,18 @@ data class RepostRequest(
 @JsonClass(generateAdapter = true)
 data class PostRecord(
     @field:Json(name = "\$type") val type: String = "app.bsky.feed.post",
-    @field:Json(name = "text") val text: String,
+    @field:Json(name = "text") val text: String = "",
     @field:Json(name = "createdAt") val createdAt: String,
     @field:Json(name = "reply") val reply: ReplyReference? = null,
+    @field:Json(name = "embed") val embed: Embed? = null,
+    @field:Json(name = "facets") val facets: List<Facet>? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class EmbeddedPostRecord(
+    @field:Json(name = "\$type") val type: String = "app.bsky.feed.post",
+    @field:Json(name = "text") val text: String = "",
+    @field:Json(name = "createdAt") val createdAt: String? = null,
     @field:Json(name = "embed") val embed: Embed? = null,
     @field:Json(name = "facets") val facets: List<Facet>? = null
 )
@@ -185,7 +194,9 @@ data class Author(
 @JsonClass(generateAdapter = true)
 data class Embed(
     @field:Json(name = "images") val images: List<EmbedImage>? = null,
-    @field:Json(name = "external") val external: ExternalEmbed? = null
+    @field:Json(name = "external") val external: ExternalEmbed? = null,
+    @field:Json(name = "record") val record: EmbeddedPostRecord? = null,
+    @field:Json(name = "media") val media: MediaEmbed? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -198,15 +209,30 @@ data class EmbedImage(
         get() = aspectRatioObj?.computedRatio ?: 1.77 // Default 16:9 ratio if not provided
     
     val image: String
-        get() = imageObj?.ref ?: ""
+        get() {
+            val resolvedLink = imageObj?.resolvedLink
+            return when {
+                resolvedLink != null -> "https://cdn.bsky.app/img/feed_fullsize/plain/$resolvedLink@jpeg"
+                else -> ""
+            }
+        }
 }
 
 @JsonClass(generateAdapter = true)
 data class ImageRef(
     @field:Json(name = "\$type") val type: String? = "blob",
-    @field:Json(name = "\$link") val ref: String? = "",
+    @field:Json(name = "\$link") val link: String? = null,
+    @field:Json(name = "ref") val ref: BlobRefLink? = null,
     @field:Json(name = "mimeType") val mimeType: String? = null,
     @field:Json(name = "size") val size: Long? = null
+) {
+    val resolvedLink: String?
+        get() = link ?: ref?.link
+}
+
+@JsonClass(generateAdapter = true)
+data class BlobRefLink(
+    @field:Json(name = "\$link") val link: String? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -230,15 +256,28 @@ data class ExternalEmbed(
     @field:Json(name = "description") val description: String? = null,
     @field:Json(name = "thumb") val thumbUrl: String? = null,
     @field:Json(name = "thumbBlob") val thumbBlob: BlobRef? = null
-)
+) {
+    val thumbnailUrl: String
+        get() {
+            return when {
+                thumbUrl?.startsWith("http") == true -> thumbUrl
+                thumbBlob?.link != null -> "https://cdn.bsky.app/img/feed_thumbnail/plain/${thumbBlob.link}@jpeg"
+                else -> ""
+            }
+        }
+}
 
 @JsonClass(generateAdapter = true)
 data class BlobRef(
     @field:Json(name = "\$type") val type: String? = "blob",
     @field:Json(name = "\$link") val link: String? = null,
+    @field:Json(name = "ref") val ref: BlobRefLink? = null,
     @field:Json(name = "mimeType") val mimeType: String? = null,
     @field:Json(name = "size") val size: Long? = null
-)
+) {
+    val resolvedLink: String?
+        get() = link ?: ref?.link
+}
 
 // Other Models
 @JsonClass(generateAdapter = true)
@@ -274,4 +313,27 @@ data class Like(
 data class FollowsResponse(
     @field:Json(name = "follows") val follows: List<AtProfile>,
     @field:Json(name = "cursor") val cursor: String?
-) 
+)
+
+@JsonClass(generateAdapter = true)
+data class MediaEmbed(
+    @field:Json(name = "alt") val alt: String? = null,
+    @field:Json(name = "aspectRatio") val aspectRatioObj: AspectRatioWrapper? = null,
+    @field:Json(name = "images") val images: List<EmbedImage>? = null,
+    @field:Json(name = "video") val video: BlobRef? = null
+) {
+    val aspectRatio: Double
+        get() = aspectRatioObj?.computedRatio ?: 1.77 // Default 16:9 ratio
+
+    val videoUrl: String
+        get() {
+            val resolvedLink = video?.resolvedLink
+            return when {
+                resolvedLink != null -> "https://cdn.bsky.app/img/feed_fullsize/plain/$resolvedLink@jpeg"
+                else -> ""
+            }
+        }
+
+    val thumbnailUrl: String
+        get() = videoUrl
+} 
