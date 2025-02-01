@@ -1,7 +1,7 @@
-package com.trendflick.data.model
+package com.trendflick.data.api
 
 data class TrendingHashtag(
     val tag: String,
-    val count: Int = 0,
+    val count: Int? = null,
     val emoji: String? = null
 ) 

@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.Reply
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -39,7 +40,10 @@ import coil.compose.AsyncImage
 import com.trendflick.data.api.*
 import com.trendflick.utils.DateUtils
 import kotlinx.coroutines.delay
+import androidx.compose.foundation.lazy.*
+import androidx.compose.foundation.lazy.items
 import com.trendflick.ui.components.CategoryDrawer
+import com.trendflick.ui.screens.home.HomeViewModel
 
 @Composable
 fun ThreadCard(
@@ -703,11 +707,11 @@ private fun ClickableText(
 @Composable
 fun CommentItem(
     comment: ThreadPost,
-    onProfileClick: () -> Unit,
+    onProfileClick: (String) -> Unit,
     modifier: Modifier = Modifier,
     level: Int = 0,
-    originalPostAuthorDid: String? = null,
-    showAuthorOnly: Boolean = false
+    showAuthorOnly: Boolean = false,
+    originalPostAuthorDid: String? = null
 ) {
     // Skip non-author comments when in author-only mode
     if (showAuthorOnly && originalPostAuthorDid != null && comment.post.author.did != originalPostAuthorDid) {
@@ -715,18 +719,17 @@ fun CommentItem(
     }
 
     val isOP = originalPostAuthorDid != null && comment.post.author.did == originalPostAuthorDid
+    var showReplyInput by remember { mutableStateOf(false) }
+    var replyText by remember { mutableStateOf("") }
+    val remainingChars = 300 - replyText.length
 
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(
-                start = (level * 16).dp,
-                end = 16.dp,
-                top = 8.dp,
-                bottom = 8.dp
-            )
+            .padding(start = (level * 16).dp)
+            .padding(vertical = 8.dp)
             .background(
-                if (isOP) Color(0xFF6B4EFF).copy(alpha = 0.1f)
+                if (isOP) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.1f)
                 else Color.Transparent,
                 RoundedCornerShape(8.dp)
             )
@@ -747,7 +750,7 @@ fun CommentItem(
                     .size(32.dp)
                     .clip(CircleShape)
                     .background(Color(0xFF1A1A1A))
-                    .clickable { onProfileClick() },
+                    .clickable { onProfileClick(comment.post.author.did) },
                 contentScale = ContentScale.Crop
             )
             
@@ -768,13 +771,13 @@ fun CommentItem(
                     if (isOP) {
                         Surface(
                             shape = RoundedCornerShape(4.dp),
-                            color = Color(0xFF6B4EFF).copy(alpha = 0.2f),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
                             modifier = Modifier.padding(horizontal = 4.dp)
                         ) {
                             Text(
                                 text = "OP",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Color(0xFF6B4EFF),
+                                color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                             )
                         }
@@ -789,27 +792,91 @@ fun CommentItem(
         }
 
         // Comment content
+        val context = LocalContext.current
         RichText(
             text = comment.post.record.text,
             facets = comment.post.record.facets ?: emptyList(),
-            onMentionClick = { onProfileClick() },
+            onMentionClick = { did -> onProfileClick(did) },
             onHashtagClick = { /* Handle hashtag click */ },
             onLinkClick = { url ->
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                LocalContext.current.startActivity(intent)
+                context.startActivity(intent)
             },
             modifier = Modifier.padding(start = 40.dp)
         )
 
-        // Recursively render replies with proper rich text handling
+        // Comment actions
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 40.dp, top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                modifier = Modifier.clickable { showReplyInput = !showReplyInput },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Reply,
+                    contentDescription = "Reply",
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "${comment.replies?.size ?: 0}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        // Reply input field
+        AnimatedVisibility(visible = showReplyInput) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 40.dp, top = 8.dp)
+            ) {
+                OutlinedTextField(
+                    value = replyText,
+                    onValueChange = { 
+                        if (it.length <= 300) {
+                            replyText = it
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Write a reply...") },
+                    maxLines = 3,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFF6B4EFF),
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
+                        cursorColor = Color(0xFF6B4EFF),
+                        unfocusedTextColor = Color.White,
+                        focusedTextColor = Color.White
+                    ),
+                    supportingText = {
+                        Text(
+                            text = "$remainingChars",
+                            color = if (remainingChars < 50) 
+                                Color(0xFFFF4B4B) 
+                            else 
+                                Color.White.copy(alpha = 0.5f)
+                        )
+                    }
+                )
+            }
+        }
+
+        // Pass showAuthorOnly to nested replies
         comment.replies?.forEach { reply ->
             CommentItem(
                 comment = reply,
                 onProfileClick = onProfileClick,
                 level = level + 1,
-                originalPostAuthorDid = originalPostAuthorDid,
                 showAuthorOnly = showAuthorOnly,
-                modifier = modifier
+                originalPostAuthorDid = originalPostAuthorDid
             )
         }
     }
@@ -818,11 +885,13 @@ fun CommentItem(
 @Composable
 fun CommentsSection(
     comments: List<ThreadPost>,
-    onProfileClick: () -> Unit,
+    onProfileClick: (String) -> Unit,
     originalPostAuthorDid: String,
     modifier: Modifier = Modifier
 ) {
     var showAuthorOnly by remember { mutableStateOf(false) }
+    val allCommentsState = rememberLazyListState()
+    val authorCommentsState = rememberLazyListState()
 
     Column(modifier = modifier) {
         // Filter toggle
@@ -835,7 +904,8 @@ fun CommentsSection(
         ) {
             Text(
                 text = "Comments",
-                style = MaterialTheme.typography.titleMedium
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White
             )
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -843,26 +913,77 @@ fun CommentsSection(
             ) {
                 Text(
                     text = if (showAuthorOnly) "Author Only" else "All Comments",
-                    style = MaterialTheme.typography.bodyMedium
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White.copy(alpha = 0.7f)
                 )
                 Switch(
                     checked = showAuthorOnly,
                     onCheckedChange = { showAuthorOnly = it },
                     colors = SwitchDefaults.colors(
-                        checkedThumbColor = MaterialTheme.colorScheme.primary,
-                        checkedTrackColor = MaterialTheme.colorScheme.primaryContainer
+                        checkedThumbColor = Color(0xFF6B4EFF),
+                        checkedTrackColor = Color(0xFF6B4EFF).copy(alpha = 0.5f),
+                        uncheckedThumbColor = Color.White,
+                        uncheckedTrackColor = Color.White.copy(alpha = 0.3f)
                     )
                 )
             }
         }
 
-        // Comments list
-        comments.forEach { comment ->
-            key(comment.post.uri) {
+        // Comments list with scroll state preservation
+        LazyColumn(
+            state = if (showAuthorOnly) authorCommentsState else allCommentsState,
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            items(
+                items = comments,
+                key = { comment -> comment.post.uri }
+            ) { comment ->
                 CommentItem(
                     comment = comment,
                     onProfileClick = onProfileClick,
                     originalPostAuthorDid = originalPostAuthorDid,
+                    showAuthorOnly = showAuthorOnly
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilteredCommentsList(
+    thread: ThreadPost,
+    viewModel: HomeViewModel,
+    onProfileClick: (String) -> Unit
+) {
+    val showAuthorOnly by viewModel.showAuthorOnly.collectAsState()
+    val allCommentsState = rememberLazyListState()
+    val authorCommentsState = rememberLazyListState()
+    
+    val filteredReplies = remember(thread, showAuthorOnly) {
+        if (showAuthorOnly) {
+            thread.replies?.filter { reply ->
+                reply.post.author.did == thread.post.author.did
+            }
+        } else {
+            thread.replies
+        }
+    }
+    
+    LazyColumn(
+        state = if (showAuthorOnly) authorCommentsState else allCommentsState,
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        filteredReplies?.let { replies ->
+            items(
+                items = replies,
+                key = { reply -> reply.post.uri }
+            ) { reply ->
+                CommentItem(
+                    comment = reply,
+                    onProfileClick = onProfileClick,
+                    originalPostAuthorDid = thread.post.author.did,
                     showAuthorOnly = showAuthorOnly
                 )
             }

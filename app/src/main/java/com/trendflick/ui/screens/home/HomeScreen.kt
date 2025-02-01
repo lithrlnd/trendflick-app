@@ -99,6 +99,9 @@ import android.util.Log
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import com.trendflick.data.model.TrendingHashtag
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AlertDialogDefaults
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -268,59 +271,66 @@ fun HomeScreen(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .padding(16.dp),
-                                        containerColor = Color(0xFF1A1A1A),
                                         properties = DialogProperties(
                                             dismissOnBackPress = true,
                                             dismissOnClickOutside = true,
                                             usePlatformDefaultWidth = false
                                         ),
                                         content = {
-                                            Column(
+                                            Box(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
+                                                    .background(
+                                                        color = Color(0xFF1A1A1A),
+                                                        shape = RoundedCornerShape(28.dp)
+                                                    )
                                                     .padding(16.dp)
                                             ) {
-                                                // Header with filter toggle
-                                                Row(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .padding(bottom = 16.dp),
-                                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                                    verticalAlignment = Alignment.CenterVertically
+                                                Column(
+                                                    modifier = Modifier.fillMaxWidth()
                                                 ) {
-                                                    Text(
-                                                        text = "Comments",
-                                                        style = MaterialTheme.typography.titleMedium,
-                                                        color = Color.White
-                                                    )
+                                                    // Header with filter toggle
                                                     Row(
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(bottom = 16.dp),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
                                                     ) {
-                                                        val showAuthorOnly by viewModel.showAuthorOnly.collectAsState()
                                                         Text(
-                                                            text = if (showAuthorOnly) "Author Only" else "All Comments",
-                                                            style = MaterialTheme.typography.bodyMedium,
-                                                            color = Color.White.copy(alpha = 0.7f)
+                                                            text = "Comments",
+                                                            style = MaterialTheme.typography.titleMedium,
+                                                            color = Color.White
                                                         )
-                                                        Switch(
-                                                            checked = showAuthorOnly,
-                                                            onCheckedChange = { viewModel.toggleAuthorOnly() },
-                                                            colors = SwitchDefaults.colors(
-                                                                checkedThumbColor = Color(0xFF6B4EFF),
-                                                                checkedTrackColor = Color(0xFF6B4EFF).copy(alpha = 0.5f),
-                                                                uncheckedThumbColor = Color.White,
-                                                                uncheckedTrackColor = Color.White.copy(alpha = 0.3f)
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                        ) {
+                                                            val showAuthorOnly by viewModel.showAuthorOnly.collectAsState()
+                                                            Text(
+                                                                text = if (showAuthorOnly) "Author Only" else "All Comments",
+                                                                style = MaterialTheme.typography.bodyMedium,
+                                                                color = Color.White.copy(alpha = 0.7f)
                                                             )
-                                                        )
+                                                            Switch(
+                                                                checked = showAuthorOnly,
+                                                                onCheckedChange = { viewModel.toggleAuthorOnly() },
+                                                                colors = SwitchDefaults.colors(
+                                                                    checkedThumbColor = Color(0xFF6B4EFF),
+                                                                    checkedTrackColor = Color(0xFF6B4EFF).copy(alpha = 0.5f),
+                                                                    uncheckedThumbColor = Color.White,
+                                                                    uncheckedTrackColor = Color.White.copy(alpha = 0.3f)
+                                                                )
+                                                            )
+                                                        }
                                                     }
-                                                }
 
-                                                FilteredCommentsList(
-                                                    thread = currentThread!!,
-                                                    viewModel = viewModel,
-                                                    onProfileClick = onNavigateToProfile
-                                                )
+                                                    FilteredCommentsList(
+                                                        thread = currentThread,
+                                                        viewModel = viewModel,
+                                                        onProfileClick = onNavigateToProfile
+                                                    )
+                                                }
                                             }
                                         }
                                     )
@@ -656,8 +666,14 @@ private fun CommentItem(
     onProfileClick: (String) -> Unit,
     isOriginalPoster: Boolean = false,
     originalPostAuthorDid: String? = null,
+    showAuthorOnly: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    // Skip non-author comments when in author-only mode
+    if (showAuthorOnly && originalPostAuthorDid != null && comment.post.author.did != originalPostAuthorDid) {
+        return
+    }
+
     var showReplyInput by remember { mutableStateOf(false) }
     var replyText by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
@@ -841,6 +857,7 @@ private fun CommentItem(
                 level = level + 1,
                 onProfileClick = onProfileClick,
                 originalPostAuthorDid = originalPostAuthorDid,
+                showAuthorOnly = showAuthorOnly,
                 modifier = modifier
             )
         }
@@ -954,40 +971,31 @@ fun VideoFeedSection(
 
 @Composable
 private fun FilteredCommentsList(
-    thread: ThreadPost,
+    thread: ThreadPost?,
     viewModel: HomeViewModel,
     onProfileClick: (String) -> Unit
 ) {
+    if (thread == null) return
+    
     val showAuthorOnly by viewModel.showAuthorOnly.collectAsState()
     val allCommentsState = rememberLazyListState()
     val authorCommentsState = rememberLazyListState()
     
-    val filteredReplies = remember(thread, showAuthorOnly) {
-        if (showAuthorOnly) {
-            thread.replies?.filter { reply ->
-                reply.post.author.did == thread.post.author.did
-            }
-        } else {
-            thread.replies
-        }
-    }
-    
     LazyColumn(
         state = if (showAuthorOnly) authorCommentsState else allCommentsState,
-        modifier = Modifier
-            .fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        filteredReplies?.let { replies ->
+        thread.replies?.let { replies ->
             items(
                 items = replies,
                 key = { reply -> reply.post.uri }
             ) { reply ->
                 CommentItem(
                     comment = reply,
-                    onProfileClick = onProfileClick,
-                    originalPostAuthorDid = thread.post.author.did,
-                    showAuthorOnly = showAuthorOnly
+                    onProfileClick = { onProfileClick(reply.post.author.did) },
+                    showAuthorOnly = showAuthorOnly,
+                    originalPostAuthorDid = thread.post.author.did
                 )
             }
         }

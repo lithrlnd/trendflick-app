@@ -12,6 +12,7 @@ import com.trendflick.data.api.Facet
 import com.trendflick.data.api.LinkFeature
 import com.trendflick.data.api.MentionFeature
 import com.trendflick.data.api.TagFeature
+import androidx.compose.ui.graphics.Color
 
 @Composable
 fun RichText(
@@ -37,7 +38,8 @@ fun RichText(
                     is MentionFeature -> {
                         addStyle(
                             style = SpanStyle(
-                                color = MaterialTheme.colorScheme.primary
+                                color = Color(0xFF6B4EFF),
+                                textDecoration = TextDecoration.None
                             ),
                             start = start,
                             end = end
@@ -52,7 +54,8 @@ fun RichText(
                     is TagFeature -> {
                         addStyle(
                             style = SpanStyle(
-                                color = MaterialTheme.colorScheme.secondary
+                                color = Color(0xFF6B4EFF),
+                                textDecoration = TextDecoration.None
                             ),
                             start = start,
                             end = end
@@ -67,7 +70,7 @@ fun RichText(
                     is LinkFeature -> {
                         addStyle(
                             style = SpanStyle(
-                                color = MaterialTheme.colorScheme.primary,
+                                color = Color(0xFF6B4EFF),
                                 textDecoration = TextDecoration.Underline
                             ),
                             start = start,
@@ -98,7 +101,7 @@ fun RichText(
                 }
         },
         style = MaterialTheme.typography.bodyLarge.copy(
-            color = MaterialTheme.colorScheme.onSurface
+            color = Color.White
         ),
         modifier = modifier
     )
