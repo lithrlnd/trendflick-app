@@ -23,67 +23,45 @@ val mainFeeds = listOf(
 )
 
 val categories = listOf(
-    Category("Tech & AI", "��", setOf(
-        "tech", "ai", "technology", "coding", 
-        "programming", "artificialintelligence", "chatgpt", "gpt",
-        "web3", "blockchain", "innovation", "software",
-        "machinelearning", "ml", "developer", "tech",
-        "computerscience", "future", "startup", "digital"
+    Category("Arts & Culture", "🎨", setOf(
+        "art", "artist", "creative", 
+        "illustration", "artistsofbsky", "digitalart",
+        "photography", "design", "create"
     )),
-    Category("Politics", "🗳️", setOf(
-        "politics", "news", "democracy", "political",
-        "election2025", "vote2025", "congress", "government",
-        "policy", "activism", "campaign", "climateaction",
-        "current", "world", "breaking", "senate",
-        "house", "law", "justice", "reform"
+    
+    Category("Books & Writing", "📚", setOf(
+        "writing", "books", "author",
+        "booktok", "bookclub", "amwriting",
+        "writingcommunity", "publishing", "reads"
     )),
-    Category("Entertainment", "🎬", setOf(
-        "entertainment", "movies", "tv", "film",
-        "netflix", "streaming", "hollywood", "series",
-        "show", "tvshow", "bingeworthy", "cinema",
-        "actor", "actress", "director", "premiere",
-        "newmovie", "television", "drama", "comedy"
+    
+    Category("Tech & Dev", "💻", setOf(
+        "tech", "coding", "dev",
+        "programming", "opensource", "webdev",
+        "ai", "technology", "software"
     )),
-    Category("Gaming", "🎮", setOf(
-        "gaming", "games", "gamer", "videogames",
-        "esports", "twitch", "streamer", "ps5",
-        "xbox", "nintendoswitch", "pcgaming", "steam",
-        "gamedev", "gaming", "rpg", "fps",
-        "indiegame", "retrogaming", "gamingcommunity", "gameplay"
+    
+    Category("Gaming & Streams", "🎮", setOf(
+        "gaming", "games", "twitch",
+        "streamer", "indiegame", "gamedev",
+        "rpg", "esports", "nintendoswitch"
     )),
-    Category("Art & Design", "🎨", setOf(
-        "art", "artist", "design", "artwork",
-        "illustration", "creative", "digitalart", "artistsofbsky",
-        "graphicdesign", "contemporary", "aiart", "modernart",
-        "drawing", "painting", "sketch", "artistic",
-        "artgallery", "artonbsky", "artcommunity", "create"
+    
+    Category("Music & Audio", "🎵", setOf(
+        "music", "musician", "indie",
+        "newmusic", "producer", "livemusic",
+        "musicproduction", "band", "song"
     )),
-    Category("Beauty", "💄", setOf(
-        "beauty", "makeup", "skincare", "selfcare",
-        "beautytips", "glam", "mua", "beautycommunity",
-        "cosmetics", "beautycare", "makeupartist", "skincareroutine",
-        "beautyblog", "makeuptutorial", "beautyproducts", "natural",
-        "organic", "wellness", "beautytips", "glow"
+    
+    Category("Creative Works", "✨", setOf(
+        "commission", "portfolio", "freelance",
+        "creative", "artist", "design",
+        "artwork", "creator", "studio"
     )),
-    Category("Music", "🎵", setOf(
-        "music", "newmusic", "spotify", "musician",
-        "hiphop", "rap", "indie", "rock",
-        "pop", "musicproducer", "livemusic", "song",
-        "album", "artist", "band", "concert",
-        "musicproduction", "singer", "producer", "dj"
-    )),
-    Category("Food", "🍳", setOf(
-        "food", "foodie", "cooking", "recipe",
-        "homecooking", "foodphotography", "chef", "healthyfood",
-        "foodblog", "foodlover", "cuisine", "baking",
-        "vegan", "vegetarian", "dinner", "lunch",
-        "breakfast", "foodstagram", "delicious", "tasty"
-    )),
-    Category("Fitness", "💪", setOf(
-        "fitness", "gym", "workout", "health",
-        "wellness", "training", "nutrition", "mindfulness",
-        "exercise", "fitnessmotivation", "healthy", "fit",
-        "bodybuilding", "yoga", "running", "strength",
-        "personaltrainer", "fitlife", "active", "lifestyle"
+    
+    Category("Tabletop & Board Games", "🎲", setOf(
+        "boardgames", "ttrpg", "dnd",
+        "tabletop", "rpg", "dungeonsanddragons",
+        "boardgame", "tabletopgames", "gamenight"
     ))
 ) 

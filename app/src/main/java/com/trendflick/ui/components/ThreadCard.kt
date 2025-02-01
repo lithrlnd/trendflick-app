@@ -168,30 +168,44 @@ fun ThreadCard(
                         Spacer(modifier = Modifier.height(12.dp))
 
                         // Post content
-                        RichTextRenderer(
-                            text = feedPost.post.record.text,
-                            facets = feedPost.post.record.facets ?: emptyList(),
-                            onMentionClick = { onProfileClick() },
-                            onHashtagClick = { tag -> onHashtagClick?.invoke(tag) },
-                            onLinkClick = { url ->
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                context.startActivity(intent)
-                            },
-                            modifier = Modifier.weight(1f)
-                        )
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                        ) {
+                            RichTextRenderer(
+                                text = feedPost.post.record.text,
+                                facets = feedPost.post.record.facets ?: emptyList(),
+                                onMentionClick = { onProfileClick() },
+                                onHashtagClick = { tag -> onHashtagClick?.invoke(tag) },
+                                onLinkClick = { url ->
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                    context.startActivity(intent)
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp)
+                            )
+                        }
 
                         // Post media if exists
                         feedPost.post.record.embed?.images?.firstOrNull()?.let { image ->
-                            Spacer(modifier = Modifier.height(8.dp))
-                            AsyncImage(
-                                model = image.image,
-                                contentDescription = image.alt,
+                            Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .aspectRatio(ratio = (image.aspectRatio ?: 1.77).toFloat())
-                                    .clip(RoundedCornerShape(8.dp)),
-                                contentScale = ContentScale.Crop
-                            )
+                                    .padding(horizontal = 16.dp)
+                            ) {
+                                AsyncImage(
+                                    model = image.image,
+                                    contentDescription = image.alt,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .aspectRatio(ratio = (image.aspectRatio ?: 1.77).toFloat())
+                                        .clip(RoundedCornerShape(8.dp)),
+                                    contentScale = ContentScale.Crop
+                                )
+                            }
                         }
                     }
                 }
@@ -292,30 +306,44 @@ fun ThreadCard(
                         Spacer(modifier = Modifier.height(12.dp))
 
                         // Post content
-                        RichTextRenderer(
-                            text = feedPost.post.record.text,
-                            facets = feedPost.post.record.facets ?: emptyList(),
-                            onMentionClick = { onProfileClick() },
-                            onHashtagClick = { tag -> onHashtagClick?.invoke(tag) },
-                            onLinkClick = { url ->
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                context.startActivity(intent)
-                            },
-                            modifier = Modifier.weight(1f)
-                        )
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                        ) {
+                            RichTextRenderer(
+                                text = feedPost.post.record.text,
+                                facets = feedPost.post.record.facets ?: emptyList(),
+                                onMentionClick = { onProfileClick() },
+                                onHashtagClick = { tag -> onHashtagClick?.invoke(tag) },
+                                onLinkClick = { url ->
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                    context.startActivity(intent)
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp)
+                            )
+                        }
 
                         // Post media if exists
                         feedPost.post.record.embed?.images?.firstOrNull()?.let { image ->
-                            Spacer(modifier = Modifier.height(8.dp))
-                            AsyncImage(
-                                model = image.image,
-                                contentDescription = image.alt,
+                            Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .aspectRatio(ratio = (image.aspectRatio ?: 1.77).toFloat())
-                                    .clip(RoundedCornerShape(8.dp)),
-                                contentScale = ContentScale.Crop
-                            )
+                                    .padding(horizontal = 16.dp)
+                            ) {
+                                AsyncImage(
+                                    model = image.image,
+                                    contentDescription = image.alt,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .aspectRatio(ratio = (image.aspectRatio ?: 1.77).toFloat())
+                                        .clip(RoundedCornerShape(8.dp)),
+                                    contentScale = ContentScale.Crop
+                                )
+                            }
                         }
                     }
 
@@ -678,13 +706,15 @@ fun CommentItem(
     onProfileClick: () -> Unit,
     modifier: Modifier = Modifier,
     level: Int = 0,
-    authorDid: String? = null,
+    originalPostAuthorDid: String? = null,
     showAuthorOnly: Boolean = false
 ) {
     // Skip non-author comments when in author-only mode
-    if (showAuthorOnly && authorDid != null && comment.post.author.did != authorDid) {
+    if (showAuthorOnly && originalPostAuthorDid != null && comment.post.author.did != originalPostAuthorDid) {
         return
     }
+
+    val isOP = originalPostAuthorDid != null && comment.post.author.did == originalPostAuthorDid
 
     Column(
         modifier = modifier
@@ -695,6 +725,12 @@ fun CommentItem(
                 top = 8.dp,
                 bottom = 8.dp
             )
+            .background(
+                if (isOP) Color(0xFF6B4EFF).copy(alpha = 0.1f)
+                else Color.Transparent,
+                RoundedCornerShape(8.dp)
+            )
+            .padding(8.dp)
     ) {
         // Author row with profile picture and name
         Row(
@@ -710,7 +746,7 @@ fun CommentItem(
                 modifier = Modifier
                     .size(32.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .background(Color(0xFF1A1A1A))
                     .clickable { onProfileClick() },
                 contentScale = ContentScale.Crop
             )
@@ -718,92 +754,63 @@ fun CommentItem(
             Spacer(modifier = Modifier.width(8.dp))
             
             Column {
-                Text(
-                    text = comment.post.author.displayName ?: comment.post.author.handle,
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = comment.post.author.displayName ?: comment.post.author.handle,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = Color.White
+                    )
+                    if (isOP) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color(0xFF6B4EFF).copy(alpha = 0.2f),
+                            modifier = Modifier.padding(horizontal = 4.dp)
+                        ) {
+                            Text(
+                                text = "OP",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFF6B4EFF),
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
                 Text(
                     text = "@${comment.post.author.handle} · ${DateUtils.formatTimestamp(comment.post.record.createdAt)}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = Color.White.copy(alpha = 0.6f)
                 )
             }
         }
 
         // Comment content
-        Text(
+        RichText(
             text = comment.post.record.text,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(start = 40.dp) // Align with the text above
+            facets = comment.post.record.facets ?: emptyList(),
+            onMentionClick = { onProfileClick() },
+            onHashtagClick = { /* Handle hashtag click */ },
+            onLinkClick = { url ->
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                LocalContext.current.startActivity(intent)
+            },
+            modifier = Modifier.padding(start = 40.dp)
         )
 
-        // Engagement metrics
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 40.dp, top = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.FavoriteBorder,
-                    contentDescription = "Likes",
-                    modifier = Modifier.size(16.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = "${comment.post.likeCount}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.ChatBubbleOutline,
-                    contentDescription = "Replies",
-                    modifier = Modifier.size(16.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = "${comment.post.replyCount}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        // Divider between comments
-        if (level == 0) {
-            Divider(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        // Recursively render replies with proper rich text handling
+        comment.replies?.forEach { reply ->
+            CommentItem(
+                comment = reply,
+                onProfileClick = onProfileClick,
+                level = level + 1,
+                originalPostAuthorDid = originalPostAuthorDid,
+                showAuthorOnly = showAuthorOnly,
+                modifier = modifier
             )
-        }
-
-        // Recursively render replies with proper composable context
-        comment.replies?.let { replies ->
-            replies.forEach { reply ->
-                key(reply.post.uri) {
-                    CommentItem(
-                        comment = reply,
-                        onProfileClick = onProfileClick,
-                        level = level + 1,
-                        authorDid = authorDid,
-                        showAuthorOnly = showAuthorOnly
-                    )
-                }
-            }
         }
     }
 }
@@ -812,7 +819,7 @@ fun CommentItem(
 fun CommentsSection(
     comments: List<ThreadPost>,
     onProfileClick: () -> Unit,
-    authorDid: String,
+    originalPostAuthorDid: String,
     modifier: Modifier = Modifier
 ) {
     var showAuthorOnly by remember { mutableStateOf(false) }
@@ -855,7 +862,7 @@ fun CommentsSection(
                 CommentItem(
                     comment = comment,
                     onProfileClick = onProfileClick,
-                    authorDid = authorDid,
+                    originalPostAuthorDid = originalPostAuthorDid,
                     showAuthorOnly = showAuthorOnly
                 )
             }

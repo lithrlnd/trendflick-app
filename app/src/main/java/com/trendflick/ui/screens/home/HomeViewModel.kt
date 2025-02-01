@@ -121,6 +121,15 @@ class HomeViewModel @Inject constructor(
     private val _showAuthorOnly = MutableStateFlow(false)
     val showAuthorOnly = _showAuthorOnly.asStateFlow()
 
+    private val _currentCategory = MutableStateFlow("")
+    val currentCategory: StateFlow<String> = _currentCategory.asStateFlow()
+
+    private val _isDrawerOpen = MutableStateFlow(false)
+    val isDrawerOpen: StateFlow<Boolean> = _isDrawerOpen.asStateFlow()
+
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error.asStateFlow()
+
     companion object {
         private const val MAX_COMMENT_LENGTH = 300
     }
@@ -128,6 +137,8 @@ class HomeViewModel @Inject constructor(
     init {
         savedStateHandle.get<String>("selectedFeed")?.let { feed ->
             _selectedFeed.value = feed
+        } ?: run {
+            _selectedFeed.value = "Trends" // Default to Trends
         }
 
         viewModelScope.launch {
@@ -183,6 +194,7 @@ class HomeViewModel @Inject constructor(
         }
 
         loadTrendingHashtags()
+        loadPosts()
     }
 
     private fun verifyCredentials() {
@@ -322,6 +334,7 @@ class HomeViewModel @Inject constructor(
                 val result = if (_currentHashtag.value != null) {
                     atProtocolRepository.getPostsByHashtag(
                         hashtag = _currentHashtag.value!!,
+                        limit = 50,
                         cursor = if (isRefresh) null else currentCursor
                     )
                 } else {
@@ -330,6 +343,7 @@ class HomeViewModel @Inject constructor(
                             "Following" -> "reverse-chronological"
                             else -> "whats-hot"
                         },
+                        limit = 50,
                         cursor = if (isRefresh) null else currentCursor
                     )
                 }
@@ -366,148 +380,62 @@ class HomeViewModel @Inject constructor(
     }
 
     fun filterByCategory(category: String) {
+        _currentCategory.value = category
+        _selectedFeed.value = category
+        closeDrawer()
+        loadPosts()
+    }
+
+    private fun loadPosts() {
         viewModelScope.launch {
+            _isLoading.value = true
+            _error.value = null
             try {
-                Log.d(TAG, "🔍 [AT Protocol] Starting category filter for: '$category'")
-                _isLoading.value = true
-                currentCursor = null
-                _threads.value = emptyList()
-                
-                _selectedFeed.value = category
-                Log.d(TAG, "📌 [AT Protocol] Selected feed updated to: '$category'")
-                
-                val categoryHashtags = categories.find { 
-                    it.name.equals(category, ignoreCase = true) 
-                }?.hashtags
-                
-                Log.d(TAG, "📋 [AT Protocol] Category hashtags: ${categoryHashtags?.joinToString() ?: "none found"}")
-
-                val result = when {
-                    category.equals("FYP", ignoreCase = true) -> {
-                        Log.d(TAG, "📱 [AT Protocol] Loading FYP feed with whats-hot algorithm")
-                        atProtocolRepository.getTimeline(algorithm = "whats-hot", limit = 50)
-                    }
-                    category.equals("Following", ignoreCase = true) -> {
-                        Log.d(TAG, "👥 [AT Protocol] Loading Following feed with reverse-chronological algorithm")
-                        atProtocolRepository.getTimeline(algorithm = "reverse-chronological", limit = 50)
-                    }
-                    !categoryHashtags.isNullOrEmpty() -> {
-                        Log.d(TAG, "🏷️ [AT Protocol] Loading posts for category: $category with ${categoryHashtags.size} hashtags")
+                if (_currentCategory.value.isNotEmpty()) {
+                    val categoryHashtags = categories.find { category -> 
+                        category.name.equals(_currentCategory.value, ignoreCase = true) 
+                    }?.hashtags
+                    
+                    if (!categoryHashtags.isNullOrEmpty()) {
+                        val result = atProtocolRepository.getPostsByHashtag(
+                            hashtag = categoryHashtags.first(),
+                            limit = 100
+                        )
                         
-                        var foundPosts = false
-                        var finalResult: Result<TimelineResponse>? = null
-                        
-                        // Try each hashtag in parallel for better performance
-                        val hashtagResults = categoryHashtags.map { hashtag ->
-                            async {
-                                try {
-                                    Log.d(TAG, "🔍 [AT Protocol] Searching hashtag: #$hashtag")
-                                    val result = atProtocolRepository.getPostsByHashtag(
-                                        hashtag = hashtag,
-                                        limit = 100  // Increased limit for better results
-                                    )
-                                    Log.d(TAG, "📥 [AT Protocol] Result for #$hashtag: ${result.isSuccess}")
-                                    result to hashtag
-                                } catch (e: Exception) {
-                                    Log.e(TAG, "❌ [AT Protocol] Error searching #$hashtag: ${e.message}")
-                                    null
+                        result.onSuccess { response ->
+                            val filteredPosts = response.feed.filter { post ->
+                                categoryHashtags.any { tag ->
+                                    post.post.record.text.lowercase().contains(tag.lowercase())
                                 }
                             }
-                        }.awaitAll().filterNotNull()
-                        
-                        // Combine all successful results
-                        val allPosts = hashtagResults.flatMap { (result, hashtag) ->
-                            result.getOrNull()?.feed?.map { it to hashtag } ?: emptyList()
-                        }
-                        
-                        Log.d(TAG, "📊 [AT Protocol] Found ${allPosts.size} total posts across all hashtags")
-                        
-                        if (allPosts.isNotEmpty()) {
-                            // Group posts by their hashtags for better filtering
-                            val postsByHashtag = allPosts.groupBy { it.second }
-                            
-                            // Filter and deduplicate posts
-                            val filteredPosts = allPosts.map { it.first }
-                                .distinctBy { it.post.uri }
-                                .filter { feedPost ->
-                                    val postText = feedPost.post.record.text.lowercase()
-                                    Log.d(TAG, "📝 [AT Protocol] Checking post: ${postText.take(100)}...")
-                                    
-                                    categoryHashtags.any { tag ->
-                                        val variations = listOf(
-                                            "#${tag.lowercase()}",
-                                            "#${tag.lowercase().replace(" ", "")}",
-                                            "#${tag.lowercase().replace("&", "and")}",
-                                            "#${tag.lowercase().replace(" ", "_")}",
-                                            tag.lowercase()  // Also match without hashtag for context
-                                        )
-                                        
-                                        val containsVariation = variations.any { variation -> 
-                                            postText.contains(variation)
-                                        }
-                                        
-                                        if (containsVariation) {
-                                            Log.d(TAG, "✅ [AT Protocol] Post matches hashtag: #$tag")
-                                        }
-                                        
-                                        containsVariation
-                                    }
-                                }
-                            
-                            Log.d(TAG, "✨ [AT Protocol] After filtering: ${filteredPosts.size} unique relevant posts")
-                            
-                            if (filteredPosts.isNotEmpty()) {
-                                // Sort by engagement and recency
-                                val sortedPosts = filteredPosts.sortedByDescending { post ->
-                                    val engagement = (post.post.likeCount ?: 0) + (post.post.repostCount ?: 0)
-                                    val age = Duration.between(
-                                        Instant.parse(post.post.record.createdAt),
-                                        Instant.now()
-                                    ).toHours()
-                                    engagement.toDouble() / (age + 1) // Add 1 to avoid division by zero
-                                }
-                                
-                                finalResult = Result.success(TimelineResponse(
-                                    feed = sortedPosts.take(50),
-                                    cursor = null  // We'll handle pagination differently for combined results
-                                ))
-                            }
-                        }
-                        
-                        finalResult ?: run {
-                            Log.d(TAG, "⚠️ [AT Protocol] No posts found with hashtags, trying timeline")
-                            atProtocolRepository.getTimeline(
-                                algorithm = "whats-hot",
-                                limit = 200
-                            ).map { response ->
-                                TimelineResponse(
-                                    feed = response.feed.filter { feedPost ->
-                                        val postText = feedPost.post.record.text.lowercase()
-                                        categoryHashtags.any { tag ->
-                                            postText.contains(tag.lowercase())
-                                        }
-                                    }.take(50),
-                                    cursor = response.cursor
-                                )
-                            }
+                            _threads.value = filteredPosts.take(50)
+                        }.onFailure { error ->
+                            _error.value = error.message
                         }
                     }
-                    else -> {
-                        Log.d(TAG, "⚠️ [AT Protocol] No category hashtags found, defaulting to timeline")
-                        atProtocolRepository.getTimeline(algorithm = "whats-hot", limit = 50)
+                } else if (!_currentHashtag.value.isNullOrEmpty()) {
+                    val result = atProtocolRepository.getPostsByHashtag(
+                        hashtag = _currentHashtag.value!!,
+                        limit = 50
+                    )
+                    result.onSuccess { response ->
+                        _threads.value = response.feed
+                    }.onFailure { error ->
+                        _error.value = error.message
                     }
-                }
-
-                result.onSuccess { response ->
-                    Log.d(TAG, "✅ [AT Protocol] Successfully loaded ${response.feed.size} posts for category $category")
-                    _threads.value = response.feed
-                    currentCursor = response.cursor
-                    loadInitialLikeStates(response.feed)
-                }.onFailure { e ->
-                    Log.e(TAG, "❌ [AT Protocol] Failed to filter by category: ${e.message}")
+                } else {
+                    val result = atProtocolRepository.getTimeline(
+                        algorithm = "whats-hot",
+                        limit = 50
+                    )
+                    result.onSuccess { response ->
+                        _threads.value = response.feed
+                    }.onFailure { error ->
+                        _error.value = error.message
+                    }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "❌ [AT Protocol] Failed to filter by category: ${e.message}")
+                _error.value = e.message
             } finally {
                 _isLoading.value = false
             }
@@ -829,9 +757,9 @@ class HomeViewModel @Inject constructor(
     }
 
     fun updateSelectedFeed(feed: String) {
-        viewModelScope.launch {
-            _selectedFeed.value = feed
-            savedStateHandle.set("selectedFeed", feed)
+        _selectedFeed.value = feed
+        if (feed == "Trends") {
+            loadPosts()
         }
     }
 
@@ -978,8 +906,11 @@ class HomeViewModel @Inject constructor(
                     _selectedFeed.value = "#$hashtag"
                 }
                 
-                if (hashtag != null) {
-                    val result = atProtocolRepository.getPostsByHashtag(hashtag)
+                if (!hashtag.isNullOrEmpty()) {
+                    val result = atProtocolRepository.getPostsByHashtag(
+                        hashtag = hashtag,
+                        limit = 50
+                    )
                     result.onSuccess { response ->
                         _threads.value = response.feed
                         currentCursor = response.cursor
@@ -996,28 +927,9 @@ class HomeViewModel @Inject constructor(
     }
 
     fun onHashtagSelected(hashtag: String) {
-        viewModelScope.launch {
-            try {
-                _isLoading.value = true
-                _currentHashtag.value = hashtag
-                currentCursor = null
-                _threads.value = emptyList()
-                
-                atProtocolRepository.getPostsByHashtag(hashtag)
-                    .onSuccess { response ->
-                        val filteredPosts = response.feed.filter { post ->
-                            post.post.uri.isNotEmpty() && post.post.cid.isNotEmpty()
-                        }
-                        _threads.value = filteredPosts
-                        loadInitialLikeStates(filteredPosts)
-                        currentCursor = response.cursor
-                    }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to load hashtag posts: ${e.message}")
-            } finally {
-                _isLoading.value = false
-            }
-        }
+        _currentHashtag.value = hashtag
+        closeDrawer()
+        loadPosts()
     }
 
     fun clearHashtagFilter() {
@@ -1060,6 +972,14 @@ class HomeViewModel @Inject constructor(
                 Log.e(TAG, "❌ [TRENDS] Stack trace: ${e.stackTraceToString()}")
             }
         }
+    }
+
+    fun openDrawer() {
+        _isDrawerOpen.value = true
+    }
+
+    fun closeDrawer() {
+        _isDrawerOpen.value = false
     }
 }
 

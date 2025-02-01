@@ -37,7 +37,6 @@ import android.view.Window
 import android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
 import androidx.compose.ui.graphics.Color
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.trendflick.ui.viewmodels.SharedViewModel
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -77,14 +76,12 @@ class MainActivity : ComponentActivity() {
                                 LoginScreen(navController = navController)
                             }
                             composable(Screen.Home.route) {
-                                val sharedViewModel: SharedViewModel = hiltViewModel()
                                 Box(modifier = Modifier.padding(bottom = 80.dp)) {
                                     HomeScreen(
                                         onNavigateToProfile = { did ->
                                             navController.navigate("profile/$did")
                                         },
-                                        navController = navController,
-                                        sharedViewModel = sharedViewModel
+                                        navController = navController
                                     )
                                 }
                             }

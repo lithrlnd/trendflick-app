@@ -1,5 +1,3 @@
-@file:OptIn(ExperimentalContracts::class, ExperimentalTypeInference::class)
-
 package com.trendflick.data.repository
 
 import android.util.Log
@@ -13,12 +11,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
-import okhttp3.MultipartBody
 import java.io.File
-import kotlinx.coroutines.delay
-import okhttp3.RequestBody
-import kotlin.contracts.ExperimentalContracts
-import kotlin.experimental.ExperimentalTypeInference
 import java.time.Instant
 import java.time.format.DateTimeFormatter
 import java.time.ZoneOffset
@@ -26,20 +19,12 @@ import android.media.MediaCodec
 import android.media.MediaFormat
 import android.media.MediaMuxer
 import android.media.MediaExtractor
-import android.media.MediaCodecInfo
-import android.media.MediaCodecList
-import java.nio.ByteBuffer
-import android.content.Context
-import android.net.Uri
-import java.io.FileOutputStream
 import android.media.MediaMetadataRetriever
-import org.json.JSONArray
-import dagger.hilt.android.qualifiers.ApplicationContext
-import android.media.MediaCodecInfo.CodecCapabilities
+import android.content.Context
+import android.media.MediaCodecInfo
 import android.view.Surface
 import android.graphics.SurfaceTexture
-import android.opengl.GLES20
-import android.graphics.Matrix
+import dagger.hilt.android.qualifiers.ApplicationContext
 
 data class VideoUploadResult(
     val blobRef: JSONObject?,
@@ -114,7 +99,7 @@ class BlueskyRepository @Inject constructor(
                 outputFormat.setInteger(MediaFormat.KEY_BIT_RATE, 250_000) // 250Kbps
                 outputFormat.setInteger(MediaFormat.KEY_FRAME_RATE, 20)
                 outputFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 5)
-                outputFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, CodecCapabilities.COLOR_FormatSurface)
+                outputFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
                 outputFormat.setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline)
                 outputFormat.setInteger(MediaFormat.KEY_LEVEL, MediaCodecInfo.CodecProfileLevel.AVCLevel3)
 

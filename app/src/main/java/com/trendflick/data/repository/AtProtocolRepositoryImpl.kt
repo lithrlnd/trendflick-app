@@ -28,6 +28,8 @@ import java.text.SimpleDateFormat
 import java.util.*
 import com.trendflick.ui.model.AIEnhancement
 import java.nio.charset.StandardCharsets
+import com.trendflick.data.mapper.toModel
+import com.trendflick.data.mapper.toModelList
 
 @Singleton
 class AtProtocolRepositoryImpl @Inject constructor(
@@ -719,45 +721,21 @@ class AtProtocolRepositoryImpl @Inject constructor(
             .getOrThrow()
     }
 
-    override suspend fun getFollows(actor: String, limit: Int, cursor: String?): Result<FollowsResponse> = withContext(Dispatchers.IO) {
-        try {
-            // Ensure valid session before making request
-            if (!ensureValidSession()) {
-                Log.e(TAG, "❌ No valid session available for follows request")
-                return@withContext Result.failure(Exception("No valid session available"))
-            }
-            
-            Log.d(TAG, """
-                🌐 Follows Request:
-                Actor: $actor
-                Limit: $limit
-                Cursor: $cursor
-            """.trimIndent())
-            
-            val response = service.getFollows(actor, limit, cursor)
-            Log.d(TAG, "✅ Follows fetch successful - Found ${response.follows.size} follows")
-            Result.success(response)
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Failed to fetch follows: ${e.message}")
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun getTrendingHashtags(): List<TrendingHashtag> = withContext(Dispatchers.IO) {
-        try {
+    override suspend fun getTrendingHashtags(): List<TrendingHashtag> {
+        return try {
             // Since BlueSky doesn't have a direct trending hashtags API yet,
-            // we'll create a curated list based on popular categories and current trends
+            // we'll create a curated list based on popular categories
             listOf(
-                TrendingHashtag("photography", 1500, "Beautiful captures and visual stories", "📸"),
-                TrendingHashtag("music", 1200, "Latest tracks and music discussions", "🎵"),
-                TrendingHashtag("tech", 1000, "Technology news and discussions", "💻"),
-                TrendingHashtag("art", 900, "Digital and traditional artworks", "🎨"),
-                TrendingHashtag("gaming", 800, "Gaming highlights and discussions", "🎮"),
-                TrendingHashtag("food", 700, "Culinary adventures and recipes", "🍳"),
-                TrendingHashtag("nature", 600, "Nature and outdoor experiences", "🌿"),
-                TrendingHashtag("fitness", 500, "Health and workout motivation", "💪"),
-                TrendingHashtag("books", 400, "Book recommendations and reviews", "📚"),
-                TrendingHashtag("travel", 300, "Travel experiences and destinations", "✈️")
+                TrendingHashtag("photography", 1500, "📸"),
+                TrendingHashtag("music", 1200, "🎵"),
+                TrendingHashtag("tech", 1000, "💻"),
+                TrendingHashtag("art", 900, "🎨"),
+                TrendingHashtag("gaming", 800, "🎮"),
+                TrendingHashtag("food", 700, "🍳"),
+                TrendingHashtag("nature", 600, "🌿"),
+                TrendingHashtag("fitness", 500, "💪"),
+                TrendingHashtag("books", 400, "📚"),
+                TrendingHashtag("travel", 300, "✈️")
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to get trending hashtags: ${e.message}")
@@ -835,13 +813,13 @@ class AtProtocolRepositoryImpl @Inject constructor(
     }
 
     override suspend fun searchHashtags(query: String): List<TrendingHashtag> {
-            // TODO: Implement actual hashtag search when AT Protocol adds support
-            // For now, return mock data
+        // TODO: Implement actual hashtag search when AT Protocol adds support
+        // For now, return mock data
         return listOf(
-                TrendingHashtag("trending", 1000),
-                TrendingHashtag("popular", 500),
-                TrendingHashtag(query, 100)
-            )
+            TrendingHashtag("trending", 1000, "🔥"),
+            TrendingHashtag("popular", 500, "⭐"),
+            TrendingHashtag(query, 100, "🔍")
+        )
     }
 
     override suspend fun createQuotePost(

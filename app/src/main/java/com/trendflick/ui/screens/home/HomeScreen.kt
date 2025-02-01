@@ -98,442 +98,263 @@ import com.trendflick.ui.components.RichTextRenderer
 import android.util.Log
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import com.trendflick.data.model.TrendingHashtag
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
-    sharedViewModel: SharedViewModel = hiltViewModel(),
     onNavigateToProfile: (String) -> Unit,
     navController: NavController
 ) {
-    val configuration = LocalConfiguration.current
-    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-    val context = LocalContext.current
+    val selectedFeed by viewModel.selectedFeed.collectAsState()
     val threads by viewModel.threads.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
-    val likedPosts by viewModel.likedPosts.collectAsState()
-    val repostedPosts by viewModel.repostedPosts.collectAsState()
-    val currentThread by viewModel.currentThread.collectAsState()
-    val showComments by viewModel.showComments.collectAsState()
-    val currentPostComments by viewModel.currentPostComments.collectAsState()
-    val isLoadingComments by viewModel.isLoadingComments.collectAsState()
-    val scope = rememberCoroutineScope()
-    var commentText by remember { mutableStateOf("") }
-    val selectedFeed by sharedViewModel.selectedFeed.collectAsState()
-    val videos by viewModel.videos.collectAsState()
-    val isRefreshing by viewModel.isRefreshing.collectAsState()
-    val isLoadingVideos by viewModel.isLoadingVideos.collectAsState()
-    val videoLoadError by viewModel.videoLoadError.collectAsState()
-    val selectedCategory = remember { mutableStateOf("Trends") }
+    val currentCategory by viewModel.currentCategory.collectAsState()
+    val isDrawerOpen by viewModel.isDrawerOpen.collectAsState()
+    val trendingHashtags by viewModel.trendingHashtags.collectAsState()
+    val currentHashtag by viewModel.currentHashtag.collectAsState()
+    val density = LocalDensity.current
 
-    // Collect share events
-    LaunchedEffect(Unit) {
-        viewModel.shareEvent.collect { shareIntent ->
-            try {
-                val chooserIntent = Intent.createChooser(shareIntent, "Share via")
-                context.startActivity(chooserIntent)
-            } catch (e: Exception) {
-                Log.e("HomeScreen", "Failed to share: ${e.message}")
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragStart = { offset ->
+                        if (offset.x < with(density) { 80.dp.toPx() }) {
+                            viewModel.openDrawer()
+                        }
+                    },
+                    onDragEnd = { },
+                    onDragCancel = { },
+                    onHorizontalDrag = { change, _ ->
+                        change.consume()
+                    }
+                )
             }
-        }
-    }
-
-    LaunchedEffect(selectedFeed) {
-        viewModel.updateSelectedFeed(selectedFeed)
-    }
-
-    LaunchedEffect(Unit) {
-        viewModel.loadMoreThreads()
-    }
-
-    Box(modifier = Modifier.fillMaxSize()) {
-        SwipeRefresh(
-            refreshing = isRefreshing,
-            onRefresh = { viewModel.refresh() }
-        ) {
-            Scaffold(
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Top Feed Selection
+            Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black),
-                contentWindowInsets = WindowInsets(0, 0, 0, 0),
-                topBar = {
-                    Box(
+                    .fillMaxWidth()
+                    .padding(top = 12.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 12.dp)
+                            .background(
+                                color = Color(0xFF1A1A1A),
+                                shape = RoundedCornerShape(20.dp)
+                            )
+                            .padding(4.dp)
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
+                        Button(
+                            onClick = { viewModel.updateSelectedFeed("Trends") },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (selectedFeed == "Trends" || selectedFeed !in listOf("Trends", "Flicks")) 
+                                    Color(0xFF6B4EFF) 
+                                else 
+                                    Color.Transparent,
+                                contentColor = if (selectedFeed == "Trends" || selectedFeed !in listOf("Trends", "Flicks")) 
+                                    Color.White 
+                                else 
+                                    Color.White.copy(alpha = 0.7f)
+                            ),
+                            shape = RoundedCornerShape(18.dp),
+                            modifier = Modifier.height(36.dp)
                         ) {
-                            Row(
+                            Text(
+                                text = when {
+                                    selectedFeed == "Trends" -> "Trends"
+                                    currentCategory.isNotEmpty() -> currentCategory
+                                    !currentHashtag.isNullOrEmpty() -> "#$currentHashtag"
+                                    else -> selectedFeed
+                                },
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                        
+                        Spacer(modifier = Modifier.width(8.dp))
+                        
+                        Button(
+                            onClick = { viewModel.updateSelectedFeed("Flicks") },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (selectedFeed == "Flicks") Color(0xFF6B4EFF) else Color.Transparent,
+                                contentColor = if (selectedFeed == "Flicks") Color.White else Color.White.copy(alpha = 0.7f)
+                            ),
+                            shape = RoundedCornerShape(18.dp),
+                            modifier = Modifier.height(36.dp)
+                        ) {
+                            Text(
+                                text = "Flicks",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Content Area
+            Box(modifier = Modifier.weight(1f)) {
+                if (selectedFeed == "Flicks") {
+                    FlicksScreen(navController = navController)
+                } else {
+                    if (isLoading && threads.isEmpty()) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .align(Alignment.Center),
+                            color = Color(0xFF6B4EFF)
+                        )
+                    } else if (threads.isEmpty()) {
+                        Text(
+                            text = "No posts found",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = Color.White.copy(alpha = 0.7f),
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .padding(16.dp)
+                        )
+                    } else {
+                        val pagerState = rememberPagerState(pageCount = { threads.size })
+                        
+                        VerticalPager(
+                            state = pagerState,
+                            modifier = Modifier.fillMaxSize(),
+                            key = { index -> threads[index].post.uri }
+                        ) { index ->
+                            val thread = threads[index]
+                            Box(
                                 modifier = Modifier
-                                    .background(
-                                        color = Color(0xFF1A1A1A),
-                                        shape = RoundedCornerShape(20.dp)
-                                    )
-                                    .padding(4.dp)
+                                    .fillMaxSize()
+                                    .padding(bottom = 8.dp)
                             ) {
-                                Button(
-                                    onClick = { 
-                                        sharedViewModel.updateSelectedFeed("Trends")
+                                ThreadCard(
+                                    feedPost = thread,
+                                    onProfileClick = { onNavigateToProfile(thread.post.author.did) },
+                                    modifier = Modifier.fillMaxSize(),
+                                    isLiked = viewModel.likedPosts.collectAsState().value.contains(thread.post.uri),
+                                    isReposted = viewModel.repostedPosts.collectAsState().value.contains(thread.post.uri),
+                                    onLikeClick = { viewModel.toggleLike(thread.post.uri) },
+                                    onRepostClick = { viewModel.repost(thread.post.uri) },
+                                    onShareClick = { viewModel.sharePost(thread.post.uri) },
+                                    onThreadClick = { viewModel.loadThread(thread.post.uri) },
+                                    onCommentClick = { 
+                                        viewModel.loadComments(thread.post.uri)
+                                        viewModel.toggleComments(true)
                                     },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (selectedFeed == "Trends") Color(0xFF6B4EFF) else Color.Transparent,
-                                        contentColor = if (selectedFeed == "Trends") Color.White else Color.White.copy(alpha = 0.7f)
-                                    ),
-                                    shape = RoundedCornerShape(18.dp),
-                                    modifier = Modifier.height(36.dp)
-                                ) {
-                                    Text(
-                                        text = "Trends",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
+                                    onCreatePost = { /* Will be implemented when needed */ },
+                                    onHashtagClick = { hashtag -> viewModel.onHashtagSelected(hashtag) }
+                                )
+
+                                // Comments Dialog
+                                val showComments by viewModel.showComments.collectAsState()
+                                val currentThread by viewModel.currentThread.collectAsState()
+                                val currentPostComments by viewModel.currentPostComments.collectAsState()
                                 
-                                Spacer(modifier = Modifier.width(8.dp))
-                                
-                                Button(
-                                    onClick = { 
-                                        sharedViewModel.updateSelectedFeed("Flicks")
-                                    },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (selectedFeed == "Flicks") Color(0xFF6B4EFF) else Color.Transparent,
-                                        contentColor = if (selectedFeed == "Flicks") Color.White else Color.White.copy(alpha = 0.7f)
-                                    ),
-                                    shape = RoundedCornerShape(18.dp),
-                                    modifier = Modifier.height(36.dp)
-                                ) {
-                                    Text(
-                                        text = "Flicks",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Medium
+                                if (showComments && currentThread != null) {
+                                    AlertDialog(
+                                        onDismissRequest = { viewModel.toggleComments(false) },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        containerColor = Color(0xFF1A1A1A),
+                                        properties = DialogProperties(
+                                            dismissOnBackPress = true,
+                                            dismissOnClickOutside = true,
+                                            usePlatformDefaultWidth = false
+                                        ),
+                                        content = {
+                                            Column(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(16.dp)
+                                            ) {
+                                                // Header with filter toggle
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(bottom = 16.dp),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        text = "Comments",
+                                                        style = MaterialTheme.typography.titleMedium,
+                                                        color = Color.White
+                                                    )
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                    ) {
+                                                        val showAuthorOnly by viewModel.showAuthorOnly.collectAsState()
+                                                        Text(
+                                                            text = if (showAuthorOnly) "Author Only" else "All Comments",
+                                                            style = MaterialTheme.typography.bodyMedium,
+                                                            color = Color.White.copy(alpha = 0.7f)
+                                                        )
+                                                        Switch(
+                                                            checked = showAuthorOnly,
+                                                            onCheckedChange = { viewModel.toggleAuthorOnly() },
+                                                            colors = SwitchDefaults.colors(
+                                                                checkedThumbColor = Color(0xFF6B4EFF),
+                                                                checkedTrackColor = Color(0xFF6B4EFF).copy(alpha = 0.5f),
+                                                                uncheckedThumbColor = Color.White,
+                                                                uncheckedTrackColor = Color.White.copy(alpha = 0.3f)
+                                                            )
+                                                        )
+                                                    }
+                                                }
+
+                                                FilteredCommentsList(
+                                                    thread = currentThread!!,
+                                                    viewModel = viewModel,
+                                                    onProfileClick = onNavigateToProfile
+                                                )
+                                            }
+                                        }
                                     )
                                 }
                             }
                         }
-                    }
-                }
-            ) { paddingValues ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(paddingValues)
-                ) {
-                    if (selectedFeed == "Trends") {
-                        if (isLoading && threads.isEmpty()) {
-                            LoadingAnimation()
-                        } else if (threads.isEmpty()) {
-                            EmptyState(onRefresh = { viewModel.loadMoreThreads() })
-                        } else {
-                            val pagerState = rememberPagerState(pageCount = { threads.size })
 
-                            LaunchedEffect(pagerState.currentPage) {
-                                if (pagerState.currentPage >= threads.size - 2 && !isLoading) {
+                        // Load more posts when reaching the end
+                        LaunchedEffect(pagerState) {
+                            snapshotFlow { pagerState.currentPage }.collect { page ->
+                                if (page >= threads.size - 2) {
                                     viewModel.loadMoreThreads()
                                 }
                             }
-
-                            if (isLandscape) {
-                                HorizontalPager(
-                                    state = pagerState,
-                                    modifier = Modifier.fillMaxSize()
-                                ) { page ->
-                                    val thread = threads.getOrNull(page)
-                                    if (thread != null) {
-                                        ThreadCard(
-                                            feedPost = thread,
-                                            isLiked = likedPosts.contains(thread.post.uri),
-                                            isReposted = repostedPosts.contains(thread.post.uri),
-                                            onLikeClick = { viewModel.toggleLike(thread.post.uri) },
-                                            onRepostClick = { viewModel.repost(thread.post.uri) },
-                                            onShareClick = { viewModel.sharePost(thread.post.uri) },
-                                            onProfileClick = { onNavigateToProfile(thread.post.author.did) },
-                                            onThreadClick = { /* Handle thread click */ },
-                                            onCommentClick = {
-                                                viewModel.loadComments(thread.post.uri)
-                                                viewModel.toggleComments(true)
-                                            },
-                                            onCreatePost = { navController.navigate(Screen.CreatePost.route) },
-                                            onHashtagClick = { tag -> viewModel.onHashtagSelected(tag) }
-                                        )
-                                    }
-                                }
-                            } else {
-                                VerticalPager(
-                                    state = pagerState,
-                                    modifier = Modifier.fillMaxSize()
-                                ) { page ->
-                                    val thread = threads.getOrNull(page)
-                                    if (thread != null) {
-                                        ThreadCard(
-                                            feedPost = thread,
-                                            isLiked = likedPosts.contains(thread.post.uri),
-                                            isReposted = repostedPosts.contains(thread.post.uri),
-                                            onLikeClick = { viewModel.toggleLike(thread.post.uri) },
-                                            onRepostClick = { viewModel.repost(thread.post.uri) },
-                                            onShareClick = { viewModel.sharePost(thread.post.uri) },
-                                            onProfileClick = { onNavigateToProfile(thread.post.author.did) },
-                                            onThreadClick = { /* Handle thread click */ },
-                                            onCommentClick = {
-                                                viewModel.loadComments(thread.post.uri)
-                                                viewModel.toggleComments(true)
-                                            },
-                                            onCreatePost = { navController.navigate(Screen.CreatePost.route) },
-                                            onHashtagClick = { tag -> viewModel.onHashtagSelected(tag) }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        // Show loading indicator when loading more threads
-                        if (isLoading && threads.isNotEmpty()) {
-                            CircularProgressIndicator(
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(16.dp),
-                                color = Color(0xFF6B4EFF)
-                            )
-                        }
-
-                        // Add FloatingActionButton for creating posts
-                        FloatingActionButton(
-                            onClick = { navController.navigate(Screen.CreatePost.route) },
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(16.dp)
-                                .navigationBarsPadding(),
-                            containerColor = Color(0xFF6B4EFF),
-                            contentColor = Color.White
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = "Create new post",
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-                    } else {
-                        VideoFeedSection(
-                            videos = videos,
-                            isLoading = isLoadingVideos,
-                            error = videoLoadError,
-                            onRefresh = { viewModel.refreshVideoFeed() },
-                            onCreateVideo = { navController.navigate(Screen.CreateFlick.route) }
-                        )
-                    }
-
-                    // Comments overlay
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        AnimatedVisibility(
-                            visible = showComments,
-                            enter = slideInVertically(initialOffsetY = { it }),
-                            exit = slideOutVertically(targetOffsetY = { it })
-                        ) {
-                            Surface(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .fillMaxHeight(0.92f)
-                                    .align(Alignment.BottomCenter)
-                                    .imePadding(),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.98f),
-                                tonalElevation = 2.dp,
-                                shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
-                            ) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(Color(0xFF1A1A1A))
-                                        .padding(horizontal = 16.dp)
-                                ) {
-                                    // Header
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 16.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            IconButton(
-                                                onClick = { viewModel.toggleComments(false) }
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.ArrowBack,
-                                                    contentDescription = "Back to thread",
-                                                    tint = Color.White
-                                                )
-                                            }
-                                            Text(
-                                                text = "${currentThread?.replies?.size ?: 0} comments",
-                                                style = MaterialTheme.typography.titleMedium,
-                                                color = Color.White
-                                            )
-                                        }
-                                        
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            // Author-only toggle
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                            ) {
-                                                val showAuthorOnly by viewModel.showAuthorOnly.collectAsState()
-                                                Text(
-                                                    text = if (showAuthorOnly) "Author" else "All",
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = Color.White.copy(alpha = 0.7f)
-                                                )
-                                                Switch(
-                                                    checked = showAuthorOnly,
-                                                    onCheckedChange = { viewModel.toggleAuthorOnly() },
-                                                    colors = SwitchDefaults.colors(
-                                                        checkedThumbColor = Color(0xFF6B4EFF),
-                                                        checkedTrackColor = Color(0xFF6B4EFF).copy(alpha = 0.5f),
-                                                        uncheckedThumbColor = Color.White,
-                                                        uncheckedTrackColor = Color.White.copy(alpha = 0.3f)
-                                                    ),
-                                                    modifier = Modifier.scale(0.8f)
-                                                )
-                                            }
-                                            
-                                            // Refresh button
-                                            IconButton(
-                                                onClick = { 
-                                                    currentThread?.post?.uri?.let { uri ->
-                                                        viewModel.loadComments(uri)
-                                                    }
-                                                }
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Refresh,
-                                                    contentDescription = "Refresh comments",
-                                                    tint = Color.White
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    // Comments list with author filter
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .fillMaxWidth()
-                                    ) {
-                                        currentThread?.let { thread ->
-                                            FilteredCommentsList(
-                                                thread = thread,
-                                                viewModel = viewModel,
-                                                onProfileClick = onNavigateToProfile
-                                            )
-                                        }
-                                    }
-
-                                    // Comment input
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 8.dp)
-                                            .navigationBarsPadding(),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        OutlinedTextField(
-                                            value = commentText,
-                                            onValueChange = { commentText = it },
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .padding(end = 8.dp),
-                                            placeholder = { 
-                                                Text(
-                                                    "Add a comment...",
-                                                    color = Color.White.copy(alpha = 0.5f)
-                                                )
-                                            },
-                                            maxLines = 3,
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedBorderColor = Color(0xFF6B4EFF),
-                                                unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
-                                                cursorColor = Color(0xFF6B4EFF),
-                                                unfocusedTextColor = Color.White,
-                                                focusedTextColor = Color.White,
-                                                unfocusedContainerColor = Color.Transparent,
-                                                focusedContainerColor = Color.Transparent
-                                            )
-                                        )
-                                        IconButton(
-                                            onClick = {
-                                                if (commentText.isNotBlank()) {
-                                                    scope.launch {
-                                                        viewModel.postComment(currentThread?.post?.uri ?: "", commentText)
-                                                        commentText = ""
-                                                    }
-                                                }
-                                            },
-                                            enabled = commentText.isNotBlank()
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Send,
-                                                contentDescription = "Post comment",
-                                                tint = if (commentText.isNotBlank()) 
-                                                    Color(0xFF6B4EFF)
-                                                else 
-                                                    Color.White.copy(alpha = 0.5f)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Add hashtag filter indicator if active
-                    AnimatedVisibility(
-                        visible = viewModel.currentHashtag.collectAsState().value != null,
-                        enter = slideInVertically() + fadeIn(),
-                        exit = slideOutVertically() + fadeOut()
-                    ) {
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .padding(8.dp)
-                                    .fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "#${viewModel.currentHashtag.collectAsState().value}",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                                IconButton(onClick = { viewModel.clearHashtagFilter() }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Close,
-                                        contentDescription = "Clear hashtag filter",
-                                        tint = MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
-                                }
-                            }
                         }
                     }
                 }
             }
         }
+
+        // Category Drawer
+        CategoryDrawer(
+            isOpen = isDrawerOpen,
+            onCategorySelected = { category ->
+                viewModel.filterByCategory(category)
+            },
+            onHashtagSelected = { hashtag ->
+                viewModel.onHashtagSelected(hashtag)
+            },
+            trendingHashtags = trendingHashtags,
+            currentHashtag = currentHashtag?.takeIf { it.isNotEmpty() },
+            currentCategory = currentCategory,
+            onDismiss = { viewModel.closeDrawer() }
+        )
     }
 }
 
@@ -1165,7 +986,8 @@ private fun FilteredCommentsList(
                 CommentItem(
                     comment = reply,
                     onProfileClick = onProfileClick,
-                    originalPostAuthorDid = thread.post.author.did
+                    originalPostAuthorDid = thread.post.author.did,
+                    showAuthorOnly = showAuthorOnly
                 )
             }
         }
