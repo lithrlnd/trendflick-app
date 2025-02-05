@@ -152,7 +152,6 @@ object NetworkModule {
             var title: String? = null
             var description: String? = null
             var thumbUrl: String? = null
-            var thumbBlob: BlobRef? = null
 
             reader.beginObject()
             while (reader.hasNext()) {
@@ -171,22 +170,7 @@ object NetworkModule {
                         if (reader.peek() == JsonReader.Token.STRING) {
                             thumbUrl = reader.nextString()
                         } else if (reader.peek() != JsonReader.Token.NULL) {
-                            reader.beginObject()
-                            var type: String? = null
-                            var link: String? = null
-                            var mimeType: String? = null
-                            var size: Long? = null
-                            while (reader.hasNext()) {
-                                when (reader.nextName()) {
-                                    "\$type" -> type = reader.nextString()
-                                    "\$link" -> link = reader.nextString()
-                                    "mimeType" -> mimeType = reader.nextString()
-                                    "size" -> size = reader.nextLong()
-                                    else -> reader.skipValue()
-                                }
-                            }
-                            reader.endObject()
-                            thumbBlob = BlobRef(type, link, mimeType, size)
+                            reader.skipValue()
                         } else {
                             reader.nextNull<String>()
                         }
@@ -196,11 +180,16 @@ object NetworkModule {
             }
             reader.endObject()
 
-            if (uri == null || title == null) {
-                throw JsonDataException("Required fields missing for ExternalEmbed")
+            if (uri == null) {
+                throw JsonDataException("Required field 'uri' missing for ExternalEmbed")
             }
 
-            return ExternalEmbed(uri, title, description, thumbUrl, thumbBlob)
+            return ExternalEmbed(
+                uri = uri,
+                title = title,
+                description = description,
+                thumbUrl = thumbUrl
+            )
         }
 
         @ToJson
@@ -210,15 +199,6 @@ object NetworkModule {
             writer.name("title").value(value.title)
             value.description?.let { writer.name("description").value(it) }
             value.thumbUrl?.let { writer.name("thumb").value(it) }
-            value.thumbBlob?.let { blob ->
-                writer.name("thumb")
-                writer.beginObject()
-                blob.type?.let { writer.name("\$type").value(it) }
-                blob.link?.let { writer.name("\$link").value(it) }
-                blob.mimeType?.let { writer.name("mimeType").value(it) }
-                blob.size?.let { writer.name("size").value(it) }
-                writer.endObject()
-            }
             writer.endObject()
         }
     }
@@ -309,5 +289,27 @@ object NetworkModule {
         credentialsManager: BlueskyCredentialsManager
     ): AtProtocolRepository {
         return AtProtocolRepositoryImpl(service, userDao, context, sessionManager, credentialsManager)
+    }
+
+    private fun createBlobRef(link: String?, mimeType: String?, size: Long?): BlobRef {
+        return BlobRef(
+            link = link,
+            mimeType = mimeType,
+            size = size
+        )
+    }
+
+    private fun createExternalEmbed(
+        uri: String,
+        title: String?,
+        description: String?,
+        thumbUrl: String?
+    ): ExternalEmbed {
+        return ExternalEmbed(
+            uri = uri,
+            title = title,
+            description = description,
+            thumbUrl = thumbUrl
+        )
     }
 } 

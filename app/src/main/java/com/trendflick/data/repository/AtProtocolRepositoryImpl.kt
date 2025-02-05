@@ -1022,24 +1022,61 @@ class AtProtocolRepositoryImpl @Inject constructor(
                     Log.d(TAG, "✅ Timeline fetched, processing ${response.feed.size} posts for media")
                     
                     response.feed
-                        .filter { it.post.embed?.external != null }
-                        .map { feedPost ->
-                            VideoModel(
-                                uri = feedPost.post.uri,
-                                title = feedPost.post.embed?.external?.title,
-                                description = feedPost.post.record.text,
-                                thumbnailUrl = feedPost.post.embed?.external?.thumbUrl,
-                                videoUrl = feedPost.post.embed?.external?.uri,
-                                authorDid = feedPost.post.author.did,
-                                authorHandle = feedPost.post.author.handle,
-                                authorName = feedPost.post.author.displayName,
-                                authorAvatar = feedPost.post.author.avatar,
-                                createdAt = feedPost.post.indexedAt,
-                                likes = feedPost.post.likeCount,
-                                comments = feedPost.post.replyCount,
-                                reposts = feedPost.post.repostCount,
-                                aspectRatio = 1.0f // Default aspect ratio
-                            ).toVideo()
+                        .filter { feedPost ->
+                            // Check for video embeds specifically
+                            feedPost.post.embed?.let { embed ->
+                                when (embed.type) {
+                                    "app.bsky.embed.video" -> true
+                                    "app.bsky.embed.external" -> {
+                                        // Check if external embed is a video
+                                        val uri = embed.external?.uri ?: ""
+                                        uri.contains(".mp4", ignoreCase = true) ||
+                                        uri.contains("video", ignoreCase = true) ||
+                                        uri.contains("cdn.bsky.social/video", ignoreCase = true)
+                                    }
+                                    else -> false
+                                }
+                            } ?: false
+                        }
+                        .mapNotNull { feedPost ->
+                            val embed = feedPost.post.embed
+                            val videoUrl = when (embed?.type) {
+                                "app.bsky.embed.video" -> {
+                                    embed.video?.ref?.link?.let { ref ->
+                                        "https://cdn.bsky.social/video/plain/$ref"
+                                    }
+                                }
+                                "app.bsky.embed.external" -> embed.external?.uri
+                                else -> null
+                            }
+                            
+                            if (videoUrl != null) {
+                                Log.d(TAG, """
+                                    ✅ Found video post:
+                                    Type: ${embed?.type}
+                                    URL: $videoUrl
+                                    Text: ${feedPost.post.record.text}
+                                """.trimIndent())
+                                
+                                VideoModel(
+                                    uri = feedPost.post.uri,
+                                    title = embed?.external?.title,
+                                    description = feedPost.post.record.text,
+                                    thumbnailUrl = embed?.external?.thumbUrl,
+                                    videoUrl = videoUrl,
+                                    authorDid = feedPost.post.author.did,
+                                    authorHandle = feedPost.post.author.handle,
+                                    authorName = feedPost.post.author.displayName,
+                                    authorAvatar = feedPost.post.author.avatar,
+                                    createdAt = feedPost.post.indexedAt,
+                                    likes = feedPost.post.likeCount,
+                                    comments = feedPost.post.replyCount,
+                                    reposts = feedPost.post.repostCount,
+                                    aspectRatio = embed?.video?.aspectRatio?.let { ratio ->
+                                        ratio.width.toFloat() / ratio.height.toFloat()
+                                    } ?: 1.0f
+                                ).toVideo()
+                            } else null
                         }
                 },
                 onFailure = { e ->
@@ -1051,6 +1088,47 @@ class AtProtocolRepositoryImpl @Inject constructor(
             Log.e(TAG, "❌ Error in getMediaPosts: ${e.message}")
             emptyList()
         }
+    }
+
+    private fun mapPostToVideo(post: Post): Video {
+        val imageEmbed = post.embed?.images?.firstOrNull()
+        val videoEmbed = post.embed?.video
+        val externalEmbed = post.embed?.external
+        
+        return Video(
+            uri = post.uri,
+            did = post.author.did,
+            handle = post.author.handle,
+            videoUrl = when {
+                videoEmbed != null -> videoEmbed.ref?.link?.let { "https://cdn.bsky.social/video/plain/$it" } ?: ""
+                externalEmbed != null -> externalEmbed.uri
+                else -> ""
+            },
+            description = post.record.text,
+            createdAt = Instant.parse(post.record.createdAt),
+            indexedAt = Instant.parse(post.indexedAt),
+            sortAt = Instant.parse(post.indexedAt),
+            title = externalEmbed?.title ?: "",
+            thumbnailUrl = when {
+                externalEmbed?.thumbUrl != null -> externalEmbed.thumbUrl
+                imageEmbed?.thumb != null -> imageEmbed.thumb
+                imageEmbed?.image?.link != null -> "https://cdn.bsky.social/img/feed_thumbnail/plain/${imageEmbed.image.link}@jpeg"
+                else -> ""
+            },
+            likes = post.likeCount,
+            comments = post.replyCount,
+            shares = post.repostCount,
+            username = post.author.displayName ?: post.author.handle,
+            userId = post.author.did,
+            isImage = post.embed?.type == "app.bsky.embed.images",
+            imageUrl = when {
+                imageEmbed?.fullsize != null -> imageEmbed.fullsize
+                imageEmbed?.image?.link != null -> "https://cdn.bsky.social/img/feed_fullsize/plain/${imageEmbed.image.link}@jpeg"
+                else -> ""
+            },
+            aspectRatio = videoEmbed?.aspectRatio?.let { it.width.toFloat() / it.height.toFloat() } ?: 1.0f,
+            authorAvatar = post.author.avatar ?: ""
+        )
     }
 
     companion object {

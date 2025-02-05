@@ -185,60 +185,47 @@ data class Author(
 // Embed Models
 @JsonClass(generateAdapter = true)
 data class Embed(
-    @field:Json(name = "images") val images: List<EmbedImage>? = null,
-    @field:Json(name = "external") val external: ExternalEmbed? = null
+    @field:Json(name = "\$type") val type: String,
+    @field:Json(name = "external") val external: ExternalEmbed? = null,
+    @field:Json(name = "video") val video: VideoEmbed? = null,
+    @field:Json(name = "images") val images: List<ImageEmbed>? = null
 )
-
-@JsonClass(generateAdapter = true)
-data class EmbedImage(
-    @field:Json(name = "alt") val alt: String,
-    @field:Json(name = "image") val imageObj: ImageRef? = null,
-    @field:Json(name = "aspectRatio") val aspectRatioObj: AspectRatioWrapper? = null
-) {
-    val aspectRatio: Double
-        get() = aspectRatioObj?.computedRatio ?: 1.77 // Default 16:9 ratio if not provided
-    
-    val image: String
-        get() = imageObj?.ref ?: ""
-}
-
-@JsonClass(generateAdapter = true)
-data class ImageRef(
-    @field:Json(name = "\$type") val type: String? = "blob",
-    @field:Json(name = "\$link") val ref: String? = "",
-    @field:Json(name = "mimeType") val mimeType: String? = null,
-    @field:Json(name = "size") val size: Long? = null
-)
-
-@JsonClass(generateAdapter = true)
-data class AspectRatioWrapper(
-    @field:Json(name = "value") val directValue: Double? = null,
-    @field:Json(name = "width") val width: Int? = null,
-    @field:Json(name = "height") val height: Int? = null
-) {
-    val computedRatio: Double
-        get() = when {
-            directValue != null -> directValue
-            width != null && height != null && height != 0 -> width.toDouble() / height.toDouble()
-            else -> 1.77 // Default 16:9 ratio
-        }
-}
 
 @JsonClass(generateAdapter = true)
 data class ExternalEmbed(
     @field:Json(name = "uri") val uri: String,
-    @field:Json(name = "title") val title: String,
-    @field:Json(name = "description") val description: String? = null,
-    @field:Json(name = "thumb") val thumbUrl: String? = null,
-    @field:Json(name = "thumbBlob") val thumbBlob: BlobRef? = null
+    @field:Json(name = "title") val title: String?,
+    @field:Json(name = "description") val description: String?,
+    @field:Json(name = "thumbUrl") val thumbUrl: String?
+)
+
+@JsonClass(generateAdapter = true)
+data class VideoEmbed(
+    @field:Json(name = "ref") val ref: BlobRef?,
+    @field:Json(name = "aspectRatio") val aspectRatio: AspectRatio?,
+    @field:Json(name = "alt") val alt: String?
+)
+
+@JsonClass(generateAdapter = true)
+data class ImageEmbed(
+    @field:Json(name = "alt") val alt: String = "",
+    @field:Json(name = "image") val image: BlobRef? = null,
+    @field:Json(name = "thumb") val thumb: String? = null,
+    @field:Json(name = "fullsize") val fullsize: String? = null,
+    @field:Json(name = "aspectRatio") val aspectRatio: AspectRatio? = null
 )
 
 @JsonClass(generateAdapter = true)
 data class BlobRef(
-    @field:Json(name = "\$type") val type: String? = "blob",
-    @field:Json(name = "\$link") val link: String? = null,
-    @field:Json(name = "mimeType") val mimeType: String? = null,
-    @field:Json(name = "size") val size: Long? = null
+    @field:Json(name = "\$link") val link: String?,
+    @field:Json(name = "mimeType") val mimeType: String?,
+    @field:Json(name = "size") val size: Long?
+)
+
+@JsonClass(generateAdapter = true)
+data class AspectRatio(
+    @field:Json(name = "width") val width: Int,
+    @field:Json(name = "height") val height: Int
 )
 
 // Other Models

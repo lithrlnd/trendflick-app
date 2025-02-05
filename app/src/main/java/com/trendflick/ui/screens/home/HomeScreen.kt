@@ -590,14 +590,28 @@ fun VideoItem(
                 )
             }
     ) {
-        VideoPlayer(
-            videoUrl = video.videoUrl,
-            isVisible = isVisible,
-            onProgressChanged = { newProgress -> progress = newProgress },
-            playbackSpeed = playbackSpeed,
-            isPaused = isPaused,
-            modifier = Modifier.fillMaxSize()
-        )
+        if (video.isImage) {
+            // Display image content
+            AsyncImage(
+                model = video.imageUrl,
+                contentDescription = "Post image",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = if (video.aspectRatio > 1f) 
+                    ContentScale.FillWidth 
+                else 
+                    ContentScale.FillHeight
+            )
+        } else {
+            // Display video content
+            VideoPlayer(
+                videoUrl = video.videoUrl,
+                isVisible = isVisible,
+                onProgressChanged = { newProgress -> progress = newProgress },
+                playbackSpeed = playbackSpeed,
+                isPaused = isPaused,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
 
         VideoControls(
             video = video,

@@ -81,25 +81,49 @@ fun VideoPlayer(
         val player = exoPlayer // Capture player reference for onDispose
         
         try {
-            // Try to detect format from URL
+            Log.d("VideoPlayer", "Attempting to play video from URL: $videoUrl")
+            
+            // Handle Bluesky CDN URLs
+            val processedUrl = if (videoUrl.contains("cdn.bsky.social")) {
+                // Ensure we're using the correct CDN endpoint
+                if (!videoUrl.contains("/video/plain/")) {
+                    val ref = videoUrl.substringAfterLast("/")
+                    "https://cdn.bsky.social/video/plain/$ref"
+                } else videoUrl
+            } else videoUrl
+            
+            Log.d("VideoPlayer", "Processed URL: $processedUrl")
+            
+            // Configure HTTP data source for Bluesky CDN
+            httpDataSourceFactory
+                .setDefaultRequestProperties(mapOf(
+                    "User-Agent" to "TrendFlick/1.0",
+                    "Accept" to "*/*",
+                    "Range" to "bytes=0-"
+                ))
+                .setConnectTimeoutMs(30000)
+                .setReadTimeoutMs(30000)
+                .setAllowCrossProtocolRedirects(true)
+            
+            // Default to MP4 for Bluesky CDN URLs
             val mimeType = when {
-                videoUrl.endsWith(".mp4", ignoreCase = true) -> MimeTypes.VIDEO_MP4
-                videoUrl.endsWith(".m3u8", ignoreCase = true) -> MimeTypes.APPLICATION_M3U8
-                videoUrl.endsWith(".mpd", ignoreCase = true) -> MimeTypes.APPLICATION_MPD
-                videoUrl.endsWith(".webm", ignoreCase = true) -> MimeTypes.VIDEO_WEBM
-                videoUrl.endsWith(".mkv", ignoreCase = true) -> MimeTypes.VIDEO_MATROSKA
-                else -> null // Let ExoPlayer auto-detect
+                processedUrl.contains("cdn.bsky.social") -> MimeTypes.VIDEO_MP4
+                processedUrl.endsWith(".mp4", ignoreCase = true) -> MimeTypes.VIDEO_MP4
+                processedUrl.endsWith(".m3u8", ignoreCase = true) -> MimeTypes.APPLICATION_M3U8
+                processedUrl.endsWith(".mpd", ignoreCase = true) -> MimeTypes.APPLICATION_MPD
+                processedUrl.endsWith(".webm", ignoreCase = true) -> MimeTypes.VIDEO_WEBM
+                processedUrl.endsWith(".mkv", ignoreCase = true) -> MimeTypes.VIDEO_MATROSKA
+                else -> MimeTypes.VIDEO_MP4 // Default to MP4 if unknown
             }
             
             val mediaItem = MediaItem.Builder()
-                .setUri(videoUrl)
-                .apply { 
-                    mimeType?.let { setMimeType(it) }
-                }
+                .setUri(processedUrl)
+                .setMimeType(mimeType)
                 .build()
                 
-            val mediaSource = mediaSourceFactory.createMediaSource(mediaItem)
+            Log.d("VideoPlayer", "Created MediaItem with MIME type: $mimeType")
             
+            val mediaSource = mediaSourceFactory.createMediaSource(mediaItem)
             player.setMediaSource(mediaSource)
             player.prepare()
             
@@ -150,15 +174,21 @@ fun VideoPlayer(
                     isLoading = false
                     errorMessage = when {
                         error.message?.contains("UnrecognizedInputFormatException") == true -> {
+                            Log.e("VideoPlayer", "Format error for URL: $processedUrl")
                             "Unsupported video format. Please try a different format."
                         }
                         error.message?.contains("Unable to connect") == true -> {
+                            Log.e("VideoPlayer", "Connection error for URL: $processedUrl")
                             "Unable to connect to video source. Please check your connection."
                         }
                         error.message?.contains("timeout") == true -> {
+                            Log.e("VideoPlayer", "Timeout error for URL: $processedUrl")
                             "Connection timed out. Please try again."
                         }
-                        else -> "Failed to play video: ${error.message}"
+                        else -> {
+                            Log.e("VideoPlayer", "Unknown error for URL: $processedUrl")
+                            "Failed to play video: ${error.message}"
+                        }
                     }
                     
                     // Try to recover by resetting the player

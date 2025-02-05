@@ -17,6 +17,7 @@ class BlueskyCredentialsManager @Inject constructor(
     private val sessionManager: SessionManager,
     private val sharedPreferences: SharedPreferences
 ) {
+    private val TAG = "TF_CredentialsManager"
     private val masterKeyAlias by lazy {
         try {
             MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
@@ -44,7 +45,7 @@ class BlueskyCredentialsManager @Inject constructor(
     }
 
     fun saveCredentials(handle: String, password: String) {
-        Log.d("TF_Credentials", "💾 Saving credentials for handle: $handle")
+        Log.d(TAG, "💾 Saving credentials for handle: $handle")
         try {
             // Try to save in encrypted storage first
             prefs.edit()
@@ -70,35 +71,29 @@ class BlueskyCredentialsManager @Inject constructor(
     }
 
     fun getCredentials(): Pair<String?, String?> {
-        return try {
-            val handle = getHandle()
-            val password = getPassword()
-            
-            Log.d("TF_Credentials", "🔍 Retrieved credentials - Handle exists: ${!handle.isNullOrEmpty()}, Password exists: ${!password.isNullOrEmpty()}")
-            
-            if (handle.isNullOrEmpty() || password.isNullOrEmpty()) {
-                Log.d("TF_Credentials", "⚠️ Incomplete credentials found - clearing")
-                clearCredentials()
-                Pair(null, null)
-            } else {
-                Pair(handle, password)
-            }
-        } catch (e: Exception) {
-            Log.e("TF_Credentials", "❌ Error retrieving credentials: ${e.message}")
-            clearCredentials()
-            Pair(null, null)
-        }
+        val handle = getHandle()
+        val password = getPassword()
+        Log.d(TAG, """
+            🔑 Getting credentials:
+            Handle exists: ${!handle.isNullOrEmpty()}
+            Password exists: ${!password.isNullOrEmpty()}
+        """.trimIndent())
+        return Pair(handle, password)
     }
 
     fun getHandle(): String? = try {
-        prefs.getString(KEY_HANDLE, null) ?: sharedPreferences.getString(KEY_HANDLE, BuildConfig.BLUESKY_HANDLE)
+        val handle = prefs.getString(KEY_HANDLE, null) ?: sharedPreferences.getString(KEY_HANDLE, BuildConfig.BLUESKY_HANDLE)
+        Log.d(TAG, "🔍 Retrieved handle: ${handle ?: "null"}")
+        handle
     } catch (e: Exception) {
         Log.w("TF_Credentials", "⚠️ Could not get handle: ${e.message}")
         sharedPreferences.getString(KEY_HANDLE, BuildConfig.BLUESKY_HANDLE)
     }
     
     fun getPassword(): String? = try {
-        prefs.getString(KEY_PASSWORD, null) ?: sharedPreferences.getString(KEY_PASSWORD, BuildConfig.BLUESKY_APP_PASSWORD)
+        val password = prefs.getString(KEY_PASSWORD, null) ?: sharedPreferences.getString(KEY_PASSWORD, BuildConfig.BLUESKY_APP_PASSWORD)
+        Log.d(TAG, "🔍 Retrieved password: ${if (password != null) "****" else "null"}")
+        password
     } catch (e: Exception) {
         Log.w("TF_Credentials", "⚠️ Could not get password: ${e.message}")
         sharedPreferences.getString(KEY_PASSWORD, BuildConfig.BLUESKY_APP_PASSWORD)
@@ -109,7 +104,7 @@ class BlueskyCredentialsManager @Inject constructor(
     fun getRefreshToken(): String? = sessionManager.getRefreshToken()
     
     fun clearCredentials() {
-        Log.d("TF_Credentials", "🗑️ Starting BlueSky credentials cleanup")
+        Log.d(TAG, "🧹 Clearing all credentials")
         
         try {
             // 1. Clear session data first
@@ -166,7 +161,7 @@ class BlueskyCredentialsManager @Inject constructor(
         val hasCredentials = !handle.isNullOrEmpty() && !password.isNullOrEmpty()
         val hasSession = sessionManager.hasValidSession()
         
-        Log.d("TF_Credentials", """
+        Log.d(TAG, """
             🔐 Checking auth state:
             Handle present: ${!handle.isNullOrEmpty()}
             Password present: ${!password.isNullOrEmpty()}
@@ -175,6 +170,11 @@ class BlueskyCredentialsManager @Inject constructor(
         """.trimIndent())
         
         return hasCredentials && hasSession
+    }
+
+    fun saveDid(did: String) {
+        Log.d(TAG, "💾 Saving DID: $did")
+        prefs.edit().putString("did", did).apply()
     }
 
     companion object {

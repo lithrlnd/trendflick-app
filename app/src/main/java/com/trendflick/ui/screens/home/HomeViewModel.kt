@@ -126,63 +126,118 @@ class HomeViewModel @Inject constructor(
     }
 
     init {
-        savedStateHandle.get<String>("selectedFeed")?.let { feed ->
-            _selectedFeed.value = feed
-        }
+        Log.d(TAG, "⭐ HomeViewModel initialization starting")
+        
+        try {
+            savedStateHandle.get<String>("selectedFeed")?.let { feed ->
+                Log.d(TAG, "📱 Restored selected feed: $feed")
+                _selectedFeed.value = feed
+            }
 
-        viewModelScope.launch {
-            try {
-                Log.d(TAG, "🚀 Starting HomeViewModel initialization")
-                
+            viewModelScope.launch {
                 try {
-                    database = Firebase.database
+                    Log.d(TAG, "🚀 Starting main initialization")
                     
-                    val auth = FirebaseAuth.getInstance()
-                    if (auth.currentUser == null) {
-                        auth.signInAnonymously().await()
-                        Log.d(TAG, "✅ Firebase anonymous auth completed")
+                    // Initialize Firebase
+                    try {
+                        Log.d(TAG, "🔥 Initializing Firebase")
+                        database = Firebase.database
+                        
+                        val auth = FirebaseAuth.getInstance()
+                        if (auth.currentUser == null) {
+                            Log.d(TAG, "👤 No Firebase user, signing in anonymously")
+                            auth.signInAnonymously().await()
+                            Log.d(TAG, "✅ Firebase anonymous auth completed")
+                        } else {
+                            Log.d(TAG, "👤 Using existing Firebase user: ${auth.currentUser?.uid}")
+                        }
+                        Log.d(TAG, "✅ Firebase initialized with auth")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "❌ Firebase initialization failed", e)
                     }
-                    Log.d(TAG, "✅ Firebase initialized with auth")
-                } catch (e: Exception) {
-                    Log.e(TAG, "❌ Firebase initialization failed: ${e.message}")
-                }
-                
-                try {
-                    val handle = credentialsManager.getHandle()
-                    val password = credentialsManager.getPassword()
                     
-                    Log.d(TAG, "🔍 Credentials check - Handle exists: ${!handle.isNullOrEmpty()}, Password exists: ${!password.isNullOrEmpty()}")
-                    
-                    if (!handle.isNullOrEmpty() && !password.isNullOrEmpty()) {
-                        Log.d(TAG, "🔑 Found credentials, creating session")
+                    // Initialize Bluesky session
+                    try {
+                        Log.d(TAG, "🔑 Starting Bluesky initialization")
+                        val handle = credentialsManager.getHandle()
+                        val password = credentialsManager.getPassword()
                         
-                        val sessionResult = atProtocolRepository.createSession(handle, password)
+                        Log.d(TAG, """
+                            🔍 Credentials check:
+                            Handle exists: ${!handle.isNullOrEmpty()}
+                            Password exists: ${!password.isNullOrEmpty()}
+                            Handle: ${handle ?: "null"}
+                        """.trimIndent())
                         
-                        sessionResult.onSuccess { session ->
-                            Log.d(TAG, "✅ Session created for ${session.handle}")
-                            isLoggedOut = false
+                        if (!handle.isNullOrEmpty() && !password.isNullOrEmpty()) {
+                            Log.d(TAG, "🔐 Creating Bluesky session for handle: $handle")
                             
-                            delay(500)
+                            val sessionResult = atProtocolRepository.createSession(handle, password)
                             
-                            loadThreads()
-                        }.onFailure { e ->
-                            Log.e(TAG, "❌ Session creation failed: ${e.message}")
+                            sessionResult.onSuccess { session ->
+                                Log.d(TAG, """
+                                    ✅ Session created successfully:
+                                    Handle: ${session.handle}
+                                    DID: ${session.did}
+                                    Email: ${session.email}
+                                """.trimIndent())
+                                
+                                isLoggedOut = false
+                                
+                                // Load initial content
+                                Log.d(TAG, "📥 Loading initial content")
+                                loadThreads()
+                                if (_selectedFeed.value == "Flicks") {
+                                    refreshVideoFeed()
+                                }
+                            }.onFailure { e ->
+                                Log.e(TAG, """
+                                    ❌ Session creation failed:
+                                    Error: ${e.message}
+                                    Type: ${e.javaClass.name}
+                                    Stack: ${e.stackTraceToString()}
+                                """.trimIndent())
+                                isLoggedOut = true
+                            }
+                        } else {
+                            Log.e(TAG, "❌ No valid credentials found")
                             isLoggedOut = true
                         }
-                    } else {
-                        Log.e(TAG, "❌ No credentials found - Handle: $handle")
-                        isLoggedOut = true
+                    } catch (e: Exception) {
+                        Log.e(TAG, """
+                            ❌ Bluesky initialization failed:
+                            Error: ${e.message}
+                            Type: ${e.javaClass.name}
+                            Stack: ${e.stackTraceToString()}
+                        """.trimIndent())
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "❌ Error initializing BlueSky: ${e.message}")
-                    Log.e(TAG, "Stack trace: ${e.stackTraceToString()}")
+                    Log.e(TAG, """
+                        ❌ Critical initialization error:
+                        Error: ${e.message}
+                        Type: ${e.javaClass.name}
+                        Stack: ${e.stackTraceToString()}
+                    """.trimIndent())
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "❌ HomeViewModel initialization failed: ${e.message}")
             }
-        }
 
-        loadTrendingHashtags()
+            // Load trending hashtags in parallel
+            viewModelScope.launch {
+                try {
+                    Log.d(TAG, "🏷️ Loading trending hashtags")
+                    loadTrendingHashtags()
+                } catch (e: Exception) {
+                    Log.e(TAG, "❌ Failed to load trending hashtags: ${e.message}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, """
+                ❌ Fatal initialization error:
+                Error: ${e.message}
+                Type: ${e.javaClass.name}
+                Stack: ${e.stackTraceToString()}
+            """.trimIndent())
+        }
     }
 
     private fun verifyCredentials() {
@@ -207,10 +262,10 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    private suspend fun ensureValidSession() {
+    private suspend fun ensureValidSession(): Boolean {
         if (isLoggedOut) {
             Log.d(TAG, "🔒 Skipping session validation - user is logged out")
-            return
+            return false
         }
         
         try {
@@ -220,22 +275,24 @@ class HomeViewModel @Inject constructor(
             if (handle.isNullOrEmpty() || password.isNullOrEmpty()) {
                 Log.e(TAG, "❌ No valid credentials found")
                 isLoggedOut = true
-                return
+                return false
             }
             
             val currentSession = atProtocolRepository.getCurrentSession()
             if (currentSession != null) {
                 Log.d(TAG, "✅ Found existing valid session for handle: ${currentSession.handle}")
                 isLoggedOut = false
-                return
+                return true
             }
             
             Log.d(TAG, "🔍 No valid session found, attempting to create new session")
             
+            var sessionCreated = false
             atProtocolRepository.createSession(handle, password)
                 .onSuccess { 
                     Log.d(TAG, "✅ Successfully created new session for handle: $handle")
                     isLoggedOut = false
+                    sessionCreated = true
                 }
                 .onFailure { e ->
                     Log.e(TAG, "❌ Failed to create session: ${e.message}")
@@ -249,6 +306,7 @@ class HomeViewModel @Inject constructor(
                     }
                     e.printStackTrace()
                 }
+            return sessionCreated
         } catch (e: Exception) {
             Log.e(TAG, "❌ Session validation failed", e)
             if (e.message?.contains("Not authenticated") == true || 
@@ -257,58 +315,87 @@ class HomeViewModel @Inject constructor(
                 isLoggedOut = true
                 credentialsManager.clearCredentials()
             }
+            return false
         }
     }
 
     fun loadThreads(isRefresh: Boolean = false) {
         viewModelScope.launch {
-            loadThreadsInternal(isRefresh)
-        }
-    }
-
-    private suspend fun loadThreadsInternal(isRefresh: Boolean = false) {
-        if (isLoggedOut) {
-            Log.d(TAG, "🔒 Skipping thread load - user is logged out")
-            return
-        }
-
-        try {
-            _isLoading.value = true
-            
-            ensureValidSession()
-            
-            if (isLoggedOut) {
-                Log.d(TAG, "🔒 Aborting thread load - lost session during validation")
-                return
-            }
-            
-            if (isRefresh) {
-                currentCursor = null
-                _threads.value = emptyList()
-            }
-            
-            delay(500)
-            
             try {
-                loadMoreThreads(isRefresh)
-            } catch (e: Exception) {
-                Log.e(TAG, "❌ Thread load failed: ${e.message}")
-                if (e.message?.contains("closed") == true) {
-                    Log.d(TAG, "🔄 Connection closed, retrying after delay")
-                    delay(1000)
-                    try {
-                        loadMoreThreads(isRefresh)
-                    } catch (retryE: Exception) {
-                        Log.e(TAG, "❌ Retry failed: ${retryE.message}")
-                    }
+                Log.d(TAG, "🔄 Loading threads (refresh: $isRefresh)")
+                _isLoading.value = true
+                
+                // Ensure we have valid credentials
+                if (!credentialsManager.hasValidCredentials()) {
+                    Log.e(TAG, "❌ No valid credentials found")
+                    _isLoading.value = false
+                    return@launch
                 }
+
+                // Ensure valid session
+                ensureValidSession()
+                
+                if (isLoggedOut) {
+                    Log.e(TAG, "❌ User is logged out")
+                    _isLoading.value = false
+                    return@launch
+                }
+                
+                if (isRefresh) {
+                    currentCursor = null
+                    _threads.value = emptyList()
+                }
+                
+                Log.d(TAG, "🌐 Fetching timeline with cursor: $currentCursor")
+                
+                val result = if (_currentHashtag.value != null) {
+                    Log.d(TAG, "🏷️ Fetching posts for hashtag: ${_currentHashtag.value}")
+                    atProtocolRepository.getPostsByHashtag(
+                        hashtag = _currentHashtag.value!!,
+                        cursor = if (isRefresh) null else currentCursor
+                    )
+                } else {
+                    atProtocolRepository.getTimeline(
+                        algorithm = when (_selectedFeed.value) {
+                            "Following" -> "reverse-chronological"
+                            else -> "whats-hot"
+                        },
+                        cursor = if (isRefresh) null else currentCursor
+                    )
+                }
+                
+                result.onSuccess { response ->
+                    Log.d(TAG, """
+                        ✅ Timeline fetched:
+                        Posts: ${response.feed.size}
+                        Cursor: ${response.cursor}
+                        First post: ${response.feed.firstOrNull()?.post?.uri}
+                    """.trimIndent())
+                    
+                    val filteredPosts = response.feed.filter { post ->
+                        post.post.uri.isNotEmpty() && 
+                        post.post.cid.isNotEmpty() &&
+                        post.post.record.reply == null
+                    }
+                    
+                    _threads.value = if (isRefresh) {
+                        filteredPosts
+                    } else {
+                        _threads.value + filteredPosts
+                    }
+                    
+                    loadInitialLikeStates(filteredPosts)
+                    currentCursor = response.cursor
+                }.onFailure { error ->
+                    Log.e(TAG, "❌ Failed to load threads: ${error.message}")
+                    error.printStackTrace()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error loading threads: ${e.message}")
+                e.printStackTrace()
+            } finally {
+                _isLoading.value = false
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Critical error in loadThreads: ${e.message}")
-            Log.e(TAG, "Stack trace: ${e.stackTraceToString()}")
-        } finally {
-            _isLoading.value = false
-            loadingJob = null
         }
     }
 
@@ -830,10 +917,19 @@ class HomeViewModel @Inject constructor(
 
     fun updateSelectedFeed(feed: String) {
         viewModelScope.launch {
+            Log.d(TAG, "📱 Switching feed to: $feed")
             _selectedFeed.value = feed
             savedStateHandle.set("selectedFeed", feed)
-            if (feed == "Flicks") {
-                refreshVideoFeed()
+            
+            when (feed) {
+                "Flicks" -> {
+                    Log.d(TAG, "🎥 Loading video feed")
+                    refreshVideoFeed()
+                }
+                else -> {
+                    Log.d(TAG, "📜 Loading posts feed")
+                    loadThreads(isRefresh = true)
+                }
             }
         }
     }
@@ -878,17 +974,40 @@ class HomeViewModel @Inject constructor(
     fun refreshVideoFeed() {
         viewModelScope.launch {
             try {
+                Log.d(TAG, "🎥 Refreshing video feed")
                 _isLoadingVideos.value = true
                 _videoLoadError.value = null
                 
+                // Ensure valid session
+                val hasValidSession = ensureValidSession()
+                if (!hasValidSession) {
+                    Log.e(TAG, "❌ No valid session for video feed")
+                    _videoLoadError.value = "Please log in to view videos"
+                    return@launch
+                }
+                
                 val posts = atProtocolRepository.getMediaPosts()
-                _videos.value = posts
+                Log.d(TAG, "📱 Found ${posts.size} media posts")
                 
                 if (posts.isEmpty()) {
+                    Log.w(TAG, "⚠️ No media posts found")
                     _videoLoadError.value = "No media posts found. Pull down to refresh."
+                } else {
+                    posts.forEach { video ->
+                        Log.d(TAG, """
+                            🎬 Video:
+                            URI: ${video.uri}
+                            URL: ${video.videoUrl}
+                            Type: ${if (video.isImage) "Image" else "Video"}
+                            Description: ${video.description}
+                        """.trimIndent())
+                    }
                 }
+                
+                _videos.value = posts
             } catch (e: Exception) {
-                Log.e(TAG, "Error loading video feed: ${e.message}", e)
+                Log.e(TAG, "❌ Error loading video feed: ${e.message}")
+                e.printStackTrace()
                 _videoLoadError.value = e.message ?: "Failed to load media posts"
             } finally {
                 _isLoadingVideos.value = false

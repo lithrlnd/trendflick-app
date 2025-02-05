@@ -181,17 +181,29 @@ fun ThreadCard(
                         )
 
                         // Post media if exists
-                        feedPost.post.record.embed?.images?.firstOrNull()?.let { image ->
+                        feedPost.post.embed?.images?.firstOrNull()?.let { image ->
                             Spacer(modifier = Modifier.height(8.dp))
-                            AsyncImage(
-                                model = image.image,
-                                contentDescription = image.alt,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(ratio = (image.aspectRatio ?: 1.77).toFloat())
-                                    .clip(RoundedCornerShape(8.dp)),
-                                contentScale = ContentScale.Crop
-                            )
+                            val imageUrl = when {
+                                !image.fullsize.isNullOrEmpty() -> image.fullsize
+                                !image.thumb.isNullOrEmpty() -> image.thumb
+                                image.image?.link != null -> "https://cdn.bsky.social/img/feed_fullsize/plain/${image.image.link}@jpeg"
+                                else -> null
+                            }
+                            
+                            if (!imageUrl.isNullOrEmpty()) {
+                                AsyncImage(
+                                    model = imageUrl,
+                                    contentDescription = image.alt,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .aspectRatio(
+                                            image.aspectRatio?.let { 
+                                                it.width.toFloat() / it.height.toFloat() 
+                                            } ?: 16f/9f
+                                        ),
+                                    contentScale = ContentScale.Crop
+                                )
+                            }
                         }
                     }
                 }
@@ -305,17 +317,29 @@ fun ThreadCard(
                         )
 
                         // Post media if exists
-                        feedPost.post.record.embed?.images?.firstOrNull()?.let { image ->
+                        feedPost.post.embed?.images?.firstOrNull()?.let { image ->
                             Spacer(modifier = Modifier.height(8.dp))
-                            AsyncImage(
-                                model = image.image,
-                                contentDescription = image.alt,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(ratio = (image.aspectRatio ?: 1.77).toFloat())
-                                    .clip(RoundedCornerShape(8.dp)),
-                                contentScale = ContentScale.Crop
-                            )
+                            val imageUrl = when {
+                                !image.fullsize.isNullOrEmpty() -> image.fullsize
+                                !image.thumb.isNullOrEmpty() -> image.thumb
+                                image.image?.link != null -> "https://cdn.bsky.social/img/feed_fullsize/plain/${image.image.link}@jpeg"
+                                else -> null
+                            }
+                            
+                            if (!imageUrl.isNullOrEmpty()) {
+                                AsyncImage(
+                                    model = imageUrl,
+                                    contentDescription = image.alt,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .aspectRatio(
+                                            image.aspectRatio?.let { 
+                                                it.width.toFloat() / it.height.toFloat() 
+                                            } ?: 16f/9f
+                                        ),
+                                    contentScale = ContentScale.Crop
+                                )
+                            }
                         }
                     }
 
@@ -605,16 +629,11 @@ fun EmbeddedLink(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // Thumbnail
-            val thumbnailUrl = when {
-                thumbnail.thumbUrl != null -> thumbnail.thumbUrl
-                thumbnail.thumbBlob?.link != null -> "https://cdn.bsky.app/img/feed_thumbnail/plain/${thumbnail.thumbBlob.link}@jpeg"
-                else -> null
-            }
-            
-            thumbnailUrl?.let { url ->
+            val thumbnailUrl = thumbnail.thumbUrl
+            if (!thumbnailUrl.isNullOrEmpty()) {
                 AsyncImage(
-                    model = url,
-                    contentDescription = "Link thumbnail",
+                    model = thumbnailUrl,
+                    contentDescription = "Link preview",
                     modifier = Modifier
                         .size(80.dp)
                         .clip(RoundedCornerShape(8.dp)),
