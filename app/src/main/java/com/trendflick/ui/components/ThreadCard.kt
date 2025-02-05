@@ -40,6 +40,9 @@ import com.trendflick.data.api.*
 import com.trendflick.utils.DateUtils
 import kotlinx.coroutines.delay
 import com.trendflick.ui.components.CategoryDrawer
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.items
 
 @Composable
 fun ThreadCard(
@@ -53,6 +56,7 @@ fun ThreadCard(
     onThreadClick: () -> Unit,
     onCommentClick: () -> Unit,
     onCreatePost: () -> Unit,
+    onImageClick: (ImageEmbed) -> Unit,
     onHashtagClick: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -181,28 +185,43 @@ fun ThreadCard(
                         )
 
                         // Post media if exists
-                        feedPost.post.embed?.images?.firstOrNull()?.let { image ->
+                        feedPost.post.embed?.images?.let { images ->
                             Spacer(modifier = Modifier.height(8.dp))
-                            val imageUrl = when {
-                                !image.fullsize.isNullOrEmpty() -> image.fullsize
-                                !image.thumb.isNullOrEmpty() -> image.thumb
-                                image.image?.link != null -> "https://cdn.bsky.social/img/feed_fullsize/plain/${image.image.link}@jpeg"
-                                else -> null
-                            }
-                            
-                            if (!imageUrl.isNullOrEmpty()) {
+                            if (images.size == 1) {
                                 AsyncImage(
-                                    model = imageUrl,
-                                    contentDescription = image.alt,
+                                    model = images[0].fullsize ?: images[0].image?.link?.let { link ->
+                                        "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
+                                    } ?: "",
+                                    contentDescription = images[0].alt,
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .aspectRatio(
-                                            image.aspectRatio?.let { 
-                                                it.width.toFloat() / it.height.toFloat() 
-                                            } ?: 16f/9f
-                                        ),
+                                        .aspectRatio(16f/9f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { onImageClick(images[0]) },
                                     contentScale = ContentScale.Crop
                                 )
+                            } else {
+                                LazyVerticalGrid(
+                                    columns = GridCells.Fixed(2),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .aspectRatio(16f/9f)
+                                ) {
+                                    items(images) { image ->
+                                        AsyncImage(
+                                            model = image.fullsize ?: image.image?.link?.let { link ->
+                                                "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
+                                            } ?: "",
+                                            contentDescription = image.alt,
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .aspectRatio(1f)
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .clickable { onImageClick(image) },
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -317,28 +336,43 @@ fun ThreadCard(
                         )
 
                         // Post media if exists
-                        feedPost.post.embed?.images?.firstOrNull()?.let { image ->
+                        feedPost.post.embed?.images?.let { images ->
                             Spacer(modifier = Modifier.height(8.dp))
-                            val imageUrl = when {
-                                !image.fullsize.isNullOrEmpty() -> image.fullsize
-                                !image.thumb.isNullOrEmpty() -> image.thumb
-                                image.image?.link != null -> "https://cdn.bsky.social/img/feed_fullsize/plain/${image.image.link}@jpeg"
-                                else -> null
-                            }
-                            
-                            if (!imageUrl.isNullOrEmpty()) {
+                            if (images.size == 1) {
                                 AsyncImage(
-                                    model = imageUrl,
-                                    contentDescription = image.alt,
+                                    model = images[0].fullsize ?: images[0].image?.link?.let { link ->
+                                        "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
+                                    } ?: "",
+                                    contentDescription = images[0].alt,
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .aspectRatio(
-                                            image.aspectRatio?.let { 
-                                                it.width.toFloat() / it.height.toFloat() 
-                                            } ?: 16f/9f
-                                        ),
+                                        .aspectRatio(16f/9f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { onImageClick(images[0]) },
                                     contentScale = ContentScale.Crop
                                 )
+                            } else {
+                                LazyVerticalGrid(
+                                    columns = GridCells.Fixed(2),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .aspectRatio(16f/9f)
+                                ) {
+                                    items(images) { image ->
+                                        AsyncImage(
+                                            model = image.fullsize ?: image.image?.link?.let { link ->
+                                                "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
+                                            } ?: "",
+                                            contentDescription = image.alt,
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .aspectRatio(1f)
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .clickable { onImageClick(image) },
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -629,7 +663,9 @@ fun EmbeddedLink(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // Thumbnail
-            val thumbnailUrl = thumbnail.thumbUrl
+            val thumbnailUrl = thumbnail.thumb?.link?.let { link ->
+                "https://cdn.bsky.app/img/feed_thumbnail/plain/$link@jpeg"
+            }
             if (!thumbnailUrl.isNullOrEmpty()) {
                 AsyncImage(
                     model = thumbnailUrl,

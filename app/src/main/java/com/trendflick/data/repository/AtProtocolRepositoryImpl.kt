@@ -1008,127 +1008,214 @@ class AtProtocolRepositoryImpl @Inject constructor(
         )
     }
 
-    override suspend fun getMediaPosts(): List<Video> = withContext(Dispatchers.IO) {
+    override suspend fun getMediaPosts(): List<Video> {
         try {
-            Log.d(TAG, "📱 Fetching media posts from timeline")
+            Log.d(TAG, "🎬 Starting media posts fetch")
             
-            val timelineResult = getTimeline(
-                algorithm = "whats-hot",
-                limit = 100  // Fetch more posts to increase chances of finding media
-            )
+            val timeline = getTimeline(algorithm = "whats-hot", limit = 100).getOrThrow()
+            Log.d(TAG, "📥 Retrieved ${timeline.feed.size} total posts from timeline")
             
-            timelineResult.fold(
-                onSuccess = { response ->
-                    Log.d(TAG, "✅ Timeline fetched, processing ${response.feed.size} posts for media")
+            val mediaVideos = timeline.feed
+                .filter { feedPost ->
+                    val hasEmbed = feedPost.post.embed != null
+                    val isMediaPost = feedPost.post.embed?.let { embed ->
+                        embed.type?.startsWith("app.bsky.embed.images") == true ||
+                        embed.type?.startsWith("app.bsky.embed.external") == true ||
+                        embed.type?.startsWith("app.bsky.embed.video") == true
+                    } ?: false
                     
-                    response.feed
-                        .filter { feedPost ->
-                            // Check for video embeds specifically
-                            feedPost.post.embed?.let { embed ->
-                                when (embed.type) {
-                                    "app.bsky.embed.video" -> true
-                                    "app.bsky.embed.external" -> {
-                                        // Check if external embed is a video
-                                        val uri = embed.external?.uri ?: ""
-                                        uri.contains(".mp4", ignoreCase = true) ||
-                                        uri.contains("video", ignoreCase = true) ||
-                                        uri.contains("cdn.bsky.social/video", ignoreCase = true)
-                                    }
-                                    else -> false
-                                }
-                            } ?: false
-                        }
-                        .mapNotNull { feedPost ->
-                            val embed = feedPost.post.embed
-                            val videoUrl = when (embed?.type) {
-                                "app.bsky.embed.video" -> {
-                                    embed.video?.ref?.link?.let { ref ->
-                                        "https://cdn.bsky.social/video/plain/$ref"
-                                    }
-                                }
-                                "app.bsky.embed.external" -> embed.external?.uri
-                                else -> null
-                            }
-                            
-                            if (videoUrl != null) {
-                                Log.d(TAG, """
-                                    ✅ Found video post:
-                                    Type: ${embed?.type}
-                                    URL: $videoUrl
-                                    Text: ${feedPost.post.record.text}
-                                """.trimIndent())
-                                
-                                VideoModel(
-                                    uri = feedPost.post.uri,
-                                    title = embed?.external?.title,
-                                    description = feedPost.post.record.text,
-                                    thumbnailUrl = embed?.external?.thumbUrl,
-                                    videoUrl = videoUrl,
-                                    authorDid = feedPost.post.author.did,
-                                    authorHandle = feedPost.post.author.handle,
-                                    authorName = feedPost.post.author.displayName,
-                                    authorAvatar = feedPost.post.author.avatar,
-                                    createdAt = feedPost.post.indexedAt,
-                                    likes = feedPost.post.likeCount,
-                                    comments = feedPost.post.replyCount,
-                                    reposts = feedPost.post.repostCount,
-                                    aspectRatio = embed?.video?.aspectRatio?.let { ratio ->
-                                        ratio.width.toFloat() / ratio.height.toFloat()
-                                    } ?: 1.0f
-                                ).toVideo()
-                            } else null
-                        }
-                },
-                onFailure = { e ->
-                    Log.e(TAG, "❌ Failed to fetch media posts: ${e.message}")
-                    emptyList()
+                    Log.d(TAG, """
+                        🔍 Checking post for media:
+                        URI: ${feedPost.post.uri}
+                        Has embed: $hasEmbed
+                        Embed type: ${feedPost.post.embed?.type}
+                        Is media post: $isMediaPost
+                    """.trimIndent())
+                    
+                    hasEmbed && isMediaPost
                 }
-            )
+                .mapNotNull { feedPost ->
+                    mapPostToVideo(feedPost.post)
+                }
+                .filter { video ->
+                    val hasMedia = video.isImage || video.videoUrl.isNotBlank()
+                    Log.d(TAG, """
+                        ✨ Validating mapped video:
+                        URI: ${video.uri}
+                        Is image: ${video.isImage}
+                        Has video URL: ${video.videoUrl.isNotBlank()}
+                        Has media: $hasMedia
+                    """.trimIndent())
+                    hasMedia
+                }
+            
+            Log.d(TAG, """
+                📊 Media posts summary:
+                Total posts processed: ${timeline.feed.size}
+                Media posts found: ${mediaVideos.size}
+                Images: ${mediaVideos.count { it.isImage }}
+                Videos: ${mediaVideos.count { !it.isImage }}
+            """.trimIndent())
+            
+            return mediaVideos
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error in getMediaPosts: ${e.message}")
-            emptyList()
+            Log.e(TAG, "❌ Error fetching media posts: ${e.message}")
+            Log.e(TAG, "Stack trace: ${e.stackTraceToString()}")
+            throw e
         }
     }
 
-    private fun mapPostToVideo(post: Post): Video {
-        val imageEmbed = post.embed?.images?.firstOrNull()
-        val videoEmbed = post.embed?.video
-        val externalEmbed = post.embed?.external
-        
-        return Video(
-            uri = post.uri,
-            did = post.author.did,
-            handle = post.author.handle,
-            videoUrl = when {
-                videoEmbed != null -> videoEmbed.ref?.link?.let { "https://cdn.bsky.social/video/plain/$it" } ?: ""
-                externalEmbed != null -> externalEmbed.uri
-                else -> ""
-            },
-            description = post.record.text,
-            createdAt = Instant.parse(post.record.createdAt),
-            indexedAt = Instant.parse(post.indexedAt),
-            sortAt = Instant.parse(post.indexedAt),
-            title = externalEmbed?.title ?: "",
-            thumbnailUrl = when {
-                externalEmbed?.thumbUrl != null -> externalEmbed.thumbUrl
-                imageEmbed?.thumb != null -> imageEmbed.thumb
-                imageEmbed?.image?.link != null -> "https://cdn.bsky.social/img/feed_thumbnail/plain/${imageEmbed.image.link}@jpeg"
-                else -> ""
-            },
-            likes = post.likeCount,
-            comments = post.replyCount,
-            shares = post.repostCount,
-            username = post.author.displayName ?: post.author.handle,
-            userId = post.author.did,
-            isImage = post.embed?.type == "app.bsky.embed.images",
-            imageUrl = when {
-                imageEmbed?.fullsize != null -> imageEmbed.fullsize
-                imageEmbed?.image?.link != null -> "https://cdn.bsky.social/img/feed_fullsize/plain/${imageEmbed.image.link}@jpeg"
-                else -> ""
-            },
-            aspectRatio = videoEmbed?.aspectRatio?.let { it.width.toFloat() / it.height.toFloat() } ?: 1.0f,
-            authorAvatar = post.author.avatar ?: ""
-        )
+    private fun mapPostToVideo(post: Post): Video? {
+        try {
+            Log.d(TAG, """
+                🎥 Processing post for video/image:
+                URI: ${post.uri}
+                Has embed: ${post.embed != null}
+                Embed type: ${post.embed?.type}
+                Images count: ${post.embed?.images?.size}
+                Has video: ${post.embed?.video != null}
+                Has external: ${post.embed?.external != null}
+                Author: ${post.author.handle}
+                Text: ${post.record.text.take(50)}...
+            """.trimIndent())
+
+            // Validate embed structure
+            val embed = post.embed
+            if (embed == null) {
+                Log.d(TAG, "⚠️ Skipping post - no embed found")
+                return null
+            }
+            
+            // Get valid images using the new validation method
+            val validImages = embed.getValidImages()
+            val isImage = (embed.type?.startsWith("app.bsky.embed.images") == true || 
+                          embed.type?.equals("app.bsky.embed.images#view") == true) && 
+                          embed.images?.isNotEmpty() == true
+            
+            Log.d(TAG, """
+                📊 Media validation:
+                Is image post: $isImage
+                Valid images count: ${validImages.size}
+                Embed type: ${embed.type}
+                Raw images: ${embed.images?.size}
+                First image fullsize: ${embed.images?.firstOrNull()?.fullsize}
+                First image link: ${embed.images?.firstOrNull()?.image?.link}
+            """.trimIndent())
+            
+            // Handle image URLs
+            val imageUrl = when {
+                isImage && embed.images?.firstOrNull()?.fullsize != null -> {
+                    Log.d(TAG, "🖼️ Using fullsize image URL: ${embed.images.first().fullsize}")
+                    embed.images.first().fullsize
+                }
+                isImage && embed.images?.firstOrNull()?.image?.link != null -> {
+                    val link = embed.images.first().image?.link
+                    val url = "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
+                    Log.d(TAG, "🖼️ Generated CDN image URL: $url")
+                    url
+                }
+                else -> {
+                    Log.d(TAG, "⚠️ No valid image URL found")
+                    ""
+                }
+            }
+            
+            // Handle video URLs with improved validation
+            val videoUrl = when {
+                embed.video?.ref?.link != null -> {
+                    val link = embed.video.ref.link
+                    val url = "https://cdn.bsky.app/video/plain/$link"
+                    Log.d(TAG, "🎥 Generated Bluesky CDN video URL: $url")
+                    url
+                }
+                embed.external?.uri?.let { uri ->
+                    uri.endsWith(".mp4", ignoreCase = true) ||
+                    uri.contains("video", ignoreCase = true) ||
+                    uri.contains("cdn.bsky.social/video", ignoreCase = true)
+                } == true -> {
+                    val uri = embed.external.uri
+                    Log.d(TAG, "🎥 Using external video URL: $uri")
+                    uri
+                }
+                else -> {
+                    Log.d(TAG, "⚠️ No valid video URL found")
+                    ""
+                }
+            }
+            
+            // Get thumbnail URL with fallbacks
+            val thumbnailUrl = when {
+                embed.external?.thumb?.link != null -> {
+                    val link = embed.external.thumb.link
+                    val url = "https://cdn.bsky.app/img/feed_thumbnail/plain/$link@jpeg"
+                    Log.d(TAG, "🖼️ Generated thumbnail from external: $url")
+                    url
+                }
+                isImage && embed.images?.firstOrNull()?.thumb != null -> {
+                    val url = embed.images.first().thumb
+                    Log.d(TAG, "🖼️ Using image thumb: $url")
+                    url
+                }
+                isImage && embed.images?.firstOrNull()?.image?.link != null -> {
+                    val link = embed.images.first().image?.link
+                    val url = "https://cdn.bsky.app/img/feed_thumbnail/plain/$link@jpeg"
+                    Log.d(TAG, "🖼️ Generated thumbnail from image: $url")
+                    url
+                }
+                else -> {
+                    Log.d(TAG, "⚠️ No valid thumbnail URL found")
+                    ""
+                }
+            }
+
+            // Return a Video object if we have either a valid image or video URL
+            if ((isImage && imageUrl?.isNotBlank() == true) || (!isImage && videoUrl?.isNotBlank() == true)) {
+                return Video(
+                    uri = post.uri,
+                    did = post.author.did,
+                    handle = post.author.handle,
+                    videoUrl = videoUrl ?: "",
+                    description = post.record.text,
+                    createdAt = Instant.parse(post.record.createdAt),
+                    indexedAt = Instant.parse(post.indexedAt),
+                    sortAt = Instant.parse(post.indexedAt),
+                    title = embed.external?.title ?: "",
+                    thumbnailUrl = thumbnailUrl ?: "",
+                    likes = post.likeCount,
+                    comments = post.replyCount,
+                    shares = post.repostCount,
+                    username = post.author.displayName ?: post.author.handle,
+                    userId = post.author.did,
+                    isImage = isImage,
+                    imageUrl = imageUrl ?: "",
+                    aspectRatio = embed.video?.aspectRatio?.let { it.width.toFloat() / it.height.toFloat() } ?: 1.0f,
+                    authorAvatar = post.author.avatar ?: ""
+                ).also { video ->
+                    Log.d(TAG, """
+                        ✅ Mapped Media Result:
+                        URI: ${video.uri}
+                        Is Image: ${video.isImage}
+                        Image URL: ${video.imageUrl}
+                        Video URL: ${video.videoUrl}
+                        Has Media: ${video.isImage || video.videoUrl.isNotBlank()}
+                        Thumbnail: ${video.thumbnailUrl}
+                    """.trimIndent())
+                }
+            }
+            
+            Log.w(TAG, """
+                ⚠️ Skipping post due to missing media URL:
+                Is Image: $isImage
+                Image URL: $imageUrl
+                Video URL: $videoUrl
+            """.trimIndent())
+            return null
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error mapping post to video: ${e.message}")
+            Log.e(TAG, "Stack trace: ${e.stackTraceToString()}")
+            return null
+        }
     }
 
     companion object {

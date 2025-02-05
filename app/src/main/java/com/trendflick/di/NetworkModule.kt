@@ -151,7 +151,7 @@ object NetworkModule {
             var uri: String? = null
             var title: String? = null
             var description: String? = null
-            var thumbUrl: String? = null
+            var thumb: BlobRef? = null
 
             reader.beginObject()
             while (reader.hasNext()) {
@@ -167,12 +167,24 @@ object NetworkModule {
                         }
                     }
                     "thumb" -> {
-                        if (reader.peek() == JsonReader.Token.STRING) {
-                            thumbUrl = reader.nextString()
-                        } else if (reader.peek() != JsonReader.Token.NULL) {
-                            reader.skipValue()
+                        if (reader.peek() == JsonReader.Token.BEGIN_OBJECT) {
+                            reader.beginObject()
+                            var link: String? = null
+                            var mimeType: String? = null
+                            var size: Long? = null
+                            
+                            while (reader.hasNext()) {
+                                when (reader.nextName()) {
+                                    "\$link" -> link = reader.nextString()
+                                    "mimeType" -> mimeType = reader.nextString()
+                                    "size" -> size = reader.nextLong()
+                                    else -> reader.skipValue()
+                                }
+                            }
+                            reader.endObject()
+                            thumb = BlobRef(link, mimeType, size)
                         } else {
-                            reader.nextNull<String>()
+                            reader.skipValue()
                         }
                     }
                     else -> reader.skipValue()
@@ -188,7 +200,7 @@ object NetworkModule {
                 uri = uri,
                 title = title,
                 description = description,
-                thumbUrl = thumbUrl
+                thumb = thumb
             )
         }
 
@@ -198,7 +210,14 @@ object NetworkModule {
             writer.name("uri").value(value.uri)
             writer.name("title").value(value.title)
             value.description?.let { writer.name("description").value(it) }
-            value.thumbUrl?.let { writer.name("thumb").value(it) }
+            value.thumb?.let { thumb ->
+                writer.name("thumb")
+                writer.beginObject()
+                writer.name("\$link").value(thumb.link)
+                writer.name("mimeType").value(thumb.mimeType)
+                writer.name("size").value(thumb.size)
+                writer.endObject()
+            }
             writer.endObject()
         }
     }
@@ -303,13 +322,46 @@ object NetworkModule {
         uri: String,
         title: String?,
         description: String?,
-        thumbUrl: String?
+        thumb: BlobRef?
     ): ExternalEmbed {
         return ExternalEmbed(
             uri = uri,
             title = title,
             description = description,
-            thumbUrl = thumbUrl
+            thumb = thumb
+        )
+    }
+
+    private fun mapToVideoModel(post: Post): VideoModel {
+        val thumbnailUrl = when {
+            post.embed?.external?.thumb?.link != null -> {
+                "https://cdn.bsky.app/img/feed_thumbnail/plain/${post.embed.external.thumb.link}@jpeg"
+            }
+            post.embed?.images?.firstOrNull()?.thumb != null -> {
+                post.embed.images.first().thumb
+            }
+            post.embed?.images?.firstOrNull()?.image?.link != null -> {
+                val imageLink = post.embed.images.first().image?.link
+                "https://cdn.bsky.app/img/feed_thumbnail/plain/$imageLink@jpeg"
+            }
+            else -> null
+        }
+
+        return VideoModel(
+            uri = post.uri,
+            title = post.embed?.external?.title,
+            description = post.record.text,
+            thumbnailUrl = thumbnailUrl,
+            videoUrl = post.embed?.video?.ref?.link?.let { "https://cdn.bsky.app/video/plain/$it" },
+            authorDid = post.author.did,
+            authorHandle = post.author.handle,
+            authorName = post.author.displayName,
+            authorAvatar = post.author.avatar,
+            createdAt = post.record.createdAt,
+            likes = post.likeCount,
+            comments = post.replyCount,
+            reposts = post.repostCount,
+            aspectRatio = post.embed?.video?.aspectRatio?.let { it.width.toFloat() / it.height.toFloat() }
         )
     }
 } 

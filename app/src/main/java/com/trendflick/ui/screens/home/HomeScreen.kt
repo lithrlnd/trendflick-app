@@ -141,6 +141,10 @@ fun HomeScreen(
 
     LaunchedEffect(selectedFeed) {
         viewModel.updateSelectedFeed(selectedFeed)
+        if (selectedFeed == "Flicks") {
+            Log.d("HomeScreen", "🎥 Switching to Flicks tab, refreshing video feed")
+            viewModel.refreshVideoFeed()
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -260,7 +264,15 @@ fun HomeScreen(
                                                 viewModel.toggleComments(true)
                                             },
                                             onCreatePost = { navController.navigate(Screen.CreatePost.route) },
-                                            onHashtagClick = { tag -> viewModel.onHashtagSelected(tag) }
+                                            onImageClick = { image ->
+                                                // Handle image click by opening in full screen or in a viewer
+                                                val imageUrl = image.fullsize ?: image.image?.link?.let { link ->
+                                                    "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
+                                                } ?: ""
+                                                // You can implement your image viewing logic here
+                                            },
+                                            onHashtagClick = { tag -> viewModel.onHashtagSelected(tag) },
+                                            modifier = Modifier.fillMaxWidth()
                                         )
                                     }
                                 }
@@ -285,7 +297,15 @@ fun HomeScreen(
                                                 viewModel.toggleComments(true)
                                             },
                                             onCreatePost = { navController.navigate(Screen.CreatePost.route) },
-                                            onHashtagClick = { tag -> viewModel.onHashtagSelected(tag) }
+                                            onImageClick = { image ->
+                                                // Handle image click by opening in full screen or in a viewer
+                                                val imageUrl = image.fullsize ?: image.image?.link?.let { link ->
+                                                    "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
+                                                } ?: ""
+                                                // You can implement your image viewing logic here
+                                            },
+                                            onHashtagClick = { tag -> viewModel.onHashtagSelected(tag) },
+                                            modifier = Modifier.fillMaxWidth()
                                         )
                                     }
                                 }
@@ -580,6 +600,7 @@ fun VideoItem(
     var playbackSpeed by remember { mutableStateOf(1f) }
     var isPaused by remember { mutableStateOf(false) }
     var progress by remember { mutableStateOf(0f) }
+    var loadError by remember { mutableStateOf<String?>(null) }
 
     Box(
         modifier = Modifier
@@ -591,7 +612,6 @@ fun VideoItem(
             }
     ) {
         if (video.isImage) {
-            // Display image content
             AsyncImage(
                 model = video.imageUrl,
                 contentDescription = "Post image",
@@ -599,18 +619,47 @@ fun VideoItem(
                 contentScale = if (video.aspectRatio > 1f) 
                     ContentScale.FillWidth 
                 else 
-                    ContentScale.FillHeight
+                    ContentScale.FillHeight,
+                onError = { loadError = "Failed to load image" }
             )
-        } else {
-            // Display video content
+        } else if (video.videoUrl.isNotBlank()) {
             VideoPlayer(
                 videoUrl = video.videoUrl,
                 isVisible = isVisible,
                 onProgressChanged = { newProgress -> progress = newProgress },
                 playbackSpeed = playbackSpeed,
                 isPaused = isPaused,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                onError = { error -> loadError = "Failed to load video: $error" }
             )
+        }
+
+        loadError?.let { error ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.7f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Error,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Text(
+                        text = error,
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                }
+            }
         }
 
         VideoControls(
@@ -1049,27 +1098,88 @@ fun VideoFeedSection(
     onCreateVideo: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    LaunchedEffect(videos, isLoading, error) {
+        Log.d("VideoFeedSection", """
+            📱 Video Feed State:
+            Loading: $isLoading
+            Error: $error
+            Videos count: ${videos.size}
+            First video URI: ${videos.firstOrNull()?.uri}
+        """.trimIndent())
+    }
+
     Box(modifier = modifier.fillMaxSize()) {
         when {
             isLoading -> {
-                CircularProgressIndicator(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .align(Alignment.Center),
-                    color = Color(0xFF6B4EFF)
-                )
-            }
-            videos.isEmpty() -> {
+                Log.d("VideoFeedSection", "🔄 Showing loading state")
                 Column(
                     modifier = Modifier
-                        .align(Alignment.Center),
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(36.dp),
+                        color = Color(0xFF6B4EFF)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Loading media feed...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.7f)
+                    )
+                }
+            }
+            error != null -> {
+                Log.d("VideoFeedSection", "❌ Showing error state: $error")
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Error,
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.7f),
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = error,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.7f),
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            Log.d("VideoFeedSection", "🔄 Retry button clicked")
+                            onRefresh()
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF6B4EFF)
+                        )
+                    ) {
+                        Text("Retry")
+                    }
+                }
+            }
+            videos.isEmpty() -> {
+                Log.d("VideoFeedSection", "⚠️ No videos found")
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
-                        text = "No videos found",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(alpha = 0.7f)
+                        text = "No media found",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White
                     )
                     Text(
                         text = "Pull down to refresh or create your first flick",
@@ -1077,9 +1187,22 @@ fun VideoFeedSection(
                         color = Color.White.copy(alpha = 0.5f),
                         textAlign = TextAlign.Center
                     )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            Log.d("VideoFeedSection", "🔄 Manual refresh triggered")
+                            onRefresh()
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF6B4EFF)
+                        )
+                    ) {
+                        Text("Refresh Feed")
+                    }
                 }
             }
             else -> {
+                Log.d("VideoFeedSection", "✅ Showing ${videos.size} videos")
                 val pagerState = rememberPagerState(pageCount = { videos.size })
                 
                 VerticalPager(
@@ -1088,21 +1211,36 @@ fun VideoFeedSection(
                     key = { videos[it].uri }
                 ) { page ->
                     val video = videos[page]
+                    var itemLoadError by remember { mutableStateOf<String?>(null) }
+                    
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .background(Color.Black)
                     ) {
-                        VideoItem(
-                            video = video,
-                            isLiked = false,
-                            onLikeClick = { /* TODO: Implement like action */ },
-                            onCommentClick = { /* TODO: Implement comment action */ },
-                            onShareClick = { /* TODO: Implement share action */ },
-                            onProfileClick = { /* TODO: Implement profile navigation */ },
-                            isVisible = page == pagerState.currentPage,
-                            onLongPress = { /* TODO: Implement long press action */ }
-                        )
+                        if (itemLoadError == null) {
+                            VideoItem(
+                                video = video,
+                                isLiked = false,
+                                onLikeClick = { /* TODO: Implement like action */ },
+                                onCommentClick = { /* TODO: Implement comment action */ },
+                                onShareClick = { /* TODO: Implement share action */ },
+                                onProfileClick = { /* TODO: Implement profile navigation */ },
+                                isVisible = page == pagerState.currentPage,
+                                onLongPress = { /* TODO: Implement long press action */ }
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = itemLoadError ?: "Failed to load media",
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
                     }
                 }
             }

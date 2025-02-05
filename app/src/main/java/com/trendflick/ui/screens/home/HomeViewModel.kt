@@ -974,42 +974,24 @@ class HomeViewModel @Inject constructor(
     fun refreshVideoFeed() {
         viewModelScope.launch {
             try {
-                Log.d(TAG, "🎥 Refreshing video feed")
+                Log.d("HomeViewModel", "🔄 Starting video feed refresh")
                 _isLoadingVideos.value = true
                 _videoLoadError.value = null
                 
-                // Ensure valid session
-                val hasValidSession = ensureValidSession()
-                if (!hasValidSession) {
-                    Log.e(TAG, "❌ No valid session for video feed")
-                    _videoLoadError.value = "Please log in to view videos"
-                    return@launch
-                }
+                val mediaResult = atProtocolRepository.getMediaPosts()
+                Log.d("HomeViewModel", """
+                    ✅ Video feed refresh result:
+                    Videos fetched: ${mediaResult.size}
+                    Images: ${mediaResult.count { it.isImage }}
+                    Videos: ${mediaResult.count { !it.isImage }}
+                """.trimIndent())
                 
-                val posts = atProtocolRepository.getMediaPosts()
-                Log.d(TAG, "📱 Found ${posts.size} media posts")
-                
-                if (posts.isEmpty()) {
-                    Log.w(TAG, "⚠️ No media posts found")
-                    _videoLoadError.value = "No media posts found. Pull down to refresh."
-                } else {
-                    posts.forEach { video ->
-                        Log.d(TAG, """
-                            🎬 Video:
-                            URI: ${video.uri}
-                            URL: ${video.videoUrl}
-                            Type: ${if (video.isImage) "Image" else "Video"}
-                            Description: ${video.description}
-                        """.trimIndent())
-                    }
-                }
-                
-                _videos.value = posts
+                _videos.value = mediaResult
+                _isLoadingVideos.value = false
             } catch (e: Exception) {
-                Log.e(TAG, "❌ Error loading video feed: ${e.message}")
-                e.printStackTrace()
-                _videoLoadError.value = e.message ?: "Failed to load media posts"
-            } finally {
+                Log.e("HomeViewModel", "❌ Failed to refresh video feed: ${e.message}")
+                Log.e("HomeViewModel", "Stack trace: ${e.stackTraceToString()}")
+                _videoLoadError.value = e.message ?: "Failed to load media"
                 _isLoadingVideos.value = false
             }
         }

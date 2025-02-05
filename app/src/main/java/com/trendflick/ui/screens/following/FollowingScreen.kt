@@ -132,6 +132,14 @@ fun FollowingScreen(
                                     onThreadClick = { /* TODO */ },
                                     onCommentClick = { /* TODO */ },
                                     onCreatePost = onCreatePost,
+                                    onImageClick = { image ->
+                                        // Handle image click by opening in full screen or in a viewer
+                                        val imageUrl = image.fullsize ?: image.image?.link?.let { link ->
+                                            "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
+                                        } ?: ""
+                                        // You can implement your image viewing logic here
+                                    },
+                                    onHashtagClick = { /* TODO */ },
                                     modifier = Modifier.fillMaxSize()
                                 )
                             }

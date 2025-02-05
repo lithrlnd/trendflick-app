@@ -185,25 +185,30 @@ data class Author(
 // Embed Models
 @JsonClass(generateAdapter = true)
 data class Embed(
-    @field:Json(name = "\$type") val type: String,
-    @field:Json(name = "external") val external: ExternalEmbed? = null,
+    @field:Json(name = "\$type") val type: String? = null,
+    @field:Json(name = "images") val images: List<ImageEmbed>? = null,
     @field:Json(name = "video") val video: VideoEmbed? = null,
-    @field:Json(name = "images") val images: List<ImageEmbed>? = null
-)
+    @field:Json(name = "external") val external: ExternalEmbed? = null
+) {
+    fun getValidImages(): List<ImageEmbed> {
+        return images?.filterNotNull()?.filter { it.isValid() } ?: emptyList()
+    }
+}
 
 @JsonClass(generateAdapter = true)
 data class ExternalEmbed(
     @field:Json(name = "uri") val uri: String,
-    @field:Json(name = "title") val title: String?,
-    @field:Json(name = "description") val description: String?,
-    @field:Json(name = "thumbUrl") val thumbUrl: String?
+    @field:Json(name = "title") val title: String? = null,
+    @field:Json(name = "description") val description: String? = null,
+    @field:Json(name = "thumb") val thumb: BlobRef? = null
 )
 
 @JsonClass(generateAdapter = true)
 data class VideoEmbed(
-    @field:Json(name = "ref") val ref: BlobRef?,
-    @field:Json(name = "aspectRatio") val aspectRatio: AspectRatio?,
-    @field:Json(name = "alt") val alt: String?
+    @field:Json(name = "ref") val ref: BlobRef,
+    @field:Json(name = "mimeType") val mimeType: String,
+    @field:Json(name = "size") val size: Int,
+    @field:Json(name = "aspectRatio") val aspectRatio: AspectRatio? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -211,15 +216,16 @@ data class ImageEmbed(
     @field:Json(name = "alt") val alt: String = "",
     @field:Json(name = "image") val image: BlobRef? = null,
     @field:Json(name = "thumb") val thumb: String? = null,
-    @field:Json(name = "fullsize") val fullsize: String? = null,
-    @field:Json(name = "aspectRatio") val aspectRatio: AspectRatio? = null
-)
+    @field:Json(name = "fullsize") val fullsize: String? = null
+) {
+    fun isValid(): Boolean = image != null && image.link != null
+}
 
 @JsonClass(generateAdapter = true)
 data class BlobRef(
-    @field:Json(name = "\$link") val link: String?,
-    @field:Json(name = "mimeType") val mimeType: String?,
-    @field:Json(name = "size") val size: Long?
+    @field:Json(name = "\$link") val link: String? = null,
+    @field:Json(name = "mimeType") val mimeType: String? = null,
+    @field:Json(name = "size") val size: Long? = null
 )
 
 @JsonClass(generateAdapter = true)
