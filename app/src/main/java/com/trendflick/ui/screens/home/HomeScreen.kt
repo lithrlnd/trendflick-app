@@ -612,16 +612,28 @@ fun VideoItem(
             }
     ) {
         if (video.isImage) {
-            AsyncImage(
-                model = video.imageUrl,
-                contentDescription = "Post image",
-                modifier = Modifier.fillMaxSize(),
-                contentScale = if (video.aspectRatio > 1f) 
-                    ContentScale.FillWidth 
-                else 
-                    ContentScale.FillHeight,
-                onError = { loadError = "Failed to load image" }
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
+            ) {
+                AsyncImage(
+                    model = video.imageUrl,
+                    contentDescription = "Post image",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.Center),
+                    contentScale = when {
+                        // For landscape images (width > height)
+                        video.aspectRatio > 1f -> ContentScale.FillWidth
+                        // For portrait images (height > width)
+                        video.aspectRatio < 1f -> ContentScale.FillHeight
+                        // For square images
+                        else -> ContentScale.Fit
+                    },
+                    onError = { loadError = "Failed to load image" }
+                )
+            }
         } else if (video.videoUrl.isNotBlank()) {
             VideoPlayer(
                 videoUrl = video.videoUrl,
