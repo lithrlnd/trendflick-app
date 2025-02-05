@@ -8,6 +8,7 @@ import com.trendflick.data.local.UserDao
 import com.trendflick.data.model.AtSession
 import com.trendflick.data.model.User
 import com.trendflick.data.model.TrendingHashtag
+import com.trendflick.data.model.Video
 import kotlinx.coroutines.flow.Flow
 import java.time.Instant
 import java.time.format.DateTimeFormatter
@@ -46,6 +47,7 @@ interface AtProtocolRepository {
     suspend fun enhancePostWithAI(text: String): AIEnhancement
     suspend fun parseFacets(text: String): List<Facet>?
     suspend fun createPost(text: String, timestamp: String, facets: List<Facet>? = null)
+    suspend fun getMediaPosts(): List<Video>
 }
 
 // Data classes used by the interface

@@ -1,7 +1,8 @@
 @file:OptIn(
     ExperimentalMaterial3Api::class,
     androidx.media3.common.util.UnstableApi::class,
-    ExperimentalMaterialApi::class
+    ExperimentalMaterialApi::class,
+    ExperimentalFoundationApi::class
 )
 
 package com.trendflick.ui.screens.home
@@ -89,7 +90,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.unit.sp
-import com.trendflick.ui.screens.flicks.FlicksScreen
 import com.trendflick.ui.components.SwipeRefresh
 import com.trendflick.ui.components.rememberSwipeRefreshState
 import androidx.compose.material.ExperimentalMaterialApi
@@ -1045,35 +1045,9 @@ fun VideoFeedSection(
                     color = Color(0xFF6B4EFF)
                 )
             }
-            error != null -> {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                        .align(Alignment.Center),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = error,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(alpha = 0.7f)
-                    )
-                    TextButton(
-                        onClick = onRefresh,
-                        colors = ButtonDefaults.textButtonColors(
-                            contentColor = Color(0xFF6B4EFF)
-                        )
-                    ) {
-                        Text("Retry")
-                    }
-                }
-            }
             videos.isEmpty() -> {
                 Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
                         .align(Alignment.Center),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -1092,11 +1066,19 @@ fun VideoFeedSection(
                 }
             }
             else -> {
-                LazyColumn(
+                val pagerState = rememberPagerState(pageCount = { videos.size })
+                
+                VerticalPager(
+                    state = pagerState,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(vertical = 8.dp)
-                ) {
-                    items(videos) { video ->
+                    key = { videos[it].uri }
+                ) { page ->
+                    val video = videos[page]
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black)
+                    ) {
                         VideoItem(
                             video = video,
                             isLiked = false,
@@ -1104,7 +1086,7 @@ fun VideoFeedSection(
                             onCommentClick = { /* TODO: Implement comment action */ },
                             onShareClick = { /* TODO: Implement share action */ },
                             onProfileClick = { /* TODO: Implement profile navigation */ },
-                            isVisible = true,
+                            isVisible = page == pagerState.currentPage,
                             onLongPress = { /* TODO: Implement long press action */ }
                         )
                     }

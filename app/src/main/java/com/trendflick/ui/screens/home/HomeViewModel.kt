@@ -832,6 +832,9 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             _selectedFeed.value = feed
             savedStateHandle.set("selectedFeed", feed)
+            if (feed == "Flicks") {
+                refreshVideoFeed()
+            }
         }
     }
 
@@ -875,31 +878,26 @@ class HomeViewModel @Inject constructor(
     fun refreshVideoFeed() {
         viewModelScope.launch {
             try {
-                Log.d(TAG, "🔄 FEED: Starting refresh")
                 _isLoadingVideos.value = true
                 _videoLoadError.value = null
                 
-                val videos = videoRepository.getVideos()
-                Log.d(TAG, """
-                    📱 FEED UPDATE:
-                    Total videos: ${videos.size}
-                    Videos: ${videos.map { it.uri }}
-                """.trimIndent())
+                val posts = atProtocolRepository.getMediaPosts()
+                _videos.value = posts
                 
-                _videos.value = videos
-                
-                if (videos.isEmpty()) {
-                    Log.w(TAG, "⚠️ FEED: Empty - no videos found")
-                    _videoLoadError.value = "No videos found"
+                if (posts.isEmpty()) {
+                    _videoLoadError.value = "No media posts found. Pull down to refresh."
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "❌ FEED ERROR: ${e.message}")
-                Log.e(TAG, "❌ STACK: ${e.stackTraceToString()}")
-                _videoLoadError.value = "Failed to refresh videos: ${e.message}"
+                Log.e(TAG, "Error loading video feed: ${e.message}", e)
+                _videoLoadError.value = e.message ?: "Failed to load media posts"
             } finally {
                 _isLoadingVideos.value = false
             }
         }
+    }
+
+    fun loadMoreVideos() {
+        // TODO: Implement pagination for videos if needed
     }
 
     fun testVideoLoading() {

@@ -1,8 +1,8 @@
 {
   "formatVersion": 1,
   "database": {
-    "version": 7,
-    "identityHash": "5bbc9ba2826bafb65352c2f1ef89d2fe",
+    "version": 9,
+    "identityHash": "2d9f39e72ef056e51604a2536add55d0",
     "entities": [
       {
         "tableName": "users",
@@ -74,7 +74,7 @@
       },
       {
         "tableName": "videos",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`uri` TEXT NOT NULL, `did` TEXT NOT NULL, `handle` TEXT NOT NULL, `videoUrl` TEXT NOT NULL, `description` TEXT NOT NULL, `createdAt` TEXT NOT NULL, `indexedAt` TEXT NOT NULL, `sortAt` TEXT NOT NULL, `title` TEXT NOT NULL, `thumbnailUrl` TEXT NOT NULL, `likes` INTEGER NOT NULL, `comments` INTEGER NOT NULL, `shares` INTEGER NOT NULL, `username` TEXT NOT NULL, `userId` TEXT NOT NULL, `isImage` INTEGER NOT NULL, `imageUrl` TEXT NOT NULL, `aspectRatio` REAL NOT NULL, PRIMARY KEY(`uri`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`uri` TEXT NOT NULL, `did` TEXT NOT NULL, `handle` TEXT NOT NULL, `videoUrl` TEXT NOT NULL, `description` TEXT NOT NULL, `createdAt` TEXT NOT NULL, `indexedAt` TEXT NOT NULL, `sortAt` TEXT NOT NULL, `title` TEXT NOT NULL, `thumbnailUrl` TEXT NOT NULL, `likes` INTEGER NOT NULL, `comments` INTEGER NOT NULL, `shares` INTEGER NOT NULL, `username` TEXT NOT NULL, `userId` TEXT NOT NULL, `isImage` INTEGER NOT NULL, `imageUrl` TEXT NOT NULL, `aspectRatio` REAL NOT NULL, `authorAvatar` TEXT NOT NULL, PRIMARY KEY(`uri`))",
         "fields": [
           {
             "fieldPath": "uri",
@@ -183,6 +183,12 @@
             "columnName": "aspectRatio",
             "affinity": "REAL",
             "notNull": true
+          },
+          {
+            "fieldPath": "authorAvatar",
+            "columnName": "authorAvatar",
+            "affinity": "TEXT",
+            "notNull": true
           }
         ],
         "primaryKey": {
@@ -198,7 +204,7 @@
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '5bbc9ba2826bafb65352c2f1ef89d2fe')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '2d9f39e72ef056e51604a2536add55d0')"
     ]
   }
 }

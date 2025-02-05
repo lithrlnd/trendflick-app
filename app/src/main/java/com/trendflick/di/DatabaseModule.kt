@@ -13,10 +13,30 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Module
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
+
+    private val MIGRATION_7_8 = object : Migration(7, 8) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            // Add new columns to the videos table
+            database.execSQL("""
+                ALTER TABLE videos 
+                ADD COLUMN isImage INTEGER NOT NULL DEFAULT 0
+            """)
+            database.execSQL("""
+                ALTER TABLE videos 
+                ADD COLUMN imageUrl TEXT NOT NULL DEFAULT ''
+            """)
+            database.execSQL("""
+                ALTER TABLE videos 
+                ADD COLUMN aspectRatio REAL NOT NULL DEFAULT 1.0
+            """)
+        }
+    }
 
     @Provides
     @Singleton
@@ -26,16 +46,16 @@ object DatabaseModule {
 
     @Provides
     @Singleton
-    fun provideTrendFlickDatabase(
-        @ApplicationContext context: Context,
-        converters: Converters
+    fun provideDatabase(
+        @ApplicationContext context: Context
     ): TrendFlickDatabase {
         return Room.databaseBuilder(
             context,
             TrendFlickDatabase::class.java,
             "trendflick.db"
         )
-        .fallbackToDestructiveMigration()
+        .addMigrations(MIGRATION_7_8, TrendFlickDatabase.MIGRATION_8_9)
+        .fallbackToDestructiveMigration() // Add this for development only
         .build()
     }
 

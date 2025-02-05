@@ -40,6 +40,8 @@ import android.view.Surface
 import android.graphics.SurfaceTexture
 import android.opengl.GLES20
 import android.graphics.Matrix
+import java.io.IOException
+import com.trendflick.data.model.Video
 
 data class VideoUploadResult(
     val blobRef: JSONObject?,
@@ -418,6 +420,188 @@ class BlueskyRepository @Inject constructor(
             blobRef = blobRef,
             postUri = postUri
         )
+    }
+
+    suspend fun getMediaPosts(cursor: String? = null): List<Video> {
+        try {
+            Log.d(TAG, "🔄 Starting getMediaPosts with cursor: $cursor")
+            
+            // Get current session and refresh to ensure we have a valid token
+            val accessToken = atProtocolRepository.refreshSession()
+                .getOrNull()?.accessJwt
+                ?: throw IllegalStateException("Failed to get access token")
+            
+            Log.d(TAG, "✅ Got access token successfully")
+            
+            // Use "what's hot" feed generator
+            val query = JSONObject().apply {
+                put("feed", "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot")
+                put("limit", 100)
+                cursor?.let { put("cursor", it) }
+            }
+            
+            Log.d(TAG, "📤 Sending query to Bluesky API: ${query.toString(2)}")
+
+            val response = client.newCall(
+                Request.Builder()
+                    .url("$API_URL/xrpc/app.bsky.feed.getFeed")  // Changed to getFeed endpoint
+                    .addHeader("Authorization", "Bearer $accessToken")
+                    .post(query.toString().toRequestBody(JSON))
+                    .build()
+            ).execute()
+
+            val responseBody = response.body?.string()
+            Log.d(TAG, """
+                📥 Bluesky API Response:
+                Code: ${response.code}
+                Headers: ${response.headers}
+                Body: $responseBody
+            """.trimIndent())
+
+            if (!response.isSuccessful) {
+                throw IOException("Failed to fetch media posts: ${response.code}")
+            }
+
+            val body = JSONObject(responseBody ?: throw IOException("Empty response"))
+            val feed = body.getJSONArray("feed")
+            
+            Log.d(TAG, "📊 Found ${feed.length()} total items in feed")
+            
+            val mediaList = mutableListOf<Video>()
+            
+            for (index in 0 until feed.length()) {
+                try {
+                    val item = feed.getJSONObject(index)
+                    val post = item.getJSONObject("post")
+                    val record = post.getJSONObject("record")
+                    
+                    // First check for direct embeds
+                    val embed = record.optJSONObject("embed")
+                    
+                    // Then check for embed in a repost
+                    val repost = record.optJSONObject("embed")?.optJSONObject("record")
+                    val repostEmbed = repost?.optJSONObject("embed")
+                    
+                    val effectiveEmbed = embed ?: repostEmbed
+                    val effectiveRecord = if (repost != null) repost else record
+                    val effectivePost = if (repost != null) repost else post
+                    
+                    Log.d(TAG, """
+                        🔍 Examining post ${index + 1}/${feed.length()}:
+                        URI: ${effectivePost.optString("uri", "unknown")}
+                        Type: ${effectiveEmbed?.optString("\$type", "none")}
+                        Has Embed: ${effectiveEmbed != null}
+                        Is Repost: ${repost != null}
+                        Raw Embed: ${effectiveEmbed?.toString(2)}
+                    """.trimIndent())
+                    
+                    // Check for images first
+                    if (effectiveEmbed?.getString("\$type") == "app.bsky.embed.images") {
+                        val images = effectiveEmbed.getJSONArray("images")
+                        if (images.length() > 0) {
+                            val image = images.getJSONObject(0).getJSONObject("image")
+                            val ref = image.getJSONObject("ref").getString("\$link")
+                            val mediaUrl = "https://cdn.bsky.social/img/feed_fullsize/plain/$ref@jpeg"
+                            
+                            val aspectRatio = run {
+                                val img = images.getJSONObject(0)
+                                val ratio = img.optJSONObject("aspectRatio")
+                                if (ratio != null) {
+                                    ratio.getInt("width").toFloat() / ratio.getInt("height")
+                                } else 1f
+                            }
+
+                            Log.d(TAG, """
+                                ✅ Found image post:
+                                URL: $mediaUrl
+                                Aspect Ratio: $aspectRatio
+                                Text: ${effectiveRecord.optString("text", "")}
+                            """.trimIndent())
+
+                            mediaList.add(Video(
+                                uri = effectivePost.getString("uri"),
+                                did = effectivePost.getJSONObject("author").getString("did"),
+                                handle = effectivePost.getJSONObject("author").getString("handle"),
+                                videoUrl = "",
+                                imageUrl = mediaUrl,
+                                isImage = true,
+                                description = effectiveRecord.getString("text"),
+                                createdAt = Instant.parse(effectiveRecord.getString("createdAt")),
+                                indexedAt = Instant.parse(effectivePost.getString("indexedAt")),
+                                sortAt = Instant.parse(effectivePost.getString("indexedAt")),
+                                title = "",
+                                thumbnailUrl = "",
+                                username = effectivePost.getJSONObject("author").getString("displayName"),
+                                userId = effectivePost.getJSONObject("author").getString("did"),
+                                likes = effectivePost.optJSONObject("likeCount")?.optInt("count") ?: 0,
+                                comments = effectivePost.optJSONObject("replyCount")?.optInt("count") ?: 0,
+                                shares = effectivePost.optJSONObject("repostCount")?.optInt("count") ?: 0,
+                                aspectRatio = aspectRatio
+                            ))
+                        }
+                    }
+                    // Also check for videos
+                    else if (effectiveEmbed?.getString("\$type") == "app.bsky.embed.video") {
+                        val video = effectiveEmbed.getJSONObject("video")
+                        val ref = video.getJSONObject("ref").getString("\$link")
+                        val mediaUrl = "https://cdn.bsky.social/video/plain/$ref"
+                        
+                        val aspectRatio = run {
+                            val ratio = video.optJSONObject("aspectRatio")
+                            if (ratio != null) {
+                                ratio.getInt("width").toFloat() / ratio.getInt("height")
+                            } else 16f/9f
+                        }
+
+                        Log.d(TAG, """
+                            ✅ Found video post:
+                            URL: $mediaUrl
+                            Aspect Ratio: $aspectRatio
+                            Text: ${effectiveRecord.optString("text", "")}
+                        """.trimIndent())
+
+                        mediaList.add(Video(
+                            uri = effectivePost.getString("uri"),
+                            did = effectivePost.getJSONObject("author").getString("did"),
+                            handle = effectivePost.getJSONObject("author").getString("handle"),
+                            videoUrl = mediaUrl,
+                            imageUrl = "",
+                            isImage = false,
+                            description = effectiveRecord.getString("text"),
+                            createdAt = Instant.parse(effectiveRecord.getString("createdAt")),
+                            indexedAt = Instant.parse(effectivePost.getString("indexedAt")),
+                            sortAt = Instant.parse(effectivePost.getString("indexedAt")),
+                            title = "",
+                            thumbnailUrl = "",
+                            username = effectivePost.getJSONObject("author").getString("displayName"),
+                            userId = effectivePost.getJSONObject("author").getString("did"),
+                            likes = effectivePost.optJSONObject("likeCount")?.optInt("count") ?: 0,
+                            comments = effectivePost.optJSONObject("replyCount")?.optInt("count") ?: 0,
+                            shares = effectivePost.optJSONObject("repostCount")?.optInt("count") ?: 0,
+                            aspectRatio = aspectRatio
+                        ))
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "❌ Error processing post at index $index: ${e.message}")
+                    Log.e(TAG, e.stackTraceToString())
+                }
+            }
+
+            Log.d(TAG, """
+                📊 Media processing complete:
+                Total posts processed: ${feed.length()}
+                Media posts found: ${mediaList.size}
+                Images: ${mediaList.count { it.isImage }}
+                Videos: ${mediaList.count { !it.isImage }}
+            """.trimIndent())
+
+            return mediaList
+
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to fetch media posts: ${e.message}")
+            Log.e(TAG, "Stack trace: ${e.stackTraceToString()}")
+            throw e
+        }
     }
 } 
 

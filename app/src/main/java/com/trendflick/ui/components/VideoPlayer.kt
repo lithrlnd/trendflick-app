@@ -2,20 +2,33 @@ package com.trendflick.ui.components
 
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.widget.FrameLayout
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.common.MimeTypes
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import android.util.Log
 
 @UnstableApi
 @Composable
@@ -29,50 +42,157 @@ fun VideoPlayer(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    var isLoading by remember { mutableStateOf(true) }
+    var hasError by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    
+    // Create data source factory with more lenient settings
+    val httpDataSourceFactory = remember {
+        DefaultHttpDataSource.Factory()
+            .setUserAgent("TrendFlick")
+            .setConnectTimeoutMs(16000)
+            .setReadTimeoutMs(16000)
+            .setAllowCrossProtocolRedirects(true)
+            .setKeepPostFor302Redirects(true)
+    }
+    
+    val dataSourceFactory = remember {
+        DefaultDataSource.Factory(context, httpDataSourceFactory)
+    }
+
+    // Create media source factory with all supported formats
+    val mediaSourceFactory = remember {
+        DefaultMediaSourceFactory(context)
+            .setDataSourceFactory(dataSourceFactory)
+    }
     
     val exoPlayer = remember {
-        ExoPlayer.Builder(context).build().apply {
-            repeatMode = Player.REPEAT_MODE_ONE
-            volume = 1f
-            playWhenReady = !isPaused
-            setHandleAudioBecomingNoisy(true)
-        }
+        ExoPlayer.Builder(context)
+            .setMediaSourceFactory(mediaSourceFactory)
+            .build().apply {
+                repeatMode = Player.REPEAT_MODE_ONE
+                volume = 1f
+                playWhenReady = !isPaused
+                setHandleAudioBecomingNoisy(true)
+            }
     }
 
     DisposableEffect(videoUrl) {
-        val mediaItem = MediaItem.fromUri(videoUrl)
-        exoPlayer.setMediaItem(mediaItem)
-        exoPlayer.prepare()
+        val player = exoPlayer // Capture player reference for onDispose
         
-        // Track progress
-        val listener = object : Player.Listener {
-            override fun onPlaybackStateChanged(state: Int) {
-                super.onPlaybackStateChanged(state)
-                if (state == Player.STATE_READY) {
-                    scope.launch {
-                        while (true) {
-                            if (!isPaused) {
-                                val progress = if (exoPlayer.duration > 0) {
-                                    exoPlayer.currentPosition.toFloat() / exoPlayer.duration.toFloat()
-                                } else 0f
-                                onProgressChanged(progress)
+        try {
+            // Try to detect format from URL
+            val mimeType = when {
+                videoUrl.endsWith(".mp4", ignoreCase = true) -> MimeTypes.VIDEO_MP4
+                videoUrl.endsWith(".m3u8", ignoreCase = true) -> MimeTypes.APPLICATION_M3U8
+                videoUrl.endsWith(".mpd", ignoreCase = true) -> MimeTypes.APPLICATION_MPD
+                videoUrl.endsWith(".webm", ignoreCase = true) -> MimeTypes.VIDEO_WEBM
+                videoUrl.endsWith(".mkv", ignoreCase = true) -> MimeTypes.VIDEO_MATROSKA
+                else -> null // Let ExoPlayer auto-detect
+            }
+            
+            val mediaItem = MediaItem.Builder()
+                .setUri(videoUrl)
+                .apply { 
+                    mimeType?.let { setMimeType(it) }
+                }
+                .build()
+                
+            val mediaSource = mediaSourceFactory.createMediaSource(mediaItem)
+            
+            player.setMediaSource(mediaSource)
+            player.prepare()
+            
+            // Track progress and loading state
+            val listener = object : Player.Listener {
+                override fun onPlaybackStateChanged(state: Int) {
+                    super.onPlaybackStateChanged(state)
+                    when (state) {
+                        Player.STATE_READY -> {
+                            isLoading = false
+                            hasError = false
+                            errorMessage = null
+                            scope.launch {
+                                while (true) {
+                                    if (!isPaused) {
+                                        val progress = if (player.duration > 0) {
+                                            player.currentPosition.toFloat() / player.duration.toFloat()
+                                        } else 0f
+                                        onProgressChanged(progress)
+                                    }
+                                    delay(16) // ~60fps update rate
+                                }
                             }
-                            delay(16) // ~60fps update rate
+                        }
+                        Player.STATE_BUFFERING -> {
+                            isLoading = true
+                            hasError = false
+                            errorMessage = null
+                        }
+                        Player.STATE_ENDED -> {
+                            isLoading = false
+                            hasError = false
+                            errorMessage = null
+                        }
+                        Player.STATE_IDLE -> {
+                            isLoading = false
+                            hasError = true
+                            errorMessage = "Failed to initialize playback"
                         }
                     }
                 }
-            }
 
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                super.onIsPlayingChanged(isPlaying)
-                // Handle any additional playback state changes if needed
-            }
-        }
-        exoPlayer.addListener(listener)
+                override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                    super.onPlayerError(error)
+                    Log.e("VideoPlayer", "Playback error: ${error.message}", error)
+                    
+                    hasError = true
+                    isLoading = false
+                    errorMessage = when {
+                        error.message?.contains("UnrecognizedInputFormatException") == true -> {
+                            "Unsupported video format. Please try a different format."
+                        }
+                        error.message?.contains("Unable to connect") == true -> {
+                            "Unable to connect to video source. Please check your connection."
+                        }
+                        error.message?.contains("timeout") == true -> {
+                            "Connection timed out. Please try again."
+                        }
+                        else -> "Failed to play video: ${error.message}"
+                    }
+                    
+                    // Try to recover by resetting the player
+                    player.stop()
+                    player.clearMediaItems()
+                }
 
-        onDispose {
-            exoPlayer.removeListener(listener)
-            exoPlayer.release()
+                override fun onIsLoadingChanged(isLoading: Boolean) {
+                    super.onIsLoadingChanged(isLoading)
+                    if (isLoading) {
+                        Log.d("VideoPlayer", "Loading media...")
+                    }
+                }
+
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    super.onIsPlayingChanged(isPlaying)
+                    Log.d("VideoPlayer", "Playing state changed: $isPlaying")
+                }
+            }
+            player.addListener(listener)
+
+            onDispose {
+                player.removeListener(listener)
+                player.release()
+            }
+        } catch (e: Exception) {
+            Log.e("VideoPlayer", "Error setting up player: ${e.message}", e)
+            hasError = true
+            isLoading = false
+            errorMessage = "Failed to initialize player: ${e.message}"
+            
+            onDispose {
+                player.release()
+            }
         }
     }
 
@@ -90,7 +210,7 @@ fun VideoPlayer(
         try {
             exoPlayer.setPlaybackSpeed(playbackSpeed)
         } catch (e: Exception) {
-            // Fallback to normal speed if setting fails
+            Log.e("VideoPlayer", "Error setting playback speed: ${e.message}", e)
             exoPlayer.setPlaybackSpeed(1f)
         }
     }
@@ -104,15 +224,49 @@ fun VideoPlayer(
         onDispose { }
     }
 
-    AndroidView(
-        factory = { context ->
-            PlayerView(context).apply {
-                player = exoPlayer
-                useController = false
-                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
+    Box(modifier = modifier) {
+        AndroidView(
+            factory = { context ->
+                PlayerView(context).apply {
+                    player = exoPlayer
+                    useController = false
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
+                    layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
+                }
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+
+        if (isLoading) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
-        },
-        modifier = modifier
-    )
+        }
+
+        if (hasError) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Error,
+                    contentDescription = "Error",
+                    tint = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.size(48.dp)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = errorMessage ?: "Failed to load video",
+                    color = MaterialTheme.colorScheme.onBackground,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+    }
 } 

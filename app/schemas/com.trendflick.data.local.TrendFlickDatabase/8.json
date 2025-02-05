@@ -1,8 +1,8 @@
 {
   "formatVersion": 1,
   "database": {
-    "version": 7,
-    "identityHash": "5bbc9ba2826bafb65352c2f1ef89d2fe",
+    "version": 8,
+    "identityHash": "47343321709bcad017ab81838de74ab8",
     "entities": [
       {
         "tableName": "users",
@@ -73,8 +73,8 @@
         "foreignKeys": []
       },
       {
-        "tableName": "videos",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`uri` TEXT NOT NULL, `did` TEXT NOT NULL, `handle` TEXT NOT NULL, `videoUrl` TEXT NOT NULL, `description` TEXT NOT NULL, `createdAt` TEXT NOT NULL, `indexedAt` TEXT NOT NULL, `sortAt` TEXT NOT NULL, `title` TEXT NOT NULL, `thumbnailUrl` TEXT NOT NULL, `likes` INTEGER NOT NULL, `comments` INTEGER NOT NULL, `shares` INTEGER NOT NULL, `username` TEXT NOT NULL, `userId` TEXT NOT NULL, `isImage` INTEGER NOT NULL, `imageUrl` TEXT NOT NULL, `aspectRatio` REAL NOT NULL, PRIMARY KEY(`uri`))",
+        "tableName": "Video",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`uri` TEXT NOT NULL, `videoUrl` TEXT NOT NULL, `thumbnailUrl` TEXT NOT NULL, `description` TEXT NOT NULL, `createdAt` TEXT NOT NULL, `author` TEXT NOT NULL, `authorName` TEXT NOT NULL, `authorAvatar` TEXT NOT NULL)",
         "fields": [
           {
             "fieldPath": "uri",
@@ -83,20 +83,14 @@
             "notNull": true
           },
           {
-            "fieldPath": "did",
-            "columnName": "did",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "handle",
-            "columnName": "handle",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
             "fieldPath": "videoUrl",
             "columnName": "videoUrl",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "thumbnailUrl",
+            "columnName": "thumbnailUrl",
             "affinity": "TEXT",
             "notNull": true
           },
@@ -113,83 +107,27 @@
             "notNull": true
           },
           {
-            "fieldPath": "indexedAt",
-            "columnName": "indexedAt",
+            "fieldPath": "author",
+            "columnName": "author",
             "affinity": "TEXT",
             "notNull": true
           },
           {
-            "fieldPath": "sortAt",
-            "columnName": "sortAt",
+            "fieldPath": "authorName",
+            "columnName": "authorName",
             "affinity": "TEXT",
             "notNull": true
           },
           {
-            "fieldPath": "title",
-            "columnName": "title",
+            "fieldPath": "authorAvatar",
+            "columnName": "authorAvatar",
             "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "thumbnailUrl",
-            "columnName": "thumbnailUrl",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "likes",
-            "columnName": "likes",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "comments",
-            "columnName": "comments",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "shares",
-            "columnName": "shares",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "username",
-            "columnName": "username",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "userId",
-            "columnName": "userId",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "isImage",
-            "columnName": "isImage",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "imageUrl",
-            "columnName": "imageUrl",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "aspectRatio",
-            "columnName": "aspectRatio",
-            "affinity": "REAL",
             "notNull": true
           }
         ],
         "primaryKey": {
           "autoGenerate": false,
-          "columnNames": [
-            "uri"
-          ]
+          "columnNames": []
         },
         "indices": [],
         "foreignKeys": []
@@ -198,7 +136,7 @@
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '5bbc9ba2826bafb65352c2f1ef89d2fe')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '47343321709bcad017ab81838de74ab8')"
     ]
   }
 }

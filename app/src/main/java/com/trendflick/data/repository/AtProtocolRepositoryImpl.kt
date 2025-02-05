@@ -8,6 +8,7 @@ import com.trendflick.data.local.UserDao
 import com.trendflick.data.model.AtSession
 import com.trendflick.data.model.User
 import com.trendflick.data.model.TrendingHashtag
+import com.trendflick.data.model.Video
 import kotlinx.coroutines.flow.Flow
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
@@ -981,6 +982,75 @@ class AtProtocolRepositoryImpl @Inject constructor(
             enhancedPost = text,
             hashtags = emptyList()
         )
+    }
+
+    private fun VideoModel.toVideo(): Video {
+        return Video(
+            uri = this.uri,
+            did = this.authorDid,
+            handle = this.authorHandle,
+            videoUrl = this.videoUrl ?: "",
+            description = this.description,
+            createdAt = Instant.now(), // Convert string to Instant
+            indexedAt = Instant.now(),
+            sortAt = Instant.now(),
+            title = this.title ?: "",
+            thumbnailUrl = this.thumbnailUrl ?: "",
+            likes = this.likes,
+            comments = this.comments,
+            shares = this.reposts,
+            username = this.authorName ?: "",
+            userId = this.authorDid,
+            isImage = false,
+            imageUrl = "",
+            aspectRatio = this.aspectRatio ?: 1.0f,
+            authorAvatar = this.authorAvatar ?: ""
+        )
+    }
+
+    override suspend fun getMediaPosts(): List<Video> = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "📱 Fetching media posts from timeline")
+            
+            val timelineResult = getTimeline(
+                algorithm = "whats-hot",
+                limit = 100  // Fetch more posts to increase chances of finding media
+            )
+            
+            timelineResult.fold(
+                onSuccess = { response ->
+                    Log.d(TAG, "✅ Timeline fetched, processing ${response.feed.size} posts for media")
+                    
+                    response.feed
+                        .filter { it.post.embed?.external != null }
+                        .map { feedPost ->
+                            VideoModel(
+                                uri = feedPost.post.uri,
+                                title = feedPost.post.embed?.external?.title,
+                                description = feedPost.post.record.text,
+                                thumbnailUrl = feedPost.post.embed?.external?.thumbUrl,
+                                videoUrl = feedPost.post.embed?.external?.uri,
+                                authorDid = feedPost.post.author.did,
+                                authorHandle = feedPost.post.author.handle,
+                                authorName = feedPost.post.author.displayName,
+                                authorAvatar = feedPost.post.author.avatar,
+                                createdAt = feedPost.post.indexedAt,
+                                likes = feedPost.post.likeCount,
+                                comments = feedPost.post.replyCount,
+                                reposts = feedPost.post.repostCount,
+                                aspectRatio = 1.0f // Default aspect ratio
+                            ).toVideo()
+                        }
+                },
+                onFailure = { e ->
+                    Log.e(TAG, "❌ Failed to fetch media posts: ${e.message}")
+                    emptyList()
+                }
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error in getMediaPosts: ${e.message}")
+            emptyList()
+        }
     }
 
     companion object {

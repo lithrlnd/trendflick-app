@@ -30,6 +30,106 @@ class FlicksViewModel @Inject constructor(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error.asStateFlow()
+
+    private var currentCursor: String? = null
+    private var isLoadingMore = false
+    private var hasInitiallyLoaded = false
+
+    init {
+        Log.d(TAG, "🔄 ViewModel initialized - attempting initial load")
+        loadMediaPosts()
+    }
+
+    fun loadMediaPosts() {
+        if (_isLoading.value) {
+            Log.d(TAG, "⚠️ Skipping load - already loading")
+            return
+        }
+        
+        viewModelScope.launch {
+            try {
+                Log.d(TAG, """
+                    🔄 Starting loadMediaPosts:
+                    Current Videos: ${_videos.value.size}
+                    Loading State: ${_isLoading.value}
+                    Has Error: ${_error.value != null}
+                """.trimIndent())
+                
+                _isLoading.value = true
+                _error.value = null
+
+                val posts = blueskyRepository.getMediaPosts(currentCursor)
+                
+                Log.d(TAG, """
+                    📊 Media Posts Load Results:
+                    Posts Received: ${posts.size}
+                    Images: ${posts.count { it.isImage }}
+                    Videos: ${posts.count { !it.isImage }}
+                    First Post Type: ${posts.firstOrNull()?.let { if (it.isImage) "Image" else "Video" }}
+                """.trimIndent())
+
+                if (currentCursor == null) {
+                    _videos.value = posts
+                } else {
+                    _videos.value = _videos.value + posts
+                }
+
+                if (posts.isEmpty() && _videos.value.isEmpty()) {
+                    _error.value = "No media posts found. Pull down to refresh or try again later."
+                    Log.w(TAG, "⚠️ No media posts found in feed")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error loading media posts: ${e.message}", e)
+                _error.value = "Failed to load media posts: ${e.message}"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun loadMore() {
+        if (isLoadingMore || _isLoading.value) {
+            Log.d(TAG, "⚠️ Skipping loadMore - already loading")
+            return
+        }
+        
+        viewModelScope.launch {
+            try {
+                isLoadingMore = true
+                Log.d(TAG, "🔄 Loading more posts with cursor: $currentCursor")
+                
+                val posts = blueskyRepository.getMediaPosts(currentCursor)
+                
+                Log.d(TAG, """
+                    📊 Load More Results:
+                    Additional Posts: ${posts.size}
+                    New Total: ${_videos.value.size + posts.size}
+                """.trimIndent())
+                
+                _videos.value = _videos.value + posts
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error loading more posts: ${e.message}", e)
+            } finally {
+                isLoadingMore = false
+            }
+        }
+    }
+
+    fun refresh() {
+        Log.d(TAG, """
+            🔄 Refresh triggered:
+            Current Videos: ${_videos.value.size}
+            Loading State: ${_isLoading.value}
+            Has Error: ${_error.value != null}
+        """.trimIndent())
+        
+        currentCursor = null
+        _videos.value = emptyList()
+        loadMediaPosts()
+    }
+
     fun loadVideos() {
         viewModelScope.launch {
             try {

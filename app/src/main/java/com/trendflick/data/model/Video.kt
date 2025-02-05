@@ -11,7 +11,8 @@ import java.util.UUID
 @Entity(tableName = "videos")
 @TypeConverters(Converters::class)
 data class Video(
-    @PrimaryKey var uri: String,  // AT Protocol URI
+    @PrimaryKey 
+    var uri: String,  // AT Protocol URI
     var did: String,              // Creator's DID
     var handle: String,           // Creator's handle
     var videoUrl: String,         // URL to video content
@@ -25,8 +26,11 @@ data class Video(
     var comments: Int = 0,
     var shares: Int = 0,
     var username: String = "",    // Display name
-    var userId: String = "",       // For AT Protocol reference
-    @Ignore var relatedVideos: List<Video> = emptyList()
+    var userId: String = "",      // For AT Protocol reference
+    var isImage: Boolean = false, // Whether this is an image post
+    var imageUrl: String = "",    // URL for image content (if isImage is true)
+    var aspectRatio: Float = 1f,  // Aspect ratio of the media content
+    var authorAvatar: String = "" // Author's avatar URL
 ) {
     // Required no-arg constructor for Room
     constructor() : this(
@@ -62,6 +66,32 @@ data class Video(
         ),
         "labels" to emptyList<String>()
     )
+
+    companion object {
+        fun fromVideoModel(model: com.trendflick.data.api.VideoModel): Video {
+            return Video(
+                uri = model.uri,
+                did = model.authorDid,
+                handle = model.authorHandle,
+                videoUrl = model.videoUrl ?: "",
+                description = model.description,
+                createdAt = Instant.parse(model.createdAt),
+                indexedAt = Instant.now(),
+                sortAt = Instant.now(),
+                thumbnailUrl = model.thumbnailUrl ?: "",
+                username = model.authorName ?: "",
+                authorAvatar = model.authorAvatar ?: "",
+                title = model.title ?: "",
+                likes = model.likes,
+                comments = model.comments,
+                shares = model.reposts,
+                userId = model.authorDid,
+                isImage = false,
+                imageUrl = "",
+                aspectRatio = model.aspectRatio ?: 1.0f
+            )
+        }
+    }
 }
 
 private fun calculateSortTimestamp(createdAt: Long, indexedAt: String?): Long {

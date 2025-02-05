@@ -167,6 +167,7 @@ data class Post(
     @field:Json(name = "cid") val cid: String,
     @field:Json(name = "author") val author: Author,
     @field:Json(name = "record") val record: PostRecord,
+    @field:Json(name = "embed") val embed: Embed? = null,
     @field:Json(name = "indexedAt") val indexedAt: String,
     @field:Json(name = "likeCount") val likeCount: Int = 0,
     @field:Json(name = "replyCount") val replyCount: Int = 0,
@@ -274,4 +275,22 @@ data class Like(
 data class FollowsResponse(
     @field:Json(name = "follows") val follows: List<AtProfile>,
     @field:Json(name = "cursor") val cursor: String?
+)
+
+@JsonClass(generateAdapter = true)
+data class VideoModel(
+    val uri: String,
+    val title: String?,
+    val description: String,
+    val thumbnailUrl: String?,
+    val videoUrl: String?,
+    val authorDid: String,
+    val authorHandle: String,
+    val authorName: String?,
+    val authorAvatar: String?,
+    val createdAt: String,
+    val likes: Int = 0,
+    val comments: Int = 0,
+    val reposts: Int = 0,
+    val aspectRatio: Float? = null
 ) 

@@ -175,7 +175,7 @@ fun VideoControls(
             ) {
                 Column {
                     Text(
-                        text = "@${video.userId}",
+                        text = "@${video.handle}",
                         style = MaterialTheme.typography.labelLarge,
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
