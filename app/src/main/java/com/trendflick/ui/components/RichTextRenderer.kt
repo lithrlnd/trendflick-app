@@ -11,6 +11,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import com.trendflick.data.api.*
 import android.util.Log
 import java.nio.charset.StandardCharsets
+import androidx.compose.ui.graphics.Color
 
 @Composable
 fun RichTextRenderer(
@@ -94,7 +95,7 @@ fun RichTextRenderer(
                     is MentionFeature -> {
                         addStyle(
                             style = SpanStyle(
-                                color = MaterialTheme.colorScheme.primary,
+                                color = Color(0xFF6B4EFF),
                                 textDecoration = TextDecoration.None
                             ),
                             start = startChar,
@@ -110,7 +111,7 @@ fun RichTextRenderer(
                     is LinkFeature -> {
                         addStyle(
                             style = SpanStyle(
-                                color = MaterialTheme.colorScheme.primary,
+                                color = Color(0xFF6B4EFF),
                                 textDecoration = TextDecoration.Underline
                             ),
                             start = startChar,
@@ -128,7 +129,7 @@ fun RichTextRenderer(
                         val tagStart = if (facetText.startsWith("#")) startChar else startChar - 1
                         addStyle(
                             style = SpanStyle(
-                                color = MaterialTheme.colorScheme.primary,
+                                color = Color(0xFF6B4EFF),
                                 textDecoration = TextDecoration.None
                             ),
                             start = tagStart,

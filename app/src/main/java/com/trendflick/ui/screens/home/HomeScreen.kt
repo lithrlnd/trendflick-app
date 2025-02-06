@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
@@ -95,6 +96,7 @@ import com.trendflick.ui.components.rememberSwipeRefreshState
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.ui.text.style.TextAlign
 import com.trendflick.ui.components.RichTextRenderer
+import android.net.Uri
 import android.util.Log
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -371,145 +373,23 @@ fun HomeScreen(
                                         .background(Color(0xFF1A1A1A))
                                         .padding(horizontal = 16.dp)
                                 ) {
-                                    // Header
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 16.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            IconButton(
-                                                onClick = { viewModel.toggleComments(false) }
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.ArrowBack,
-                                                    contentDescription = "Back to thread",
-                                                    tint = Color.White
-                                                )
-                                            }
-                                            Text(
-                                                text = "${currentThread?.replies?.size ?: 0} comments",
-                                                style = MaterialTheme.typography.titleMedium,
-                                                color = Color.White
-                                            )
-                                        }
-                                        
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            // Author-only toggle
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                            ) {
-                                                val showAuthorOnly by viewModel.showAuthorOnly.collectAsState()
-                                                Text(
-                                                    text = if (showAuthorOnly) "Author" else "All",
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = Color.White.copy(alpha = 0.7f)
-                                                )
-                                                Switch(
-                                                    checked = showAuthorOnly,
-                                                    onCheckedChange = { viewModel.toggleAuthorOnly() },
-                                                    colors = SwitchDefaults.colors(
-                                                        checkedThumbColor = Color(0xFF6B4EFF),
-                                                        checkedTrackColor = Color(0xFF6B4EFF).copy(alpha = 0.5f),
-                                                        uncheckedThumbColor = Color.White,
-                                                        uncheckedTrackColor = Color.White.copy(alpha = 0.3f)
-                                                    ),
-                                                    modifier = Modifier.scale(0.8f)
-                                                )
-                                            }
-                                            
-                                            // Refresh button
-                                            IconButton(
-                                                onClick = { 
-                                                    currentThread?.post?.uri?.let { uri ->
-                                                        viewModel.loadComments(uri)
-                                                    }
-                                                }
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Refresh,
-                                                    contentDescription = "Refresh comments",
-                                                    tint = Color.White
-                                                )
+                                    CommentsHeader(
+                                        showAuthorOnly = viewModel.showAuthorOnly.collectAsState().value,
+                                        onBackClick = { viewModel.toggleComments(false) },
+                                        onAuthorOnlyChange = { viewModel.toggleAuthorOnly() },
+                                        onRefreshClick = { 
+                                            currentThread?.post?.uri?.let { uri ->
+                                                viewModel.loadComments(uri)
                                             }
                                         }
-                                    }
+                                    )
 
-                                    // Comments list with author filter
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .fillMaxWidth()
-                                    ) {
-                                        currentThread?.let { thread ->
-                                            FilteredCommentsList(
-                                                thread = thread,
-                                                viewModel = viewModel,
-                                                onProfileClick = onNavigateToProfile
-                                            )
-                                        }
-                                    }
-
-                                    // Comment input
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 8.dp)
-                                            .navigationBarsPadding(),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        OutlinedTextField(
-                                            value = commentText,
-                                            onValueChange = { commentText = it },
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .padding(end = 8.dp),
-                                            placeholder = { 
-                                                Text(
-                                                    "Add a comment...",
-                                                    color = Color.White.copy(alpha = 0.5f)
-                                                )
-                                            },
-                                            maxLines = 3,
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedBorderColor = Color(0xFF6B4EFF),
-                                                unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
-                                                cursorColor = Color(0xFF6B4EFF),
-                                                unfocusedTextColor = Color.White,
-                                                focusedTextColor = Color.White,
-                                                unfocusedContainerColor = Color.Transparent,
-                                                focusedContainerColor = Color.Transparent
-                                            )
+                                    currentThread?.let { thread ->
+                                        CommentsList(
+                                            thread = thread,
+                                            showAuthorOnly = viewModel.showAuthorOnly.collectAsState().value,
+                                            onProfileClick = { did -> /* Handle profile navigation */ }
                                         )
-                                        IconButton(
-                                            onClick = {
-                                                if (commentText.isNotBlank()) {
-                                                    scope.launch {
-                                                        viewModel.postComment(currentThread?.post?.uri ?: "", commentText)
-                                                        commentText = ""
-                                                    }
-                                                }
-                                            },
-                                            enabled = commentText.isNotBlank()
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Send,
-                                                contentDescription = "Post comment",
-                                                tint = if (commentText.isNotBlank()) 
-                                                    Color(0xFF6B4EFF)
-                                                else 
-                                                    Color.White.copy(alpha = 0.5f)
-                                            )
-                                        }
                                     }
                                 }
                             }
@@ -596,6 +476,10 @@ fun VideoItem(
 ) {
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val context = LocalContext.current
+    val view = LocalView.current
+    val viewModel: HomeViewModel = hiltViewModel()
+    val repostedPosts by viewModel.repostedPosts.collectAsState()
     
     var playbackSpeed by remember { mutableStateOf(1f) }
     var isPaused by remember { mutableStateOf(false) }
@@ -607,6 +491,11 @@ fun VideoItem(
             .fillMaxSize()
             .pointerInput(Unit) {
                 detectTapGestures(
+                    onDoubleTap = {
+                        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                        onLikeClick()
+                    },
+                    onTap = { isPaused = !isPaused },
                     onLongPress = { onLongPress() }
                 )
             }
@@ -624,11 +513,8 @@ fun VideoItem(
                         .fillMaxWidth()
                         .align(Alignment.Center),
                     contentScale = when {
-                        // For landscape images (width > height)
                         video.aspectRatio > 1f -> ContentScale.FillWidth
-                        // For portrait images (height > width)
                         video.aspectRatio < 1f -> ContentScale.FillHeight
-                        // For square images
                         else -> ContentScale.Fit
                     },
                     onError = { loadError = "Failed to load image" }
@@ -674,23 +560,289 @@ fun VideoItem(
             }
         }
 
-        VideoControls(
-            video = video,
-            isLiked = isLiked,
-            onLikeClick = onLikeClick,
-            onCommentClick = onCommentClick,
-            onShareClick = onShareClick,
-            onProfileClick = onProfileClick,
-            onRelatedVideosClick = onLongPress,
-            progress = progress,
-            isPaused = isPaused,
-            onPauseToggle = { isPaused = !isPaused },
-            playbackSpeed = playbackSpeed,
-            onSpeedChange = { playbackSpeed = it },
-            isLandscape = isLandscape,
-            modifier = Modifier.fillMaxSize()
-        )
+        // Progress indicator at the top
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(2.dp)
+                .background(Color.Black.copy(alpha = 0.3f))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(progress)
+                    .fillMaxHeight()
+                    .background(Color(0xFF6B4EFF))
+            )
+        }
+
+        // Caption overlay with rich text
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .background(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color.Black.copy(alpha = 0.7f)
+                        )
+                    )
+                )
+                .padding(16.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Author info
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onProfileClick() },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    AsyncImage(
+                        model = video.authorAvatar,
+                        contentDescription = "Author avatar",
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF1A1A1A)),
+                        contentScale = ContentScale.Crop
+                    )
+                    
+                    Column {
+                        Text(
+                            text = video.authorName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "@${video.username}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.7f)
+                        )
+                    }
+                }
+
+                // Rich text caption
+                RichTextRenderer(
+                    text = video.caption,
+                    facets = video.facets ?: emptyList(),
+                    onMentionClick = { did -> /* Handle mention click */ },
+                    onHashtagClick = { tag -> /* Handle hashtag click */ },
+                    onLinkClick = { url ->
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                        context.startActivity(intent)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+
+        // Engagement column - positioned on the right
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 16.dp)
+        ) {
+            EngagementColumn(
+                isLiked = isLiked,
+                isReposted = repostedPosts.contains(video.uri),
+                likeCount = video.likes,
+                replyCount = video.comments,
+                repostCount = video.shares,
+                onLikeClick = {
+                    view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                    onLikeClick()
+                },
+                onCommentClick = onCommentClick,
+                onRepostClick = { viewModel.repost(video.uri) },
+                onShareClick = onShareClick
+            )
+        }
     }
+}
+
+@Composable
+private fun EngagementColumn(
+    isLiked: Boolean,
+    isReposted: Boolean,
+    likeCount: Int,
+    replyCount: Int,
+    repostCount: Int,
+    onLikeClick: () -> Unit,
+    onCommentClick: () -> Unit,
+    onRepostClick: () -> Unit,
+    onShareClick: () -> Unit,
+) {
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
+    if (isLandscape) {
+        // Horizontal layout for landscape mode
+        Row(
+            modifier = Modifier
+                .height(52.dp)
+                .padding(end = 16.dp, top = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            // Like
+            EngagementAction(
+                icon = if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                count = likeCount,
+                isActive = isLiked,
+                onClick = onLikeClick,
+                tint = if (isLiked) Color(0xFF6B4EFF) else Color.White,
+                isHorizontal = true
+            )
+
+            // Comment
+            EngagementAction(
+                icon = Icons.Default.ChatBubbleOutline,
+                count = replyCount,
+                onClick = onCommentClick,
+                isHorizontal = true
+            )
+
+            // Repost
+            EngagementAction(
+                icon = if (isReposted) Icons.Filled.Repeat else Icons.Default.Repeat,
+                count = repostCount,
+                isActive = isReposted,
+                onClick = onRepostClick,
+                tint = if (isReposted) Color(0xFF6B4EFF) else Color.White,
+                isHorizontal = true
+            )
+
+            // Share
+            EngagementAction(
+                icon = Icons.Default.Share,
+                onClick = onShareClick,
+                isHorizontal = true
+            )
+        }
+    } else {
+        // Vertical layout for portrait mode
+        Column(
+            modifier = Modifier
+                .width(52.dp)
+                .fillMaxHeight()
+                .padding(end = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Spacer(modifier = Modifier.weight(1f))
+
+            // Like
+            EngagementAction(
+                icon = if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                count = likeCount,
+                isActive = isLiked,
+                onClick = onLikeClick,
+                tint = if (isLiked) Color(0xFF6B4EFF) else Color.White
+            )
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            // Comment
+            EngagementAction(
+                icon = Icons.Default.ChatBubbleOutline,
+                count = replyCount,
+                onClick = onCommentClick
+            )
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            // Repost
+            EngagementAction(
+                icon = if (isReposted) Icons.Filled.Repeat else Icons.Default.Repeat,
+                count = repostCount,
+                isActive = isReposted,
+                onClick = onRepostClick,
+                tint = if (isReposted) Color(0xFF6B4EFF) else Color.White
+            )
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            // Share
+            EngagementAction(
+                icon = Icons.Default.Share,
+                onClick = onShareClick
+            )
+
+            Spacer(modifier = Modifier.weight(0.5f))
+        }
+    }
+}
+
+@Composable
+private fun EngagementAction(
+    icon: ImageVector,
+    count: Int = 0,
+    isActive: Boolean = false,
+    tint: Color = Color.White,
+    isHorizontal: Boolean = false,
+    onClick: () -> Unit
+) {
+    if (isHorizontal) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            IconButton(
+                onClick = onClick,
+                modifier = Modifier.size(40.dp)
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = tint,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            if (count > 0) {
+                Text(
+                    text = formatEngagementCount(count),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White
+                )
+            }
+        }
+    } else {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            IconButton(
+                onClick = onClick,
+                modifier = Modifier.size(40.dp)
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = tint,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            if (count > 0) {
+                Text(
+                    text = formatEngagementCount(count),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White
+                )
+            }
+        }
+    }
+}
+
+private fun formatEngagementCount(count: Int): String = when {
+    count < 1000 -> count.toString()
+    count < 1000000 -> String.format("%.1fK", count / 1000f)
+    else -> String.format("%.1fM", count / 1000000f)
 }
 
 @Composable
@@ -1110,6 +1262,13 @@ fun VideoFeedSection(
     onCreateVideo: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val viewModel: HomeViewModel = hiltViewModel()
+    val likedPosts by viewModel.likedPosts.collectAsState()
+    val repostedPosts by viewModel.repostedPosts.collectAsState()
+    val showComments by viewModel.showComments.collectAsState()
+    val currentThread by viewModel.currentThread.collectAsState()
+    val showAuthorOnly by viewModel.showAuthorOnly.collectAsState()
+
     LaunchedEffect(videos, isLoading, error) {
         Log.d("VideoFeedSection", """
             📱 Video Feed State:
@@ -1233,10 +1392,13 @@ fun VideoFeedSection(
                         if (itemLoadError == null) {
                             VideoItem(
                                 video = video,
-                                isLiked = false,
-                                onLikeClick = { /* TODO: Implement like action */ },
-                                onCommentClick = { /* TODO: Implement comment action */ },
-                                onShareClick = { /* TODO: Implement share action */ },
+                                isLiked = likedPosts.contains(video.uri),
+                                onLikeClick = { viewModel.toggleLike(video.uri) },
+                                onCommentClick = {
+                                    viewModel.loadComments(video.uri)
+                                    viewModel.toggleComments(true)
+                                },
+                                onShareClick = { viewModel.sharePost(video.uri) },
                                 onProfileClick = { /* TODO: Implement profile navigation */ },
                                 isVisible = page == pagerState.currentPage,
                                 onLongPress = { /* TODO: Implement long press action */ }
@@ -1250,6 +1412,44 @@ fun VideoFeedSection(
                                     text = itemLoadError ?: "Failed to load media",
                                     color = Color.White,
                                     style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Comments overlay
+                if (showComments) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .fillMaxHeight(0.92f)
+                            .align(Alignment.BottomCenter)
+                            .imePadding(),
+                        color = Color(0xFF1A1A1A),
+                        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 16.dp)
+                        ) {
+                            CommentsHeader(
+                                showAuthorOnly = showAuthorOnly,
+                                onBackClick = { viewModel.toggleComments(false) },
+                                onAuthorOnlyChange = { viewModel.toggleAuthorOnly() },
+                                onRefreshClick = { 
+                                    currentThread?.post?.uri?.let { uri ->
+                                        viewModel.loadComments(uri)
+                                    }
+                                }
+                            )
+
+                            currentThread?.let { thread ->
+                                CommentsList(
+                                    thread = thread,
+                                    showAuthorOnly = showAuthorOnly,
+                                    onProfileClick = { did -> /* Handle profile navigation */ }
                                 )
                             }
                         }
@@ -1278,35 +1478,88 @@ fun VideoFeedSection(
 }
 
 @Composable
-private fun FilteredCommentsList(
+private fun CommentsHeader(
+    showAuthorOnly: Boolean,
+    onBackClick: () -> Unit,
+    onAuthorOnlyChange: (Boolean) -> Unit,
+    onRefreshClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 16.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(onClick = onBackClick) {
+            Icon(
+                imageVector = Icons.Default.ArrowBack,
+                contentDescription = "Close comments",
+                tint = Color.White
+            )
+        }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                text = "Comments",
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White
+            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = if (showAuthorOnly) "Author Only" else "All Comments",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White.copy(alpha = 0.7f)
+                )
+                Switch(
+                    checked = showAuthorOnly,
+                    onCheckedChange = onAuthorOnlyChange,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color(0xFF6B4EFF),
+                        checkedTrackColor = Color(0xFF6B4EFF).copy(alpha = 0.5f),
+                        uncheckedThumbColor = Color.White,
+                        uncheckedTrackColor = Color.White.copy(alpha = 0.3f)
+                    )
+                )
+            }
+        }
+
+        IconButton(onClick = onRefreshClick) {
+            Icon(
+                imageVector = Icons.Default.Refresh,
+                contentDescription = "Refresh comments",
+                tint = Color.White
+            )
+        }
+    }
+}
+
+@Composable
+private fun CommentsList(
     thread: ThreadPost,
-    viewModel: HomeViewModel,
+    showAuthorOnly: Boolean,
     onProfileClick: (String) -> Unit
 ) {
-    val showAuthorOnly by viewModel.showAuthorOnly.collectAsState()
-    val allCommentsState = rememberLazyListState()
-    val authorCommentsState = rememberLazyListState()
-    
-    val filteredReplies = remember(thread, showAuthorOnly) {
-        if (showAuthorOnly) {
-            thread.replies?.filter { reply ->
-                reply.post.author.did == thread.post.author.did
-            }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        val replies = if (showAuthorOnly) {
+            thread.replies?.filter { it.post.author.did == thread.post.author.did }
         } else {
             thread.replies
         }
-    }
-    
-    LazyColumn(
-        state = if (showAuthorOnly) authorCommentsState else allCommentsState,
-        modifier = Modifier
-            .fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        filteredReplies?.let { replies ->
+
+        replies?.let { filteredReplies ->
             items(
-                items = replies,
-                key = { reply -> reply.post.uri }
+                items = filteredReplies,
+                key = { it.post.uri }
             ) { reply ->
                 CommentItem(
                     comment = reply,

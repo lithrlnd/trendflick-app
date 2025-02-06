@@ -54,7 +54,11 @@ object DatabaseModule {
             TrendFlickDatabase::class.java,
             "trendflick.db"
         )
-        .addMigrations(MIGRATION_7_8, TrendFlickDatabase.MIGRATION_8_9)
+        .addMigrations(
+            MIGRATION_7_8, 
+            TrendFlickDatabase.MIGRATION_8_9,
+            TrendFlickDatabase.MIGRATION_9_10
+        )
         .fallbackToDestructiveMigration() // Add this for development only
         .build()
     }

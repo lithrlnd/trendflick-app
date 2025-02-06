@@ -4,6 +4,8 @@ import androidx.room.TypeConverter
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.trendflick.data.model.Video
+import com.trendflick.data.api.Facet
+import com.trendflick.data.api.FacetFeature
 import java.time.Instant
 
 class Converters {
@@ -53,5 +55,18 @@ class Converters {
         if (value == null) return emptyMap()
         val mapType = object : TypeToken<Map<String, String>>() {}.type
         return gson.fromJson(value, mapType)
+    }
+
+    @TypeConverter
+    fun fromFacetList(facets: List<Facet>?): String? {
+        if (facets == null) return null
+        return gson.toJson(facets)
+    }
+
+    @TypeConverter
+    fun toFacetList(value: String?): List<Facet>? {
+        if (value == null) return null
+        val listType = object : TypeToken<List<Facet>>() {}.type
+        return gson.fromJson(value, listType)
     }
 } 

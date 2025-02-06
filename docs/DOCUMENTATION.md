@@ -88,26 +88,104 @@ app/
     - Thread hierarchy maintenance
     - Character limit (300) enforcement
     - Rich text processing (@mentions, #hashtags)
+    - Author-only filtering
+    - Real-time comment refresh
+    - Proper thread state management
     
   - **UI Components**
     - Visual thread indentation
     - OP (Original Poster) highlighting
     - Character counter with color feedback
     - Reply input field with validation
+    - Author filter toggle switch
+    - Refresh button for comments
+    - Engagement column with like/comment/repost/share actions
     
   - **AT Protocol Compliance**
     - Strong references (URI + CID)
     - Parent/root reference tracking
     - Proper facet processing
     - UTF-8 text handling
+    - Byte-based facet indexing
+    - Rich text rendering with proper styling
     
   - **Error Handling**
     - Network failure recovery
     - Rate limit management
     - Input validation
     - State management
-- Repost capability
-- Profile management
+    - Loading state indicators
+    - Error state with retry options
+
+### Video Feed Implementation
+- **Comment System**
+  - Unified comment system across posts and videos
+  - Consistent engagement actions (like, comment, repost, share)
+  - Author filtering capability
+  - Rich text support in comments
+  - Proper state management for comments overlay
+  - Smooth animations and transitions
+  
+- **Engagement Features**
+  - Right-aligned engagement column
+  - Haptic feedback on actions
+  - Proper state persistence
+  - Consistent styling with main feed
+  - Proper count formatting (K, M suffixes)
+  
+- **UI/UX Considerations**
+  - Bottom sheet comments overlay
+  - Smooth animations
+  - Proper loading states
+  - Error handling with retry options
+  - Empty state handling
+  - Proper navigation handling
+
+### Rich Text Implementation
+The comment system implements AT Protocol's rich text specification:
+
+1. **Facet Processing**
+   - UTF-8 byte-based indices for proper text handling
+   - Support for @mentions, #hashtags, and URLs
+   - Proper emoji and special character handling
+   - Facet overlap prevention
+   - Validation of facet ranges
+
+2. **Comment Rendering**
+   - Proper indentation for nested replies
+   - OP badge for original poster
+   - Timestamp formatting
+   - Avatar and user info display
+   - Rich text support in comments
+   - Character limit enforcement
+
+3. **State Management**
+   - Author-only filter state
+   - Comment visibility state
+   - Reply input state
+   - Loading and error states
+   - Refresh functionality
+
+4. **Performance Considerations**
+   - Efficient list rendering with keys
+   - Proper composition to prevent recomposition
+   - State hoisting for better performance
+   - Proper cleanup of resources
+   - Efficient overlay handling
+
+### Development Guidelines
+
+When working with the comment system:
+1. Always use proper UTF-8 handling for facets
+2. Maintain consistent styling with the main feed
+3. Implement proper error handling
+4. Follow AT Protocol specifications for rich text
+5. Ensure proper state management
+6. Handle all edge cases (empty states, errors, etc.)
+7. Maintain consistent engagement behavior
+8. Use proper animation timings
+9. Implement proper cleanup
+10. Follow accessibility guidelines
 
 ## AT Protocol Integration
 

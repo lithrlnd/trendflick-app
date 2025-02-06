@@ -4,6 +4,8 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverters
 import androidx.room.Ignore
+import com.trendflick.data.api.Facet
+import com.trendflick.data.api.FacetFeature
 import com.trendflick.data.db.Converters
 import java.time.Instant
 import java.util.UUID
@@ -30,7 +32,10 @@ data class Video(
     var isImage: Boolean = false, // Whether this is an image post
     var imageUrl: String = "",    // URL for image content (if isImage is true)
     var aspectRatio: Float = 1f,  // Aspect ratio of the media content
-    var authorAvatar: String = "" // Author's avatar URL
+    var authorAvatar: String = "", // Author's avatar URL
+    var authorName: String = "",   // Author's display name
+    var caption: String = "",      // Post caption (same as description)
+    var facets: List<Facet>? = null // Rich text facets for caption
 ) {
     // Required no-arg constructor for Room
     constructor() : this(
@@ -45,7 +50,6 @@ data class Video(
     )
 
     // For backwards compatibility
-    val timestamp: String get() = sortAt.toString()
     val authorId: String get() = did
 
     // AT Protocol specific extensions
@@ -81,6 +85,7 @@ data class Video(
                 thumbnailUrl = model.thumbnailUrl ?: "",
                 username = model.authorName ?: "",
                 authorAvatar = model.authorAvatar ?: "",
+                authorName = model.authorName ?: "",
                 title = model.title ?: "",
                 likes = model.likes,
                 comments = model.comments,
@@ -88,7 +93,9 @@ data class Video(
                 userId = model.authorDid,
                 isImage = false,
                 imageUrl = "",
-                aspectRatio = model.aspectRatio ?: 1.0f
+                aspectRatio = model.aspectRatio ?: 1.0f,
+                caption = model.description,
+                facets = null // Facets should be set separately
             )
         }
     }
@@ -99,13 +106,8 @@ private fun calculateSortTimestamp(createdAt: Long, indexedAt: String?): Long {
         try {
             Instant.parse(it).toEpochMilli()
         } catch (e: Exception) {
-            System.currentTimeMillis()
+            null
         }
-    } ?: System.currentTimeMillis()
-
-    return when {
-        createdAt < 0 -> indexedTime // If createdAt is before Unix epoch, use indexedTime
-        createdAt in 1..indexedTime -> createdAt // If createdAt is between epoch and indexedAt, use createdAt
-        else -> indexedTime // If createdAt is in future beyond indexedTime, use indexedTime
     }
+    return indexedTime ?: createdAt
 } 

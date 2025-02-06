@@ -11,7 +11,7 @@ import com.trendflick.data.db.Converters
 
 @Database(
     entities = [User::class, Video::class],
-    version = 9,
+    version = 10,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -48,6 +48,30 @@ abstract class TrendFlickDatabase : RoomDatabase() {
                         aspectRatio REAL NOT NULL DEFAULT 1.0,
                         authorAvatar TEXT NOT NULL DEFAULT ''
                     )
+                """)
+            }
+        }
+
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // Add new columns for rich text support
+                database.execSQL("""
+                    ALTER TABLE videos 
+                    ADD COLUMN authorName TEXT NOT NULL DEFAULT ''
+                """)
+                database.execSQL("""
+                    ALTER TABLE videos 
+                    ADD COLUMN caption TEXT NOT NULL DEFAULT ''
+                """)
+                database.execSQL("""
+                    ALTER TABLE videos 
+                    ADD COLUMN facets TEXT
+                """)
+
+                // Update caption with existing description
+                database.execSQL("""
+                    UPDATE videos 
+                    SET caption = description
                 """)
             }
         }

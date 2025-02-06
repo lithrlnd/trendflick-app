@@ -1,8 +1,8 @@
 {
   "formatVersion": 1,
   "database": {
-    "version": 9,
-    "identityHash": "44d1e5bde22fa8b112be32bf27e68aa1",
+    "version": 10,
+    "identityHash": "3013e70ee753cd10129abd0a77c12417",
     "entities": [
       {
         "tableName": "users",
@@ -74,7 +74,7 @@
       },
       {
         "tableName": "videos",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`uri` TEXT NOT NULL, `did` TEXT NOT NULL, `handle` TEXT NOT NULL, `videoUrl` TEXT NOT NULL, `description` TEXT NOT NULL, `createdAt` TEXT NOT NULL, `indexedAt` TEXT NOT NULL, `sortAt` TEXT NOT NULL, `title` TEXT NOT NULL, `thumbnailUrl` TEXT NOT NULL, `likes` INTEGER NOT NULL, `comments` INTEGER NOT NULL, `shares` INTEGER NOT NULL, `username` TEXT NOT NULL, `userId` TEXT NOT NULL, `isImage` INTEGER NOT NULL, `imageUrl` TEXT NOT NULL, `aspectRatio` REAL NOT NULL, `authorAvatar` TEXT NOT NULL, `facets` TEXT NOT NULL, PRIMARY KEY(`uri`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`uri` TEXT NOT NULL, `did` TEXT NOT NULL, `handle` TEXT NOT NULL, `videoUrl` TEXT NOT NULL, `description` TEXT NOT NULL, `createdAt` TEXT NOT NULL, `indexedAt` TEXT NOT NULL, `sortAt` TEXT NOT NULL, `title` TEXT NOT NULL, `thumbnailUrl` TEXT NOT NULL, `likes` INTEGER NOT NULL, `comments` INTEGER NOT NULL, `shares` INTEGER NOT NULL, `username` TEXT NOT NULL, `userId` TEXT NOT NULL, `isImage` INTEGER NOT NULL, `imageUrl` TEXT NOT NULL, `aspectRatio` REAL NOT NULL, `authorAvatar` TEXT NOT NULL, `authorName` TEXT NOT NULL, `caption` TEXT NOT NULL, `facets` TEXT, PRIMARY KEY(`uri`))",
         "fields": [
           {
             "fieldPath": "uri",
@@ -191,10 +191,22 @@
             "notNull": true
           },
           {
+            "fieldPath": "authorName",
+            "columnName": "authorName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "caption",
+            "columnName": "caption",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
             "fieldPath": "facets",
             "columnName": "facets",
             "affinity": "TEXT",
-            "notNull": true
+            "notNull": false
           }
         ],
         "primaryKey": {
@@ -210,7 +222,7 @@
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '44d1e5bde22fa8b112be32bf27e68aa1')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '3013e70ee753cd10129abd0a77c12417')"
     ]
   }
 }
