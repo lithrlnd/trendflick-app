@@ -42,6 +42,12 @@ import android.opengl.GLES20
 import android.graphics.Matrix
 import java.io.IOException
 import com.trendflick.data.model.Video
+import com.trendflick.data.api.Facet
+import com.trendflick.data.api.FacetFeature
+import com.trendflick.data.api.FacetIndex
+import com.trendflick.data.api.MentionFeature
+import com.trendflick.data.api.LinkFeature
+import com.trendflick.data.api.TagFeature
 
 data class VideoUploadResult(
     val blobRef: JSONObject?,
@@ -524,19 +530,25 @@ class BlueskyRepository @Inject constructor(
                                 handle = effectivePost.getJSONObject("author").getString("handle"),
                                 videoUrl = "",
                                 imageUrl = mediaUrl,
-                                isImage = true,
-                                description = effectiveRecord.getString("text"),
+                                description = effectiveRecord.optString("text", "No caption available"),
                                 createdAt = Instant.parse(effectiveRecord.getString("createdAt")),
                                 indexedAt = Instant.parse(effectivePost.getString("indexedAt")),
                                 sortAt = Instant.parse(effectivePost.getString("indexedAt")),
                                 title = "",
                                 thumbnailUrl = "",
-                                username = effectivePost.getJSONObject("author").getString("displayName"),
-                                userId = effectivePost.getJSONObject("author").getString("did"),
                                 likes = effectivePost.optJSONObject("likeCount")?.optInt("count") ?: 0,
                                 comments = effectivePost.optJSONObject("replyCount")?.optInt("count") ?: 0,
                                 shares = effectivePost.optJSONObject("repostCount")?.optInt("count") ?: 0,
-                                aspectRatio = aspectRatio
+                                username = effectivePost.getJSONObject("author").optString("displayName", effectivePost.getJSONObject("author").getString("handle")),
+                                userId = effectivePost.getJSONObject("author").getString("did"),
+                                isImage = true,
+                                aspectRatio = aspectRatio,
+                                authorAvatar = effectivePost.getJSONObject("author").optString("avatar", ""),
+                                authorName = effectivePost.getJSONObject("author").optString("displayName", effectivePost.getJSONObject("author").getString("handle")),
+                                caption = effectiveRecord.optString("text", "No caption available"),
+                                facets = effectiveRecord.optJSONArray("facets")?.let { facetsArray ->
+                                    parseFacets(facetsArray)
+                                }
                             ))
                         }
                     }
@@ -566,19 +578,25 @@ class BlueskyRepository @Inject constructor(
                             handle = effectivePost.getJSONObject("author").getString("handle"),
                             videoUrl = mediaUrl,
                             imageUrl = "",
-                            isImage = false,
-                            description = effectiveRecord.getString("text"),
+                            description = effectiveRecord.optString("text", "No caption available"),
                             createdAt = Instant.parse(effectiveRecord.getString("createdAt")),
                             indexedAt = Instant.parse(effectivePost.getString("indexedAt")),
                             sortAt = Instant.parse(effectivePost.getString("indexedAt")),
                             title = "",
                             thumbnailUrl = "",
-                            username = effectivePost.getJSONObject("author").getString("displayName"),
-                            userId = effectivePost.getJSONObject("author").getString("did"),
                             likes = effectivePost.optJSONObject("likeCount")?.optInt("count") ?: 0,
                             comments = effectivePost.optJSONObject("replyCount")?.optInt("count") ?: 0,
                             shares = effectivePost.optJSONObject("repostCount")?.optInt("count") ?: 0,
-                            aspectRatio = aspectRatio
+                            username = effectivePost.getJSONObject("author").optString("displayName", effectivePost.getJSONObject("author").getString("handle")),
+                            userId = effectivePost.getJSONObject("author").getString("did"),
+                            isImage = false,
+                            aspectRatio = aspectRatio,
+                            authorAvatar = effectivePost.getJSONObject("author").optString("avatar", ""),
+                            authorName = effectivePost.getJSONObject("author").optString("displayName", effectivePost.getJSONObject("author").getString("handle")),
+                            caption = effectiveRecord.optString("text", "No caption available"),
+                            facets = effectiveRecord.optJSONArray("facets")?.let { facetsArray ->
+                                parseFacets(facetsArray)
+                            }
                         ))
                     }
                 } catch (e: Exception) {
@@ -602,6 +620,57 @@ class BlueskyRepository @Inject constructor(
             Log.e(TAG, "Stack trace: ${e.stackTraceToString()}")
             throw e
         }
+    }
+
+    private fun parseFacets(facetsArray: JSONArray): List<Facet> {
+        val facets = mutableListOf<Facet>()
+        
+        for (i in 0 until facetsArray.length()) {
+            try {
+                val facetObj = facetsArray.getJSONObject(i)
+                val index = facetObj.getJSONObject("index")
+                val features = facetObj.getJSONArray("features")
+                
+                val facetFeatures = mutableListOf<FacetFeature>()
+                
+                for (j in 0 until features.length()) {
+                    val feature = features.getJSONObject(j)
+                    val type = feature.getString("\$type")
+                    
+                    when (type) {
+                        "app.bsky.richtext.facet#mention" -> {
+                            facetFeatures.add(MentionFeature(
+                                did = feature.getString("did")
+                            ))
+                        }
+                        "app.bsky.richtext.facet#link" -> {
+                            facetFeatures.add(LinkFeature(
+                                uri = feature.getString("uri")
+                            ))
+                        }
+                        "app.bsky.richtext.facet#tag" -> {
+                            facetFeatures.add(TagFeature(
+                                tag = feature.getString("tag")
+                            ))
+                        }
+                    }
+                }
+                
+                if (facetFeatures.isNotEmpty()) {
+                    facets.add(Facet(
+                        index = FacetIndex(
+                            start = index.getInt("byteStart"),
+                            end = index.getInt("byteEnd")
+                        ),
+                        features = facetFeatures
+                    ))
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to parse facet: ${e.message}")
+            }
+        }
+        
+        return facets
     }
 } 
 

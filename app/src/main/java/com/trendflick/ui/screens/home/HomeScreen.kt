@@ -100,6 +100,8 @@ import android.net.Uri
 import android.util.Log
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import com.trendflick.data.api.Facet
+import com.trendflick.ui.components.RichTextPostOverlay
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -485,6 +487,7 @@ fun VideoItem(
     var isPaused by remember { mutableStateOf(false) }
     var progress by remember { mutableStateOf(0f) }
     var loadError by remember { mutableStateOf<String?>(null) }
+    var showRichText by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -495,8 +498,20 @@ fun VideoItem(
                         view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                         onLikeClick()
                     },
-                    onTap = { isPaused = !isPaused },
-                    onLongPress = { onLongPress() }
+                    onTap = { if (!video.isImage) isPaused = !isPaused },
+                    onLongPress = {
+                        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                        showRichText = true
+                        Log.d("VideoItem", """
+                            Long press detected:
+                            URI: ${video.uri}
+                            Is Image: ${video.isImage}
+                            Description: ${video.description}
+                            Caption: ${video.caption}
+                            Facets: ${video.facets?.size ?: 0}
+                            Author: ${video.authorName}
+                        """.trimIndent())
+                    }
                 )
             }
     ) {
@@ -532,6 +547,7 @@ fun VideoItem(
             )
         }
 
+        // Error state
         loadError?.let { error ->
             Box(
                 modifier = Modifier
@@ -560,7 +576,7 @@ fun VideoItem(
             }
         }
 
-        // Progress indicator at the top
+        // Progress indicator
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -575,7 +591,7 @@ fun VideoItem(
             )
         }
 
-        // Caption overlay with rich text
+        // Author info
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -590,59 +606,40 @@ fun VideoItem(
                 )
                 .padding(16.dp)
         ) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onProfileClick() },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Author info
-                Row(
+                AsyncImage(
+                    model = video.authorAvatar,
+                    contentDescription = "Author avatar",
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onProfileClick() },
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    AsyncImage(
-                        model = video.authorAvatar,
-                        contentDescription = "Author avatar",
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF1A1A1A)),
-                        contentScale = ContentScale.Crop
-                    )
-                    
-                    Column {
-                        Text(
-                            text = video.authorName,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "@${video.username}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.White.copy(alpha = 0.7f)
-                        )
-                    }
-                }
-
-                // Rich text caption
-                RichTextRenderer(
-                    text = video.caption,
-                    facets = video.facets ?: emptyList(),
-                    onMentionClick = { did -> /* Handle mention click */ },
-                    onHashtagClick = { tag -> /* Handle hashtag click */ },
-                    onLinkClick = { url ->
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                        context.startActivity(intent)
-                    },
-                    modifier = Modifier.fillMaxWidth()
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF1A1A1A)),
+                    contentScale = ContentScale.Crop
                 )
+                
+                Column {
+                    Text(
+                        text = video.authorName,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "@${video.username}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.7f)
+                    )
+                }
             }
         }
 
-        // Engagement column - positioned on the right
+        // Engagement column
         Box(
             modifier = Modifier
                 .align(Alignment.CenterEnd)
@@ -663,6 +660,23 @@ fun VideoItem(
                 onShareClick = onShareClick
             )
         }
+
+        // Rich text overlay
+        RichTextPostOverlay(
+            visible = showRichText,
+            text = video.caption.ifBlank { video.description },
+            facets = video.facets ?: emptyList(),
+            onDismiss = { 
+                showRichText = false
+                Log.d("VideoItem", """
+                    Dismissing overlay:
+                    Was showing: $showRichText
+                    Caption length: ${video.caption.length}
+                    Description length: ${video.description.length}
+                    Facets count: ${video.facets?.size ?: 0}
+                """.trimIndent())
+            }
+        )
     }
 }
 
@@ -1129,8 +1143,8 @@ private fun CommentItem(
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.surfaceVariant)
                     .clickable { onProfileClick(comment.post.author.did) },
-                contentScale = ContentScale.Crop
-            )
+                    contentScale = ContentScale.Crop
+                )
 
             Column(modifier = Modifier.weight(1f)) {
                 Row(

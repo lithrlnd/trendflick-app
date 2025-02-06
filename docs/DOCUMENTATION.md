@@ -140,6 +140,16 @@ app/
   - Error handling with retry options
   - Empty state handling
   - Proper navigation handling
+  - Rich Text Overlay:
+    - Long-press activation for better discoverability
+    - Haptic feedback for enhanced interaction
+    - Smooth fade transitions
+    - Semi-transparent background for context
+    - Proper text contrast and readability
+    - Easy dismissal with tap gesture
+    - Consistent styling with app theme
+    - Proper handling of different text lengths
+    - Support for AT Protocol rich text features
 
 ### Rich Text Implementation
 The comment system implements AT Protocol's rich text specification:
@@ -151,27 +161,62 @@ The comment system implements AT Protocol's rich text specification:
    - Facet overlap prevention
    - Validation of facet ranges
 
-2. **Comment Rendering**
-   - Proper indentation for nested replies
-   - OP badge for original poster
-   - Timestamp formatting
-   - Avatar and user info display
-   - Rich text support in comments
-   - Character limit enforcement
+2. **Rich Text Overlay**
+   - Long-press activation with haptic feedback
+   - Smooth fade animations for overlay visibility
+   - Fallback mechanism between caption and description
+   - Proper text rendering with AT Protocol facets
+   - Consistent dark theme styling
+   - Tap-to-dismiss functionality
+   - Scrollable content for long text
+   - Comprehensive state logging
+   - Error state handling
 
-3. **State Management**
-   - Author-only filter state
-   - Comment visibility state
-   - Reply input state
-   - Loading and error states
-   - Refresh functionality
+3. **Implementation Details**
+   ```kotlin
+   RichTextPostOverlay(
+       visible: Boolean,
+       text: String,
+       facets: List<Facet>,
+       onDismiss: () -> Unit
+   )
+   ```
+   
+   Key Features:
+   - Semi-transparent black background (alpha: 0.85)
+   - Rounded corner surface for content
+   - Centered positioning
+   - Proper padding and spacing
+   - Support for both image and video content
+   - Maintains aspect ratio of media content
+   - Handles empty caption states
 
-4. **Performance Considerations**
-   - Efficient list rendering with keys
-   - Proper composition to prevent recomposition
-   - State hoisting for better performance
-   - Proper cleanup of resources
-   - Efficient overlay handling
+4. **Usage Guidelines**
+   - Implement long-press detection using `pointerInput`
+   - Add haptic feedback using `HapticFeedbackConstants.LONG_PRESS`
+   - Manage overlay visibility with `remember` state
+   - Use proper logging for state changes
+   - Handle both caption and description fields
+   - Implement proper cleanup on dismiss
+   - Follow accessibility guidelines
+
+5. **Best Practices**
+   - Always provide haptic feedback for long-press
+   - Use fallback text when caption is empty
+   - Maintain proper state management
+   - Log important state changes
+   - Handle edge cases (empty text, null facets)
+   - Follow consistent animation patterns
+   - Ensure proper contrast for text
+   - Test with various content lengths
+
+6. **Common Issues**
+   - Handle empty captions gracefully
+   - Manage proper text contrast
+   - Handle orientation changes
+   - Manage proper z-indexing
+   - Handle system interruptions
+   - Manage memory efficiently
 
 ### Development Guidelines
 
