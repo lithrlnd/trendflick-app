@@ -187,6 +187,119 @@ When working with the comment system:
 9. Implement proper cleanup
 10. Follow accessibility guidelines
 
+### Engagement System
+#### Visual Implementation
+- **Color Scheme**
+  - Active State: `Color(0xFF6B4EFF)` - Deep purple for activated elements
+  - Inactive State: `Color(0xFFB4A5FF)` - Light purple for better visibility
+  - Consistent across both Trends and Flicks interfaces
+  - Designed for visibility against both light and dark backgrounds
+
+- **Animation Effects**
+  - Scale animation on interaction (0.8f to 1f)
+  - Spring-based animation with medium bouncy damping
+  - Smooth transitions for state changes
+  - Visual feedback for user interactions
+
+- **Haptic Feedback**
+  - Dual haptic response system:
+    - `HapticFeedbackConstants.VIRTUAL_KEY`
+    - `HapticFeedbackConstants.KEYBOARD_TAP`
+  - Consistent feedback across all engagement actions
+  - Enhanced tactile response for better user experience
+
+#### Implementation Details
+```kotlin
+@Composable
+private fun EngagementAction(
+    icon: ImageVector,
+    count: Int = 0,
+    isActive: Boolean = false,
+    tint: Color = Color(0xFFB4A5FF),
+    isHorizontal: Boolean = false,
+    onClick: () -> Unit
+)
+```
+
+- **Features**:
+  - Like/Unlike with heart animation
+  - Comment system with count display
+  - Repost functionality
+  - Share capability
+  - Numeric formatting (K, M suffixes)
+  - Responsive layout (portrait/landscape)
+
+- **Layout Variants**:
+  - Portrait: Vertical column on right edge
+  - Landscape: Horizontal row at top
+  - Adaptive spacing and alignment
+  - Proper edge padding and spacing
+
+#### Integration Points
+- **Trends Page**:
+  - Integrated with `ThreadCard.kt`
+  - Consistent styling with text content
+  - Proper state management
+  - Rich text post context
+
+- **Flicks Page**:
+  - Integrated with video/image content
+  - Enhanced visibility against media
+  - Maintained interaction consistency
+  - Media-specific optimizations
+
+#### Best Practices
+1. **State Management**
+   - Use `remember` for local state
+   - Implement proper state hoisting
+   - Handle all interaction states
+   - Maintain consistency across screens
+
+2. **Performance**
+   - Efficient recomposition
+   - Proper animation cleanup
+   - Optimized haptic feedback
+   - Smart layout measurements
+
+3. **Accessibility**
+   - Clear touch targets
+   - Proper content descriptions
+   - Consistent interaction patterns
+   - Adequate contrast ratios
+
+4. **Error Handling**
+   - Graceful state updates
+   - Proper error recovery
+   - Network failure handling
+   - State restoration
+
+#### Usage Guidelines
+```kotlin
+EngagementColumn(
+    isLiked = isLiked,
+    isReposted = isReposted,
+    likeCount = likeCount,
+    replyCount = replyCount,
+    repostCount = repostCount,
+    onLikeClick = { /* Handle like */ },
+    onCommentClick = { /* Handle comment */ },
+    onRepostClick = { /* Handle repost */ },
+    onShareClick = { /* Handle share */ }
+)
+```
+
+Developers should:
+1. Maintain consistent color usage
+2. Preserve haptic feedback implementation
+3. Handle all interaction states
+4. Implement proper error handling
+5. Follow the established animation patterns
+6. Ensure proper state management
+7. Test against various background contents
+8. Verify landscape/portrait adaptations
+9. Maintain accessibility standards
+10. Follow performance guidelines
+
 ## AT Protocol Integration
 
 ### Key Concepts

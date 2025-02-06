@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -476,7 +477,6 @@ private fun EngagementColumn(
     val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
 
     if (isLandscape) {
-        // Horizontal layout for landscape mode at the top
         Row(
             modifier = Modifier
                 .height(52.dp)
@@ -490,7 +490,7 @@ private fun EngagementColumn(
                 count = likeCount,
                 isActive = isLiked,
                 onClick = onLikeClick,
-                tint = if (isLiked) Color(0xFF6B4EFF) else Color.White,
+                tint = if (isLiked) Color(0xFF6B4EFF) else Color(0xFFB4A5FF),
                 isHorizontal = true
             )
 
@@ -508,7 +508,7 @@ private fun EngagementColumn(
                 count = repostCount,
                 isActive = isReposted,
                 onClick = onRepostClick,
-                tint = if (isReposted) Color(0xFF6B4EFF) else Color.White,
+                tint = if (isReposted) Color(0xFF6B4EFF) else Color(0xFFB4A5FF),
                 isHorizontal = true
             )
 
@@ -520,7 +520,6 @@ private fun EngagementColumn(
             )
         }
     } else {
-        // Original vertical layout for portrait mode
         Column(
             modifier = Modifier
                 .width(52.dp)
@@ -537,7 +536,7 @@ private fun EngagementColumn(
                 count = likeCount,
                 isActive = isLiked,
                 onClick = onLikeClick,
-                tint = if (isLiked) Color(0xFF6B4EFF) else Color.White
+                tint = if (isLiked) Color(0xFF6B4EFF) else Color(0xFFB4A5FF)
             )
 
             Spacer(modifier = Modifier.height(28.dp))
@@ -557,7 +556,7 @@ private fun EngagementColumn(
                 count = repostCount,
                 isActive = isReposted,
                 onClick = onRepostClick,
-                tint = if (isReposted) Color(0xFF6B4EFF) else Color.White
+                tint = if (isReposted) Color(0xFF6B4EFF) else Color(0xFFB4A5FF)
             )
 
             Spacer(modifier = Modifier.height(28.dp))
@@ -578,18 +577,40 @@ private fun EngagementAction(
     icon: ImageVector,
     count: Int = 0,
     isActive: Boolean = false,
-    tint: Color = Color.White,
+    tint: Color = Color(0xFFB4A5FF),
     isHorizontal: Boolean = false,
     onClick: () -> Unit
 ) {
+    val view = LocalView.current
+    var scale by remember { mutableStateOf(1f) }
+    val animatedScale by animateFloatAsState(
+        targetValue = scale,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "scale"
+    )
+
     if (isHorizontal) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             IconButton(
-                onClick = onClick,
-                modifier = Modifier.size(40.dp)
+                onClick = {
+                    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    scale = 0.8f
+                    onClick()
+                    scale = 1f
+                },
+                modifier = Modifier
+                    .size(40.dp)
+                    .graphicsLayer {
+                        scaleX = animatedScale
+                        scaleY = animatedScale
+                    }
             ) {
                 Icon(
                     imageVector = icon,
@@ -602,7 +623,7 @@ private fun EngagementAction(
                 Text(
                     text = formatEngagementCount(count),
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color.White
+                    color = Color(0xFFB4A5FF)
                 )
             }
         }
@@ -612,8 +633,19 @@ private fun EngagementAction(
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             IconButton(
-                onClick = onClick,
-                modifier = Modifier.size(40.dp)
+                onClick = {
+                    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    scale = 0.8f
+                    onClick()
+                    scale = 1f
+                },
+                modifier = Modifier
+                    .size(40.dp)
+                    .graphicsLayer {
+                        scaleX = animatedScale
+                        scaleY = animatedScale
+                    }
             ) {
                 Icon(
                     imageVector = icon,
@@ -626,7 +658,7 @@ private fun EngagementAction(
                 Text(
                     text = formatEngagementCount(count),
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color.White
+                    color = Color(0xFFB4A5FF)
                 )
             }
         }
