@@ -31,7 +31,7 @@ data class Video(
     var userId: String = "",      // For AT Protocol reference
     var isImage: Boolean = false, // Whether this is an image post
     var imageUrl: String = "",    // URL for image content (if isImage is true)
-    var aspectRatio: Float = 1f,  // Aspect ratio of the media content
+    var aspectRatio: Float = 16f/9f,  // Aspect ratio of the media content
     var authorAvatar: String = "", // Author's avatar URL
     var authorName: String = "",   // Author's display name
     var caption: String = "",      // Post caption (same as description)

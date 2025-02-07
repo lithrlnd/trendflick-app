@@ -289,6 +289,44 @@ When working with the comment system:
 9. Implement proper cleanup
 10. Follow accessibility guidelines
 
+### Common Implementation Notes
+
+#### Media3 and Experimental Features
+When using experimental features and Media3 components:
+1. **UnstableApi Annotation**
+   ```kotlin
+   @file:OptIn(
+       ExperimentalMaterial3Api::class,
+       ExperimentalMaterialApi::class,
+       ExperimentalFoundationApi::class
+   )
+   @file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+   ```
+   - Separate Media3's UnstableApi annotation from other OptIn annotations
+   - Use fully qualified path for UnstableApi annotation
+   - Place file annotations before package declaration
+
+2. **Compose Shape System**
+   - Import shape components explicitly: `import androidx.compose.foundation.shape.CircleShape`
+   - Use consistent shape system across the application
+   - Maintain shape hierarchy for nested components
+   - Follow Material Design shape guidelines
+
+3. **Best Practices**
+   - Keep experimental feature annotations at file level when possible
+   - Document usage of experimental APIs
+   - Plan for API changes in experimental features
+   - Maintain consistent import organization
+   - Group related imports together
+   - Use explicit imports over wildcards
+
+4. **Common Issues and Solutions**
+   - UnstableApi annotation conflicts: Use separate file annotation
+   - Shape resolution issues: Ensure proper imports
+   - Experimental feature warnings: Document and track usage
+   - Import conflicts: Use alias for conflicting names
+   - State management: Implement proper state hoisting
+
 ### Engagement System
 #### Visual Implementation
 - **Color Scheme**

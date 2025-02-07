@@ -61,6 +61,7 @@ fun ThreadCard(
     onCreatePost: () -> Unit,
     onImageClick: (ImageEmbed) -> Unit,
     onHashtagClick: ((String) -> Unit)? = null,
+    onLinkClick: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val configuration = LocalConfiguration.current
@@ -187,9 +188,11 @@ fun ThreadCard(
                                 facets = feedPost.post.record.facets ?: emptyList(),
                                 onMentionClick = { onProfileClick() },
                                 onHashtagClick = { tag -> onHashtagClick?.invoke(tag) },
-                                onLinkClick = { url ->
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                    context.startActivity(intent)
+                                onLinkClick = { url -> 
+                                    onLinkClick?.invoke(url) ?: run {
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                        context.startActivity(intent)
+                                    }
                                 },
                                 modifier = Modifier.padding(bottom = 8.dp)
                             )
@@ -355,9 +358,11 @@ fun ThreadCard(
                                 facets = feedPost.post.record.facets ?: emptyList(),
                                 onMentionClick = { onProfileClick() },
                                 onHashtagClick = { tag -> onHashtagClick?.invoke(tag) },
-                                onLinkClick = { url ->
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                    context.startActivity(intent)
+                                onLinkClick = { url -> 
+                                    onLinkClick?.invoke(url) ?: run {
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                        context.startActivity(intent)
+                                    }
                                 }
                             )
 

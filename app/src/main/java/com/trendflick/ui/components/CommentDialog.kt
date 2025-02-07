@@ -28,18 +28,19 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
-import com.trendflick.data.model.Comment
 import com.trendflick.utils.DateUtils
+import com.trendflick.data.api.ThreadPost
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 fun CommentDialog(
     isVisible: Boolean,
     onDismiss: () -> Unit,
-    comments: List<Comment>,
+    comments: List<ThreadPost>,
     onCommentSubmit: (String) -> Unit,
     onCommentLike: (String) -> Unit,
-    onReplyClick: (String) -> Unit
+    onReplyClick: (String) -> Unit,
+    likedPosts: Set<String> = emptySet()
 ) {
     val bottomSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -113,8 +114,9 @@ fun CommentDialog(
                     items(comments) { comment ->
                         CommentItem(
                             comment = comment,
-                            onLike = { onCommentLike(comment.id) },
-                            onReply = { onReplyClick(comment.id) }
+                            onLike = { onCommentLike(comment.post.uri) },
+                            onReply = { onReplyClick(comment.post.uri) },
+                            isLiked = likedPosts.contains(comment.post.uri)
                         )
                     }
                 }
@@ -215,9 +217,10 @@ fun CommentDialog(
 
 @Composable
 private fun CommentItem(
-    comment: Comment,
+    comment: ThreadPost,
     onLike: () -> Unit,
-    onReply: () -> Unit
+    onReply: () -> Unit,
+    isLiked: Boolean = false
 ) {
     Row(
         modifier = Modifier
@@ -232,27 +235,12 @@ private fun CommentItem(
                 .size(40.dp)
                 .clip(CircleShape)
         ) {
-            if (comment.avatar != null) {
-                AsyncImage(
-                    model = comment.avatar,
-                    contentDescription = "User avatar",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer
-                ) {
-                    Text(
-                        text = comment.username.first().toString(),
-                        modifier = Modifier.wrapContentSize(),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
-            }
+            AsyncImage(
+                model = comment.post.author.avatar,
+                contentDescription = "User avatar",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
         }
 
         // Comment Content
@@ -261,12 +249,12 @@ private fun CommentItem(
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
-                text = comment.username,
+                text = comment.post.author.displayName ?: comment.post.author.handle,
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = comment.content,
+                text = comment.post.record.text,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
@@ -275,7 +263,7 @@ private fun CommentItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = DateUtils.formatTimestamp(comment.createdAt),
+                    text = DateUtils.formatTimestamp(comment.post.record.createdAt),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
@@ -309,15 +297,15 @@ private fun CommentItem(
                 modifier = Modifier.size(32.dp)
             ) {
                 Icon(
-                    imageVector = if (comment.isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                    imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                     contentDescription = "Like",
-                    tint = if (comment.isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    tint = if (isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.size(18.dp)
                 )
             }
-            if (comment.likes > 0) {
+            if (comment.post.likeCount ?: 0 > 0) {
                 Text(
-                    text = NumberFormat.getInstance().format(comment.likes),
+                    text = NumberFormat.getInstance().format(comment.post.likeCount),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )

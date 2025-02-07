@@ -1,12 +1,16 @@
 @file:OptIn(
     ExperimentalMaterial3Api::class,
-    androidx.media3.common.util.UnstableApi::class,
     ExperimentalMaterialApi::class,
     ExperimentalFoundationApi::class
 )
+@file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 
 package com.trendflick.ui.screens.home
 
+import com.trendflick.utils.DateUtils
+import com.trendflick.ui.components.VideoPlayer
+import com.trendflick.ui.components.RichTextRenderer
+import com.trendflick.ui.components.InAppBrowser
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -18,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
@@ -39,18 +44,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.trendflick.ui.navigation.Screen
-import com.trendflick.ui.components.VideoPlayer
+import com.trendflick.ui.components.*
 import com.trendflick.data.model.Video
 import com.trendflick.data.model.VideoCategory
-import com.trendflick.ui.components.CategoryWheel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlin.math.absoluteValue
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.animation.*
 import androidx.compose.foundation.background
-import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -59,13 +61,10 @@ import androidx.compose.foundation.border
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
-import com.trendflick.ui.animation.slideInFromRight
-import com.trendflick.ui.animation.slideOutToRight
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import com.trendflick.ui.components.CategoryDrawer
-import com.trendflick.data.model.Comment
-import com.trendflick.ui.components.CommentDialog
-import com.trendflick.ui.components.VideoControls
+import androidx.compose.material.ExperimentalMaterialApi
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import android.content.Intent
 import android.content.Context
 import androidx.compose.animation.slideInHorizontally
@@ -76,12 +75,8 @@ import coil.compose.AsyncImage
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import com.trendflick.data.api.FeedPost
-import com.trendflick.ui.components.ThreadCard
-import com.trendflick.utils.DateUtils
-import androidx.compose.foundation.shape.CircleShape
 import com.trendflick.data.api.ThreadPost
 import com.trendflick.ui.viewmodels.SharedViewModel
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.systemBars
@@ -91,22 +86,18 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.unit.sp
-import com.trendflick.ui.components.SwipeRefresh
-import com.trendflick.ui.components.rememberSwipeRefreshState
-import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.ui.text.style.TextAlign
-import com.trendflick.ui.components.RichTextRenderer
 import android.net.Uri
 import android.util.Log
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import com.trendflick.data.api.Facet
-import com.trendflick.ui.components.RichTextPostOverlay
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.pager.PagerDefaults
+import androidx.compose.foundation.shape.CircleShape
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
@@ -133,6 +124,7 @@ fun HomeScreen(
     val isLoadingVideos by viewModel.isLoadingVideos.collectAsState()
     val videoLoadError by viewModel.videoLoadError.collectAsState()
     val selectedCategory = remember { mutableStateOf("Trends") }
+    var currentBrowserUrl by remember { mutableStateOf<String?>(null) }
 
     // Collect share events
     LaunchedEffect(Unit) {
@@ -159,14 +151,20 @@ fun HomeScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        SwipeRefresh(
+        val pullRefreshState = rememberPullRefreshState(
             refreshing = isRefreshing,
             onRefresh = { viewModel.refresh() }
+        )
+        
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pullRefresh(pullRefreshState)
         ) {
             Scaffold(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black),
+                    .background(ComposeColor.Black),
                 contentWindowInsets = WindowInsets(0, 0, 0, 0),
                 topBar = {
                     Box(
@@ -184,7 +182,7 @@ fun HomeScreen(
                             Row(
                                 modifier = Modifier
                                     .background(
-                                        color = Color(0xFF1A1A1A),
+                                        color = ComposeColor(0xFF1A1A1A),
                                         shape = RoundedCornerShape(20.dp)
                                     )
                                     .padding(4.dp)
@@ -194,8 +192,8 @@ fun HomeScreen(
                                         sharedViewModel.updateSelectedFeed("Trends")
                                     },
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (selectedFeed == "Trends") Color(0xFF6B4EFF) else Color.Transparent,
-                                        contentColor = if (selectedFeed == "Trends") Color.White else Color.White.copy(alpha = 0.7f)
+                                        containerColor = if (selectedFeed == "Trends") ComposeColor(0xFF6B4EFF) else ComposeColor.Transparent,
+                                        contentColor = if (selectedFeed == "Trends") ComposeColor.White else ComposeColor.White.copy(alpha = 0.7f)
                                     ),
                                     shape = RoundedCornerShape(18.dp),
                                     modifier = Modifier.height(36.dp)
@@ -214,8 +212,8 @@ fun HomeScreen(
                                         sharedViewModel.updateSelectedFeed("Flicks")
                                     },
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (selectedFeed == "Flicks") Color(0xFF6B4EFF) else Color.Transparent,
-                                        contentColor = if (selectedFeed == "Flicks") Color.White else Color.White.copy(alpha = 0.7f)
+                                        containerColor = if (selectedFeed == "Flicks") ComposeColor(0xFF6B4EFF) else ComposeColor.Transparent,
+                                        contentColor = if (selectedFeed == "Flicks") ComposeColor.White else ComposeColor.White.copy(alpha = 0.7f)
                                     ),
                                     shape = RoundedCornerShape(18.dp),
                                     modifier = Modifier.height(36.dp)
@@ -279,6 +277,7 @@ fun HomeScreen(
                                                 // You can implement your image viewing logic here
                                             },
                                             onHashtagClick = { tag -> viewModel.onHashtagSelected(tag) },
+                                            onLinkClick = { url -> currentBrowserUrl = url },
                                             modifier = Modifier.fillMaxWidth()
                                         )
                                     }
@@ -304,7 +303,7 @@ fun HomeScreen(
                                         Box(
                                             modifier = Modifier
                                                 .fillMaxSize()
-                                                .background(Color.Black)
+                                                .background(ComposeColor.Black)
                                         ) {
                                             ThreadCard(
                                                 feedPost = thread,
@@ -322,6 +321,7 @@ fun HomeScreen(
                                                 onCreatePost = { navController.navigate(Screen.CreatePost.route) },
                                                 onImageClick = { image -> /* Handle image click */ },
                                                 onHashtagClick = { tag -> viewModel.onHashtagSelected(tag) },
+                                                onLinkClick = { url -> currentBrowserUrl = url },
                                                 modifier = Modifier.fillMaxSize()
                                             )
                                         }
@@ -336,7 +336,7 @@ fun HomeScreen(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
                                     .padding(16.dp),
-                                color = Color(0xFF6B4EFF)
+                                color = ComposeColor(0xFF6B4EFF)
                             )
                         }
 
@@ -347,8 +347,8 @@ fun HomeScreen(
                                 .align(Alignment.BottomEnd)
                                 .padding(16.dp)
                                 .navigationBarsPadding(),
-                            containerColor = Color(0xFF6B4EFF),
-                            contentColor = Color.White
+                            containerColor = ComposeColor(0xFF6B4EFF),
+                            contentColor = ComposeColor.White
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Add,
@@ -386,7 +386,7 @@ fun HomeScreen(
                                 Column(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .background(Color(0xFF1A1A1A))
+                                        .background(ComposeColor.Black)
                                         .padding(horizontal = 16.dp)
                                 ) {
                                     CommentsHeader(
@@ -448,6 +448,29 @@ fun HomeScreen(
                         }
                     }
                 }
+            }
+            
+            PullRefreshIndicator(
+                refreshing = isRefreshing,
+                state = pullRefreshState,
+                modifier = Modifier.align(Alignment.TopCenter),
+                backgroundColor = ComposeColor(0xFF6B4EFF),
+                contentColor = ComposeColor.White
+            )
+        }
+
+        // Single browser overlay declaration
+        AnimatedVisibility(
+            visible = currentBrowserUrl != null,
+            enter = slideInVertically(initialOffsetY = { it }),
+            exit = slideOutVertically(targetOffsetY = { it })
+        ) {
+            currentBrowserUrl?.let { url ->
+                InAppBrowser(
+                    url = url,
+                    onDismiss = { currentBrowserUrl = null },
+                    modifier = Modifier.align(Alignment.BottomCenter)
+                )
             }
         }
     }
@@ -516,15 +539,7 @@ fun VideoItem(
                     onLongPress = {
                         view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                         showRichText = true
-                        Log.d("VideoItem", """
-                            Long press detected:
-                            URI: ${video.uri}
-                            Is Image: ${video.isImage}
-                            Description: ${video.description}
-                            Caption: ${video.caption}
-                            Facets: ${video.facets?.size ?: 0}
-                            Author: ${video.authorName}
-                        """.trimIndent())
+                        onLongPress()
                     }
                 )
             }
@@ -533,7 +548,7 @@ fun VideoItem(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black)
+                    .background(ComposeColor.Black)
             ) {
                 AsyncImage(
                     model = video.imageUrl,
@@ -566,7 +581,7 @@ fun VideoItem(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.7f)),
+                    .background(ComposeColor.Black.copy(alpha = 0.7f)),
                 contentAlignment = Alignment.Center
             ) {
                 Column(
@@ -576,12 +591,12 @@ fun VideoItem(
                     Icon(
                         imageVector = Icons.Default.Error,
                         contentDescription = null,
-                        tint = Color.White,
+                        tint = ComposeColor.White,
                         modifier = Modifier.size(48.dp)
                     )
                     Text(
                         text = error,
-                        color = Color.White,
+                        color = ComposeColor.White,
                         style = MaterialTheme.typography.bodyMedium,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(horizontal = 16.dp)
@@ -595,13 +610,13 @@ fun VideoItem(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(2.dp)
-                .background(Color.Black.copy(alpha = 0.3f))
+                .background(ComposeColor.Black.copy(alpha = 0.3f))
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth(progress)
                     .fillMaxHeight()
-                    .background(Color(0xFF6B4EFF))
+                    .background(ComposeColor(0xFF6B4EFF))
             )
         }
 
@@ -613,8 +628,8 @@ fun VideoItem(
                 .background(
                     brush = Brush.verticalGradient(
                         colors = listOf(
-                            Color.Transparent,
-                            Color.Black.copy(alpha = 0.7f)
+                            ComposeColor.Transparent,
+                            ComposeColor.Black.copy(alpha = 0.7f)
                         )
                     )
                 )
@@ -633,7 +648,7 @@ fun VideoItem(
                     modifier = Modifier
                         .size(32.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFF1A1A1A)),
+                        .background(ComposeColor(0xFF1A1A1A)),
                     contentScale = ContentScale.Crop
                 )
                 
@@ -641,13 +656,13 @@ fun VideoItem(
                     Text(
                         text = video.authorName,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White,
+                        color = ComposeColor.White,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
                         text = "@${video.username}",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.7f)
+                        color = ComposeColor.White.copy(alpha = 0.7f)
                     )
                 }
             }
@@ -723,7 +738,7 @@ private fun EngagementColumn(
                 count = likeCount,
                 isActive = isLiked,
                 onClick = onLikeClick,
-                tint = if (isLiked) Color(0xFF6B4EFF) else Color(0xFFB4A5FF),
+                tint = if (isLiked) ComposeColor(0xFF6B4EFF) else ComposeColor(0xFFB4A5FF),
                 isHorizontal = true
             )
 
@@ -741,7 +756,7 @@ private fun EngagementColumn(
                 count = repostCount,
                 isActive = isReposted,
                 onClick = onRepostClick,
-                tint = if (isReposted) Color(0xFF6B4EFF) else Color(0xFFB4A5FF),
+                tint = if (isReposted) ComposeColor(0xFF6B4EFF) else ComposeColor(0xFFB4A5FF),
                 isHorizontal = true
             )
 
@@ -769,7 +784,7 @@ private fun EngagementColumn(
                 count = likeCount,
                 isActive = isLiked,
                 onClick = onLikeClick,
-                tint = if (isLiked) Color(0xFF6B4EFF) else Color(0xFFB4A5FF)
+                tint = if (isLiked) ComposeColor(0xFF6B4EFF) else ComposeColor(0xFFB4A5FF)
             )
 
             Spacer(modifier = Modifier.height(28.dp))
@@ -789,7 +804,7 @@ private fun EngagementColumn(
                 count = repostCount,
                 isActive = isReposted,
                 onClick = onRepostClick,
-                tint = if (isReposted) Color(0xFF6B4EFF) else Color(0xFFB4A5FF)
+                tint = if (isReposted) ComposeColor(0xFF6B4EFF) else ComposeColor(0xFFB4A5FF)
             )
 
             Spacer(modifier = Modifier.height(28.dp))
@@ -810,7 +825,7 @@ private fun EngagementAction(
     icon: ImageVector,
     count: Int = 0,
     isActive: Boolean = false,
-    tint: Color = Color(0xFFB4A5FF),
+    tint: ComposeColor = ComposeColor(0xFFB4A5FF),
     isHorizontal: Boolean = false,
     onClick: () -> Unit
 ) {
@@ -856,7 +871,7 @@ private fun EngagementAction(
                 Text(
                     text = formatEngagementCount(count),
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFFB4A5FF)
+                    color = ComposeColor(0xFFB4A5FF)
                 )
             }
         }
@@ -891,7 +906,7 @@ private fun EngagementAction(
                 Text(
                     text = formatEngagementCount(count),
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFFB4A5FF)
+                    color = ComposeColor(0xFFB4A5FF)
                 )
             }
         }
@@ -918,7 +933,7 @@ private fun StatItem(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            modifier = Modifier.size(16.dp),
+            modifier = modifier.size(16.dp),
             tint = MaterialTheme.colorScheme.onSurface
         )
         Text(
@@ -1137,7 +1152,7 @@ private fun CommentItem(
             .padding(vertical = 8.dp)
             .background(
                 if (isOP) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.1f)
-                else Color.Transparent,
+                else ComposeColor.Transparent,
                 RoundedCornerShape(8.dp)
             )
             .padding(8.dp)
@@ -1255,19 +1270,19 @@ private fun CommentItem(
                         placeholder = { Text("Write a reply...") },
                         maxLines = 3,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color(0xFF6B4EFF),
-                            unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
-                            cursorColor = Color(0xFF6B4EFF),
-                            unfocusedTextColor = Color.White,
-                            focusedTextColor = Color.White
+                            focusedBorderColor = ComposeColor(0xFF6B4EFF),
+                            unfocusedBorderColor = ComposeColor.White.copy(alpha = 0.2f),
+                            cursorColor = ComposeColor(0xFF6B4EFF),
+                            unfocusedTextColor = ComposeColor.White,
+                            focusedTextColor = ComposeColor.White
                         ),
                         supportingText = {
                             Text(
                                 text = "$remainingChars",
                                 color = if (remainingChars < 50) 
-                                    Color(0xFFFF4B4B) 
+                                    ComposeColor(0xFFFF4B4B) 
                                 else 
-                                    Color.White.copy(alpha = 0.5f)
+                                    ComposeColor.White.copy(alpha = 0.5f)
                             )
                         }
                     )
@@ -1290,9 +1305,9 @@ private fun CommentItem(
                             imageVector = Icons.Default.Send,
                             contentDescription = "Send reply",
                             tint = if (replyText.isNotBlank() && replyText.length <= 300) 
-                                Color(0xFF6B4EFF)
+                                ComposeColor(0xFF6B4EFF)
                             else 
-                                Color.White.copy(alpha = 0.5f)
+                                ComposeColor.White.copy(alpha = 0.5f)
                         )
                     }
                 }
@@ -1351,13 +1366,13 @@ fun VideoFeedSection(
                 ) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(36.dp),
-                        color = Color(0xFF6B4EFF)
+                        color = ComposeColor(0xFF6B4EFF)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = "Loading media feed...",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(alpha = 0.7f)
+                        color = ComposeColor.White.copy(alpha = 0.7f)
                     )
                 }
             }
@@ -1373,14 +1388,14 @@ fun VideoFeedSection(
                     Icon(
                         imageVector = Icons.Default.Error,
                         contentDescription = null,
-                        tint = Color.White.copy(alpha = 0.7f),
+                        tint = ComposeColor.White.copy(alpha = 0.7f),
                         modifier = Modifier.size(48.dp)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = error,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(alpha = 0.7f),
+                        color = ComposeColor.White.copy(alpha = 0.7f),
                         textAlign = TextAlign.Center
                     )
                     Spacer(modifier = Modifier.height(16.dp))
@@ -1390,7 +1405,7 @@ fun VideoFeedSection(
                             onRefresh()
                         },
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF6B4EFF)
+                            containerColor = ComposeColor(0xFF6B4EFF)
                         )
                     ) {
                         Text("Retry")
@@ -1409,12 +1424,12 @@ fun VideoFeedSection(
                     Text(
                         text = "No media found",
                         style = MaterialTheme.typography.titleMedium,
-                        color = Color.White
+                        color = ComposeColor.White
                     )
                     Text(
                         text = "Pull down to refresh or create your first flick",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.5f),
+                        color = ComposeColor.White.copy(alpha = 0.5f),
                         textAlign = TextAlign.Center
                     )
                     Spacer(modifier = Modifier.height(16.dp))
@@ -1424,7 +1439,7 @@ fun VideoFeedSection(
                             onRefresh()
                         },
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF6B4EFF)
+                            containerColor = ComposeColor(0xFF6B4EFF)
                         )
                     ) {
                         Text("Refresh Feed")
@@ -1456,7 +1471,7 @@ fun VideoFeedSection(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(Color.Black)
+                            .background(ComposeColor.Black)
                     ) {
                         if (itemLoadError == null) {
                             VideoItem(
@@ -1479,7 +1494,7 @@ fun VideoFeedSection(
                             ) {
                                 Text(
                                     text = itemLoadError ?: "Failed to load media",
-                                    color = Color.White,
+                                    color = ComposeColor.White,
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                             }
@@ -1495,7 +1510,7 @@ fun VideoFeedSection(
                             .fillMaxHeight(0.92f)
                             .align(Alignment.BottomCenter)
                             .imePadding(),
-                        color = Color(0xFF1A1A1A),
+                        color = ComposeColor(0xFF1A1A1A),
                         shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
                     ) {
                         Column(
@@ -1534,8 +1549,8 @@ fun VideoFeedSection(
                 .align(Alignment.BottomEnd)
                 .padding(16.dp)
                 .navigationBarsPadding(),
-            containerColor = Color(0xFF6B4EFF),
-            contentColor = Color.White
+            containerColor = ComposeColor(0xFF6B4EFF),
+            contentColor = ComposeColor.White
         ) {
             Icon(
                 imageVector = Icons.Default.Add,
@@ -1564,7 +1579,7 @@ private fun CommentsHeader(
             Icon(
                 imageVector = Icons.Default.ArrowBack,
                 contentDescription = "Close comments",
-                tint = Color.White
+                tint = ComposeColor.White
             )
         }
 
@@ -1575,7 +1590,7 @@ private fun CommentsHeader(
             Text(
                 text = "Comments",
                 style = MaterialTheme.typography.titleMedium,
-                color = Color.White
+                color = ComposeColor.White
             )
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -1584,16 +1599,16 @@ private fun CommentsHeader(
                 Text(
                     text = if (showAuthorOnly) "Author Only" else "All Comments",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = 0.7f)
+                    color = ComposeColor.White.copy(alpha = 0.7f)
                 )
                 Switch(
                     checked = showAuthorOnly,
                     onCheckedChange = onAuthorOnlyChange,
                     colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color(0xFF6B4EFF),
-                        checkedTrackColor = Color(0xFF6B4EFF).copy(alpha = 0.5f),
-                        uncheckedThumbColor = Color.White,
-                        uncheckedTrackColor = Color.White.copy(alpha = 0.3f)
+                        checkedThumbColor = ComposeColor(0xFF6B4EFF),
+                        checkedTrackColor = ComposeColor(0xFF6B4EFF).copy(alpha = 0.5f),
+                        uncheckedThumbColor = ComposeColor.White,
+                        uncheckedTrackColor = ComposeColor.White.copy(alpha = 0.3f)
                     )
                 )
             }
@@ -1603,7 +1618,7 @@ private fun CommentsHeader(
             Icon(
                 imageVector = Icons.Default.Refresh,
                 contentDescription = "Refresh comments",
-                tint = Color.White
+                tint = ComposeColor.White
             )
         }
     }
@@ -1652,13 +1667,13 @@ private fun EmptyState(onRefresh: () -> Unit) {
         Text(
             text = "No posts available",
             style = MaterialTheme.typography.titleMedium,
-            color = Color.White
+            color = ComposeColor.White
         )
         Spacer(modifier = Modifier.height(8.dp))
         Button(
             onClick = onRefresh,
             colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF6B4EFF)
+                containerColor = ComposeColor(0xFF6B4EFF)
             )
         ) {
             Text("Refresh")
