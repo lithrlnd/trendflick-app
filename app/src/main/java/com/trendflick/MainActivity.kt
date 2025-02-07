@@ -38,7 +38,9 @@ import android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
 import androidx.compose.ui.graphics.Color
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.trendflick.ui.viewmodels.SharedViewModel
+import com.trendflick.ui.components.CastButton
 
+@OptIn(ExperimentalMaterial3Api::class)
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -154,6 +156,28 @@ class MainActivity : ComponentActivity() {
                                     modifier = Modifier.align(Alignment.BottomCenter)
                                 )
                             }
+                        }
+
+                        // Top App Bar with Cast Button - now on top of everything
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .align(Alignment.TopCenter)
+                        ) {
+                            TopAppBar(
+                                title = { },
+                                actions = {
+                                    CastButton(
+                                        modifier = Modifier
+                                            .size(48.dp)
+                                            .padding(end = 8.dp),
+                                        tint = Color.White
+                                    )
+                                },
+                                colors = TopAppBarDefaults.topAppBarColors(
+                                    containerColor = Color.Transparent
+                                )
+                            )
                         }
                     }
                 }

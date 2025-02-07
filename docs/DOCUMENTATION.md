@@ -62,6 +62,63 @@ app/
 
 ## Core Components
 
+### Screen Mirroring
+- **Overview**
+  TrendFlick implements native Android screen mirroring to enable seamless content sharing on Chromecast and compatible devices.
+
+- **Implementation Details**
+  ```kotlin
+  @Composable
+  fun CastButton(
+      modifier: Modifier = Modifier,
+      tint: Color = Color.White
+  )
+  ```
+
+  Key Features:
+  - Global cast button in app's top bar
+  - Uses Android's built-in screen mirroring
+  - No additional permissions required
+  - Works in both portrait and landscape
+  - Maintains audio playback in all orientations
+  - Compatible with all Chromecast devices
+
+- **Integration Points**
+  - Integrated in MainActivity for app-wide access
+  - Positioned above all other UI elements
+  - Transparent background for visual consistency
+  - Maintains functionality across all screens
+
+- **Best Practices**
+  1. Keep cast button accessible at all times
+  2. Maintain proper z-ordering for visibility
+  3. Use transparent backgrounds to not interfere with content
+  4. Follow Android's native casting patterns
+  5. Handle orientation changes gracefully
+
+- **Usage Guidelines**
+  ```kotlin
+  // Add to top-level UI
+  TopAppBar(
+      title = { },
+      actions = {
+          CastButton(
+              modifier = Modifier.size(48.dp),
+              tint = Color.White
+          )
+      },
+      colors = TopAppBarDefaults.topAppBarColors(
+          containerColor = Color.Transparent
+      )
+  )
+  ```
+
+- **Common Issues**
+  - Handle proper z-ordering in layouts
+  - Manage visibility across different screens
+  - Ensure proper padding with system bars
+  - Handle casting state changes gracefully
+
 ### Authentication
 - Handles BlueSky authentication
 - Manages session tokens
