@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -50,6 +51,8 @@ import com.trendflick.utils.DateUtils
 import kotlinx.coroutines.delay
 import com.trendflick.ui.components.CategoryDrawer
 import androidx.media3.common.util.UnstableApi
+import androidx.compose.foundation.border
+import com.trendflick.ui.utils.CommonUtils
 
 @UnstableApi
 @Composable
@@ -191,9 +194,9 @@ fun ThreadCard(
                             RichTextRenderer(
                                 text = feedPost.post.record.text,
                                 facets = feedPost.post.record.facets ?: emptyList(),
-                                onMentionClick = { onProfileClick() },
-                                onHashtagClick = { tag -> onHashtagClick?.invoke(tag) },
-                                onLinkClick = { url -> 
+                                onMentionClick = { did: String -> onProfileClick() },
+                                onHashtagClick = { tag: String -> onHashtagClick?.invoke(tag) },
+                                onLinkClick = { url: String -> 
                                     onLinkClick?.invoke(url) ?: run {
                                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                                         context.startActivity(intent)
@@ -453,9 +456,9 @@ fun ThreadCard(
                             RichTextRenderer(
                                 text = feedPost.post.record.text,
                                 facets = feedPost.post.record.facets ?: emptyList(),
-                                onMentionClick = { onProfileClick() },
-                                onHashtagClick = { tag -> onHashtagClick?.invoke(tag) },
-                                onLinkClick = { url -> 
+                                onMentionClick = { did: String -> onProfileClick() },
+                                onHashtagClick = { tag: String -> onHashtagClick?.invoke(tag) },
+                                onLinkClick = { url: String -> 
                                     onLinkClick?.invoke(url) ?: run {
                                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                                         context.startActivity(intent)
@@ -863,7 +866,7 @@ private fun EngagementAction(
             }
             if (count > 0) {
                 Text(
-                    text = formatEngagementCount(count),
+                    text = CommonUtils.formatCount(count),
                     style = MaterialTheme.typography.labelSmall,
                     color = Color(0xFFB4A5FF)
                 )
@@ -898,19 +901,13 @@ private fun EngagementAction(
             }
             if (count > 0) {
                 Text(
-                    text = formatEngagementCount(count),
+                    text = CommonUtils.formatCount(count),
                     style = MaterialTheme.typography.labelSmall,
                     color = Color(0xFFB4A5FF)
                 )
             }
         }
     }
-}
-
-private fun formatEngagementCount(count: Int): String = when {
-    count < 1000 -> count.toString()
-    count < 1000000 -> String.format("%.1fK", count / 1000f)
-    else -> String.format("%.1fM", count / 1000000f)
 }
 
 @Composable
@@ -1320,4 +1317,53 @@ private fun FourImagesLayout(images: List<ImageEmbed>, onImageClick: (ImageEmbed
             }
         }
     }
-} 
+}
+
+@Composable
+public fun HashtagBadge(
+    hashtag: String,
+    postCount: Int? = null,
+    isTrending: Boolean = false,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .border(
+                width = 1.dp,
+                color = Color(0xFF6B4EFF).copy(alpha = 0.2f),
+                shape = RoundedCornerShape(16.dp)
+            ),
+        color = Color(0xFF6B4EFF).copy(alpha = 0.1f)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = "#$hashtag",
+                style = MaterialTheme.typography.labelMedium,
+                color = Color(0xFF6B4EFF)
+            )
+            
+            if (isTrending) {
+                Icon(
+                    imageVector = Icons.Default.TrendingUp,
+                    contentDescription = "Trending",
+                    tint = Color(0xFF6B4EFF),
+                    modifier = Modifier.size(14.dp)
+                )
+            }
+            
+            postCount?.let {
+                Text(
+                    text = CommonUtils.formatCount(it),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFF6B4EFF).copy(alpha = 0.7f)
+                )
+            }
+        }
+    }
+}

@@ -77,13 +77,13 @@ fun RichTextPostOverlay(
                         RichTextRenderer(
                             text = text,
                             facets = facets,
-                            onMentionClick = { did -> 
+                            onMentionClick = { did: String -> 
                                 Log.d("RichTextPostOverlay", "Mention clicked: $did")
                             },
-                            onHashtagClick = { tag -> 
+                            onHashtagClick = { tag: String -> 
                                 Log.d("RichTextPostOverlay", "Hashtag clicked: $tag")
                             },
-                            onLinkClick = { url -> 
+                            onLinkClick = { url: String -> 
                                 Log.d("RichTextPostOverlay", "Link clicked: $url")
                             },
                             modifier = Modifier.fillMaxWidth()

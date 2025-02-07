@@ -113,6 +113,26 @@ interface AtProtocolService {
         @Query("cursor") cursor: String? = null
     ): FollowsResponse
 
+    @GET("xrpc/app.bsky.feed.getHashtagFeed")
+    suspend fun getPostsByHashtag(
+        @Query("hashtag") hashtag: String
+    ): TimelineResponse
+
+    @GET("xrpc/app.bsky.graph.getHashtagFollowStatus")
+    suspend fun checkHashtagFollowStatus(
+        @Query("hashtag") hashtag: String
+    ): HashtagFollowResponse
+
+    @POST("xrpc/app.bsky.graph.followHashtag")
+    suspend fun followHashtag(
+        @Query("hashtag") hashtag: String
+    )
+
+    @POST("xrpc/app.bsky.graph.unfollowHashtag")
+    suspend fun unfollowHashtag(
+        @Query("hashtag") hashtag: String
+    )
+
     // Base record type for all AT Protocol records
     sealed class Record {
         abstract val type: String

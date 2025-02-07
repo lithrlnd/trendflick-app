@@ -48,6 +48,10 @@ interface AtProtocolRepository {
     suspend fun parseFacets(text: String): List<Facet>?
     suspend fun createPost(text: String, timestamp: String, facets: List<Facet>? = null)
     suspend fun getMediaPosts(): List<Video>
+    suspend fun getPostsByHashtag(hashtag: String): Result<TimelineResponse>
+    suspend fun checkHashtagFollowStatus(hashtag: String): Boolean
+    suspend fun followHashtag(hashtag: String)
+    suspend fun unfollowHashtag(hashtag: String)
 }
 
 // Data classes used by the interface

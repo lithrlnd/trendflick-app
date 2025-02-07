@@ -1,17 +1,27 @@
 package com.trendflick.ui.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.Composable
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.*
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.sp
 import com.trendflick.data.api.*
 import android.util.Log
 import java.nio.charset.StandardCharsets
-import androidx.compose.ui.graphics.Color
 
 @Composable
 fun RichTextRenderer(
@@ -31,26 +41,16 @@ fun RichTextRenderer(
         var charPos = 0
         var bytePos = 0
         
-        // Pre-calculate all character byte lengths
+        // Pre-calculate character byte lengths
         val charByteLengths = text.map { it.toString().toByteArray(StandardCharsets.UTF_8).size }
         
-        // Build the mapping
+        // Build mapping
         text.forEachIndexed { index, _ ->
             byteToCharMap[bytePos] = charPos
             bytePos += charByteLengths[index]
             charPos++
         }
-        // Add final position
         byteToCharMap[bytePos] = charPos
-
-        // Debug logging for facet ranges
-        facets.forEach { facet ->
-            Log.d("RichTextRenderer", "Facet range: ${facet.index.start}-${facet.index.end}, " +
-                "Text: '${text.substring(
-                    byteToCharMap[facet.index.start] ?: 0,
-                    byteToCharMap[facet.index.end] ?: text.length
-                )}'")
-        }
 
         // Sort and validate facets
         val sortedFacets = facets
@@ -58,45 +58,46 @@ fun RichTextRenderer(
             .filter { facet ->
                 val startChar = byteToCharMap[facet.index.start]
                 val endChar = byteToCharMap[facet.index.end]
-                if (startChar == null || endChar == null || 
-                    startChar < 0 || endChar > text.length || 
-                    startChar >= endChar) {
-                    Log.w("RichTextRenderer", 
-                        "Invalid facet range: start=$startChar, end=$endChar, " +
-                        "byteStart=${facet.index.start}, byteEnd=${facet.index.end}, " +
-                        "textLength=${text.length}")
-                    false
-                } else {
-                    true
-                }
+                startChar != null && endChar != null && 
+                startChar < endChar && 
+                endChar <= text.length
             }
 
-        // Track processed ranges to avoid overlaps
         var lastEnd = -1
-
         sortedFacets.forEach { facet ->
             val startChar = byteToCharMap[facet.index.start] ?: return@forEach
             val endChar = byteToCharMap[facet.index.end] ?: return@forEach
 
-            // Skip if this facet overlaps with a previous one
-            if (startChar < lastEnd) {
-                Log.w("RichTextRenderer", "Skipping overlapping facet at position $startChar")
-                return@forEach
-            }
-
+            if (startChar < lastEnd) return@forEach
             lastEnd = endChar
-
-            // Extract the actual text being decorated
-            val facetText = text.substring(startChar, endChar)
-            Log.d("RichTextRenderer", "Applying facet to text: '$facetText'")
 
             facet.features.forEach { feature ->
                 when (feature) {
+                    is TagFeature -> {
+                        // Enhanced hashtag styling
+                        addStyle(
+                            style = SpanStyle(
+                                color = Color(0xFF6B4EFF),
+                                background = Color(0xFF6B4EFF).copy(alpha = 0.1f),
+                                fontWeight = FontWeight.Medium,
+                                letterSpacing = 0.5.sp
+                            ),
+                            start = startChar,
+                            end = endChar
+                        )
+                        addStringAnnotation(
+                            tag = "hashtag",
+                            annotation = feature.tag,
+                            start = startChar,
+                            end = endChar
+                        )
+                    }
                     is MentionFeature -> {
                         addStyle(
                             style = SpanStyle(
                                 color = Color(0xFF6B4EFF),
-                                textDecoration = TextDecoration.None
+                                fontWeight = FontWeight.Medium,
+                                letterSpacing = 0.5.sp
                             ),
                             start = startChar,
                             end = endChar
@@ -112,7 +113,8 @@ fun RichTextRenderer(
                         addStyle(
                             style = SpanStyle(
                                 color = Color(0xFF6B4EFF),
-                                textDecoration = TextDecoration.Underline
+                                textDecoration = TextDecoration.Underline,
+                                letterSpacing = 0.5.sp
                             ),
                             start = startChar,
                             end = endChar
@@ -124,44 +126,57 @@ fun RichTextRenderer(
                             end = endChar
                         )
                     }
-                    is TagFeature -> {
-                        // Make sure hashtag includes the # symbol
-                        val tagStart = if (facetText.startsWith("#")) startChar else startChar - 1
-                        addStyle(
-                            style = SpanStyle(
-                                color = Color(0xFF6B4EFF),
-                                textDecoration = TextDecoration.None
-                            ),
-                            start = tagStart,
-                            end = endChar
-                        )
-                        addStringAnnotation(
-                            tag = "hashtag",
-                            annotation = feature.tag,
-                            start = tagStart,
-                            end = endChar
-                        )
-                    }
                 }
             }
         }
     }
 
-    ClickableText(
-        text = annotatedString,
-        style = MaterialTheme.typography.bodyLarge.copy(
-            color = MaterialTheme.colorScheme.onSurface
-        ),
-        onClick = { offset ->
+    var pressedOffset by remember { mutableStateOf<Int?>(null) }
+    
+    Box(modifier = modifier) {
+        ClickableText(
+            text = annotatedString,
+            style = MaterialTheme.typography.bodyLarge.copy(
+                color = MaterialTheme.colorScheme.onSurface
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onPress = { offset ->
+                            pressedOffset = offset.x.toInt()
+                            tryAwaitRelease()
+                            pressedOffset = null
+                        }
+                    )
+                },
+            onClick = { offset ->
+                annotatedString.getStringAnnotations(offset, offset)
+                    .firstOrNull()?.let { annotation ->
+                        when (annotation.tag) {
+                            "hashtag" -> onHashtagClick(annotation.item)
+                            "mention" -> onMentionClick(annotation.item)
+                            "link" -> onLinkClick(annotation.item)
+                        }
+                    }
+            }
+        )
+
+        // Visual feedback for interaction
+        pressedOffset?.let { offset ->
             annotatedString.getStringAnnotations(offset, offset)
                 .firstOrNull()?.let { annotation ->
                     when (annotation.tag) {
-                        "mention" -> onMentionClick(annotation.item)
-                        "hashtag" -> onHashtagClick(annotation.item)
-                        "link" -> onLinkClick(annotation.item)
+                        "hashtag", "mention", "link" -> {
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .alpha(0.1f),
+                                color = Color(0xFF6B4EFF)
+                            ) {}
+                        }
                     }
                 }
-        },
-        modifier = modifier
-    )
+        }
+    }
 } 

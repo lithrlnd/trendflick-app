@@ -766,54 +766,34 @@ class AtProtocolRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun getPostsByHashtag(
-        hashtag: String,
-        limit: Int,
-        cursor: String?
-    ): Result<TimelineResponse> = withContext(Dispatchers.IO) {
-        try {
-            if (!ensureValidSession()) {
-                return@withContext Result.failure(Exception("No valid session available"))
-            }
+    override suspend fun getPostsByHashtag(hashtag: String): Result<TimelineResponse> {
+        return getPostsByHashtag(hashtag, 50, null)
+    }
 
-            Log.d(TAG, "🔍 Fetching posts for hashtag: $hashtag")
-            
-            // Get a larger feed to ensure we have enough posts after filtering
-            val response = try {
-                service.getTimeline(
-                    algorithm = "whats-hot",
-                    limit = limit * 3, // Get more posts since we'll be filtering
-                    cursor = cursor
-                )
-            } catch (e: Exception) {
-                Log.w(TAG, "⚠️ Failed to get hot posts, falling back to chronological")
-                service.getTimeline(
-                    algorithm = "reverse-chronological",
-                    limit = limit * 3,
-                    cursor = cursor
-                )
-            }
-
-            // Filter posts containing the hashtag (case insensitive)
-            val searchQuery = "#$hashtag"
-            val filteredFeed = response.feed.filter { feedPost ->
-                feedPost.post.record.text.lowercase().contains(searchQuery.lowercase())
-            }.take(limit)
-            
-            Log.d(TAG, """
-                ✅ Hashtag feed results:
-                • Found ${filteredFeed.size} posts for #$hashtag
-                • Using cursor: ${response.cursor}
-            """.trimIndent())
-
-            Result.success(TimelineResponse(
-                feed = filteredFeed,
-                cursor = response.cursor
-            ))
+    override suspend fun getPostsByHashtag(hashtag: String, limit: Int, cursor: String?): Result<TimelineResponse> {
+        return try {
+            val response = service.getPostsByHashtag(hashtag)
+            Result.success(response)
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Failed to get posts by hashtag: ${e.message}")
             Result.failure(e)
         }
+    }
+
+    override suspend fun checkHashtagFollowStatus(hashtag: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val response = service.checkHashtagFollowStatus(hashtag)
+            response.isFollowing
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    override suspend fun followHashtag(hashtag: String) = withContext(Dispatchers.IO) {
+        service.followHashtag(hashtag)
+    }
+
+    override suspend fun unfollowHashtag(hashtag: String) = withContext(Dispatchers.IO) {
+        service.unfollowHashtag(hashtag)
     }
 
     override suspend fun searchHandles(query: String): List<UserSearchResult> {

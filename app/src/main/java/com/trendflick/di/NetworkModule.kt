@@ -26,11 +26,9 @@ import com.squareup.moshi.ToJson
 import com.squareup.moshi.JsonReader
 import com.squareup.moshi.JsonWriter
 import com.squareup.moshi.JsonDataException
-import com.trendflick.data.api.SessionManager
-import java.net.InetAddress
-import java.util.concurrent.TimeUnit
 import android.util.Log
 import android.content.SharedPreferences
+import java.util.concurrent.TimeUnit
 
 @Module
 @InstallIn(SingletonComponent::class)

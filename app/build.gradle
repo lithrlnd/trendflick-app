@@ -248,4 +248,7 @@ dependencies {
     
     // Coil for image loading
     implementation "io.coil-kt:coil-compose:2.5.0"
+
+    // Accompanist Flow Layout
+    implementation "com.google.accompanist:accompanist-flowlayout:0.30.1"
 } 

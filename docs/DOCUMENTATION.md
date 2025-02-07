@@ -618,6 +618,72 @@ The image viewer provides a full-screen image viewing experience similar to popu
   - Rich text parsing
   - Character validation
 
+### Hashtag System Architecture
+
+#### Current Implementation
+- **HashtagScreen Components**
+  - Tabbed interface (Latest, Trending, Media)
+  - HashtagHeader with metrics display
+  - Related hashtags horizontal scroll
+  - Follow/unfollow functionality
+  - ThreadCard integration for posts
+
+- **State Management**
+  - HashtagViewModel for data handling
+  - Proper loading states
+  - Error handling and recovery
+  - Empty state management
+  - Follow status tracking
+
+- **UI Components**
+  - HashtagTopBar with navigation
+  - Post count and engagement metrics
+  - Related hashtags suggestions
+  - Adaptive layout for different screen sizes
+  - Loading and error state indicators
+
+#### Future Expansion Support
+- **Infrastructure Ready for AT Protocol Updates**
+  - Modular hashtag service integration
+  - Extensible post fetching system
+  - Pagination-ready architecture
+  - Scalable state management
+  - Flexible data models
+
+- **Prepared Features (Awaiting AT Protocol Support)**
+  - Pagination infrastructure
+  - Historical post retrieval system
+  - Real-time hashtag updates
+  - Advanced hashtag search
+  - Trending hashtag algorithms
+  - Cross-instance hashtag aggregation
+
+### Hashtag Implementation and Limitations
+- **Current Limitations**
+  - Maximum of 50 posts per hashtag query
+  - No native pagination support for hashtag searches
+  - No historical hashtag post retrieval
+  - Limited real-time hashtag updates
+
+- **Implementation Details**
+  - Uses AT Protocol's post retrieval system
+  - Implements proper UTF-8 byte handling for hashtag facets
+  - Supports hashtag detection in post creation
+  - Maintains proper facet indexing for hashtags
+
+- **Hashtag Processing**
+  - Regular expression based detection: `(?:^|\s)(#[^\d\s]\S*)(?=\s|$)`
+  - UTF-8 byte position calculation for facets
+  - Maximum hashtag length enforcement (64 characters)
+  - Proper handling of multi-byte characters in hashtags
+
+- **Best Practices**
+  - Cache frequently accessed hashtag results
+  - Implement proper error handling for failed queries
+  - Use proper logging for debugging
+  - Handle empty result sets gracefully
+  - Maintain proper state management for hashtag views
+
 ### Rich Text Handling
 TrendFlick implements AT Protocol's rich text specification using Jetpack Compose's AnnotatedString system:
 
@@ -627,29 +693,34 @@ TrendFlick implements AT Protocol's rich text specification using Jetpack Compos
    - Validates and filters invalid facets
    - Prevents facet overlaps
    - Proper emoji and special character support
+   - Hashtag-specific processing with 50-post limit awareness
 
 2. **Text Rendering**
    - Converts between UTF-8 bytes and character positions
    - Maintains accurate byte-to-character mapping
    - Handles multi-byte characters (emoji, special characters)
    - Applies appropriate styling for each facet type
+   - Implements consistent hashtag styling and interaction
 
 3. **Interaction Handling**
    - Click detection for mentions, hashtags, and links
    - Proper navigation and action handling
    - Error handling for invalid interactions
+   - Hashtag-specific UI feedback for limit reached
 
 4. **Debug Support**
    - Detailed logging of facet ranges
    - Invalid facet reporting
    - Text extraction verification
    - Position mapping validation
+   - Hashtag query monitoring and debugging
 
 5. **Common Issues**
    - Handles partial facet rendering
    - Manages overlapping facets
    - Processes multi-byte characters correctly
    - Validates facet ranges
+   - Handles hashtag query limitations gracefully
 
 ## Development Guidelines
 
@@ -658,6 +729,23 @@ TrendFlick implements AT Protocol's rich text specification using Jetpack Compos
 - Use meaningful variable names
 - Document public APIs
 - Write unit tests for new features
+
+### Future Feature Development
+- **Hashtag System Expansion**
+  - Monitor AT Protocol repository for hashtag API updates
+  - Follow modular design patterns for new features
+  - Maintain backward compatibility
+  - Document integration points for future features
+  - Test against different AT Protocol versions
+  - Consider cross-instance compatibility
+
+- **Implementation Guidelines**
+  - Use feature flags for new hashtag capabilities
+  - Implement graceful degradation
+  - Maintain consistent error handling
+  - Follow AT Protocol best practices
+  - Document API version dependencies
+  - Consider performance implications
 
 ### Git Workflow
 - Feature branches
@@ -708,6 +796,22 @@ TrendFlick implements AT Protocol's rich text specification using Jetpack Compos
    - Check rate limits
    - Verify cache state
    - Check network connectivity
+
+4. Hashtag-related issues
+   - Understand 50-post limit per query
+   - Verify hashtag format and length (max 64 chars)
+   - Check UTF-8 encoding for special characters
+   - Monitor facet index calculations
+   - Verify proper error handling for empty results
+   - Ensure proper UI feedback for limit reached
+   
+   Future Expansion Considerations:
+   - Monitor AT Protocol updates for hashtag feature expansion
+   - Check HashtagViewModel for new API integration points
+   - Verify pagination implementation when available
+   - Test real-time update system when supported
+   - Validate cross-instance hashtag functionality
+   - Review trending algorithm integration points
 
 ### Debug Tools
 - Logcat filtering
