@@ -345,6 +345,135 @@ Developers should:
 9. Maintain accessibility standards
 10. Follow performance guidelines
 
+### Image Viewer Implementation
+The image viewer provides a full-screen image viewing experience similar to popular social media platforms.
+
+#### Components
+1. **ImageViewer.kt**
+   ```kotlin
+   @Composable
+   fun ImageViewer(
+       images: List<ImageEmbed>,
+       initialImageIndex: Int = 0,
+       onDismiss: () -> Unit
+   )
+   ```
+
+   Key Features:
+   - Full-screen display with black background
+   - Horizontal paging for multiple images
+   - Purple close button (Color: `0xFF6B4EFF`)
+   - Interactive pagination dots
+   - Proper image scaling and aspect ratio
+
+2. **Integration with ThreadCard**
+   - Tracks selected image index
+   - Handles image click events
+   - Manages viewer visibility state
+   - Provides smooth transitions
+
+#### Visual Implementation
+- **Layout**
+  - Full-screen overlay with black background
+  - Top-aligned close button
+  - Center-aligned image content
+  - Bottom-aligned pagination dots
+  - Proper status bar padding
+
+- **Navigation**
+  - Horizontal swipe between images
+  - Tap to dismiss
+  - Visual feedback for current image
+  - Smooth transitions between images
+
+- **Styling**
+  - Close Button: Circle shape with purple background
+  - Pagination Dots:
+    - Selected: Solid purple (`0xFF6B4EFF`)
+    - Unselected: Semi-transparent white
+  - Image Scaling: `ContentScale.Fit`
+  - Background: Solid black for optimal viewing
+
+#### Usage Guidelines
+1. **Implementation**
+   ```kotlin
+   var selectedImageIndex by remember { mutableStateOf<Int?>(null) }
+
+   // Show viewer when image is clicked
+   AsyncImage(
+       modifier = Modifier.clickable { selectedImageIndex = index }
+   )
+
+   // Add viewer overlay
+   selectedImageIndex?.let { index ->
+       ImageViewer(
+           images = images,
+           initialImageIndex = index,
+           onDismiss = { selectedImageIndex = null }
+       )
+   }
+   ```
+
+2. **Best Practices**
+   - Handle proper image loading states
+   - Implement error handling for failed loads
+   - Maintain aspect ratios
+   - Consider memory management for large images
+   - Implement proper cleanup on dismiss
+   - Handle configuration changes
+   - Support accessibility features
+
+3. **Error Handling**
+   - Handle null or invalid image URLs
+   - Provide fallback for loading failures
+   - Manage memory efficiently
+   - Handle network connectivity issues
+
+4. **Performance Considerations**
+   - Lazy loading of images
+   - Proper image caching
+   - Memory management for large images
+   - Efficient state management
+   - Smooth animations and transitions
+
+#### Integration Points
+1. **ThreadCard Integration**
+   - Image click handling
+   - State management
+   - Proper layout integration
+   - Consistent styling
+
+2. **AT Protocol Compliance**
+   - Proper image URL construction
+   - Blob reference handling
+   - Proper alt text support
+   - Accessibility considerations
+
+#### Common Issues and Solutions
+1. **Image Loading**
+   - Use proper error handling
+   - Implement loading states
+   - Handle network failures
+   - Manage memory efficiently
+
+2. **Navigation**
+   - Handle gesture conflicts
+   - Maintain smooth transitions
+   - Proper state management
+   - Handle edge cases
+
+3. **State Management**
+   - Track selected image index
+   - Handle configuration changes
+   - Manage viewer visibility
+   - Clean up resources
+
+4. **Performance**
+   - Optimize image loading
+   - Manage memory usage
+   - Handle large image sets
+   - Smooth animations
+
 ## AT Protocol Integration
 
 ### Key Concepts

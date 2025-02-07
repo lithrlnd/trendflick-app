@@ -102,6 +102,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import com.trendflick.data.api.Facet
 import com.trendflick.ui.components.RichTextPostOverlay
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.pager.PagerDefaults
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -283,34 +286,45 @@ fun HomeScreen(
                             } else {
                                 VerticalPager(
                                     state = pagerState,
-                                    modifier = Modifier.fillMaxSize()
+                                    modifier = Modifier.fillMaxSize(),
+                                    key = { threads[it].post.uri },
+                                    pageSpacing = 1.dp,
+                                    userScrollEnabled = true,
+                                    beyondBoundsPageCount = 1,
+                                    flingBehavior = PagerDefaults.flingBehavior(
+                                        state = pagerState,
+                                        snapAnimationSpec = spring(
+                                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                                            stiffness = Spring.StiffnessLow
+                                        )
+                                    )
                                 ) { page ->
                                     val thread = threads.getOrNull(page)
                                     if (thread != null) {
-                                        ThreadCard(
-                                            feedPost = thread,
-                                            isLiked = likedPosts.contains(thread.post.uri),
-                                            isReposted = repostedPosts.contains(thread.post.uri),
-                                            onLikeClick = { viewModel.toggleLike(thread.post.uri) },
-                                            onRepostClick = { viewModel.repost(thread.post.uri) },
-                                            onShareClick = { viewModel.sharePost(thread.post.uri) },
-                                            onProfileClick = { onNavigateToProfile(thread.post.author.did) },
-                                            onThreadClick = { /* Handle thread click */ },
-                                            onCommentClick = {
-                                                viewModel.loadComments(thread.post.uri)
-                                                viewModel.toggleComments(true)
-                                            },
-                                            onCreatePost = { navController.navigate(Screen.CreatePost.route) },
-                                            onImageClick = { image ->
-                                                // Handle image click by opening in full screen or in a viewer
-                                                val imageUrl = image.fullsize ?: image.image?.link?.let { link ->
-                                                    "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
-                                                } ?: ""
-                                                // You can implement your image viewing logic here
-                                            },
-                                            onHashtagClick = { tag -> viewModel.onHashtagSelected(tag) },
-                                            modifier = Modifier.fillMaxWidth()
-                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(Color.Black)
+                                        ) {
+                                            ThreadCard(
+                                                feedPost = thread,
+                                                isLiked = likedPosts.contains(thread.post.uri),
+                                                isReposted = repostedPosts.contains(thread.post.uri),
+                                                onLikeClick = { viewModel.toggleLike(thread.post.uri) },
+                                                onRepostClick = { viewModel.repost(thread.post.uri) },
+                                                onShareClick = { viewModel.sharePost(thread.post.uri) },
+                                                onProfileClick = { onNavigateToProfile(thread.post.author.did) },
+                                                onThreadClick = { /* Handle thread click */ },
+                                                onCommentClick = {
+                                                    viewModel.loadComments(thread.post.uri)
+                                                    viewModel.toggleComments(true)
+                                                },
+                                                onCreatePost = { navController.navigate(Screen.CreatePost.route) },
+                                                onImageClick = { image -> /* Handle image click */ },
+                                                onHashtagClick = { tag -> viewModel.onHashtagSelected(tag) },
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -1424,7 +1438,17 @@ fun VideoFeedSection(
                 VerticalPager(
                     state = pagerState,
                     modifier = Modifier.fillMaxSize(),
-                    key = { videos[it].uri }
+                    key = { videos[it].uri },
+                    pageSpacing = 1.dp,
+                    userScrollEnabled = true,
+                    beyondBoundsPageCount = 1,
+                    flingBehavior = PagerDefaults.flingBehavior(
+                        state = pagerState,
+                        snapAnimationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessLow
+                        )
+                    )
                 ) { page ->
                     val video = videos[page]
                     var itemLoadError by remember { mutableStateOf<String?>(null) }

@@ -10,8 +10,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Favorite
@@ -41,9 +46,6 @@ import com.trendflick.data.api.*
 import com.trendflick.utils.DateUtils
 import kotlinx.coroutines.delay
 import com.trendflick.ui.components.CategoryDrawer
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.items
 
 @Composable
 fun ThreadCard(
@@ -64,6 +66,7 @@ fun ThreadCard(
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
     var showHeartAnimation by remember { mutableStateOf(false) }
+    var selectedImageIndex by remember { mutableStateOf<Int?>(null) }
     val view = LocalView.current
     val context = LocalContext.current
     var isDrawerOpen by remember { mutableStateOf(false) }
@@ -173,54 +176,72 @@ fun ThreadCard(
                         Spacer(modifier = Modifier.height(12.dp))
 
                         // Post content
-                        RichTextRenderer(
-                            text = feedPost.post.record.text,
-                            facets = feedPost.post.record.facets ?: emptyList(),
-                            onMentionClick = { onProfileClick() },
-                            onHashtagClick = { tag -> onHashtagClick?.invoke(tag) },
-                            onLinkClick = { url ->
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                context.startActivity(intent)
-                            },
-                            modifier = Modifier.weight(1f)
-                        )
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                        ) {
+                            // Rich text content
+                            RichTextRenderer(
+                                text = feedPost.post.record.text,
+                                facets = feedPost.post.record.facets ?: emptyList(),
+                                onMentionClick = { onProfileClick() },
+                                onHashtagClick = { tag -> onHashtagClick?.invoke(tag) },
+                                onLinkClick = { url ->
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                    context.startActivity(intent)
+                                },
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
 
-                        // Post media if exists
-                        feedPost.post.embed?.images?.let { images ->
-                            Spacer(modifier = Modifier.height(8.dp))
-                            if (images.size == 1) {
-                                AsyncImage(
-                                    model = images[0].fullsize ?: images[0].image?.link?.let { link ->
-                                        "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
-                                    } ?: "",
-                                    contentDescription = images[0].alt,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .aspectRatio(16f/9f)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .clickable { onImageClick(images[0]) },
-                                    contentScale = ContentScale.Crop
-                                )
-                            } else {
-                                LazyVerticalGrid(
-                                    columns = GridCells.Fixed(2),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .aspectRatio(16f/9f)
-                                ) {
-                                    items(images) { image ->
+                            // Post media if exists
+                            feedPost.post.embed?.images?.let { images ->
+                                if (images.size == 1) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .aspectRatio(16f/9f)
+                                            .padding(vertical = 8.dp)
+                                    ) {
                                         AsyncImage(
-                                            model = image.fullsize ?: image.image?.link?.let { link ->
+                                            model = images[0].fullsize ?: images[0].image?.link?.let { link ->
                                                 "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
                                             } ?: "",
-                                            contentDescription = image.alt,
+                                            contentDescription = images[0].alt,
                                             modifier = Modifier
                                                 .fillMaxSize()
-                                                .aspectRatio(1f)
-                                                .clip(RoundedCornerShape(4.dp))
-                                                .clickable { onImageClick(image) },
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .clickable { selectedImageIndex = 0 },
                                             contentScale = ContentScale.Crop
                                         )
+                                    }
+                                } else {
+                                    LazyVerticalGrid(
+                                        columns = GridCells.Fixed(2),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .aspectRatio(1f)
+                                            .padding(vertical = 8.dp)
+                                    ) {
+                                        items(images) { image ->
+                                            Box(
+                                                modifier = Modifier
+                                                    .aspectRatio(1f)
+                                                    .padding(2.dp)
+                                            ) {
+                                                AsyncImage(
+                                                    model = image.fullsize ?: image.image?.link?.let { link ->
+                                                        "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
+                                                    } ?: "",
+                                                    contentDescription = image.alt,
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .clip(RoundedCornerShape(4.dp))
+                                                        .clickable { selectedImageIndex = images.indexOf(image) },
+                                                    contentScale = ContentScale.Crop
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -324,54 +345,69 @@ fun ThreadCard(
                         Spacer(modifier = Modifier.height(12.dp))
 
                         // Post content
-                        RichTextRenderer(
-                            text = feedPost.post.record.text,
-                            facets = feedPost.post.record.facets ?: emptyList(),
-                            onMentionClick = { onProfileClick() },
-                            onHashtagClick = { tag -> onHashtagClick?.invoke(tag) },
-                            onLinkClick = { url ->
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                context.startActivity(intent)
-                            },
-                            modifier = Modifier.weight(1f)
-                        )
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                        ) {
+                            // Rich text content
+                            RichTextRenderer(
+                                text = feedPost.post.record.text,
+                                facets = feedPost.post.record.facets ?: emptyList(),
+                                onMentionClick = { onProfileClick() },
+                                onHashtagClick = { tag -> onHashtagClick?.invoke(tag) },
+                                onLinkClick = { url ->
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                    context.startActivity(intent)
+                                }
+                            )
 
-                        // Post media if exists
-                        feedPost.post.embed?.images?.let { images ->
-                            Spacer(modifier = Modifier.height(8.dp))
-                            if (images.size == 1) {
-                                AsyncImage(
-                                    model = images[0].fullsize ?: images[0].image?.link?.let { link ->
-                                        "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
-                                    } ?: "",
-                                    contentDescription = images[0].alt,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .aspectRatio(16f/9f)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .clickable { onImageClick(images[0]) },
-                                    contentScale = ContentScale.Crop
-                                )
-                            } else {
-                                LazyVerticalGrid(
-                                    columns = GridCells.Fixed(2),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .aspectRatio(16f/9f)
-                                ) {
-                                    items(images) { image ->
+                            // Post media if exists
+                            feedPost.post.embed?.images?.let { images ->
+                                Spacer(modifier = Modifier.height(12.dp))
+                                if (images.size == 1) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .aspectRatio(16f/9f)
+                                    ) {
                                         AsyncImage(
-                                            model = image.fullsize ?: image.image?.link?.let { link ->
+                                            model = images[0].fullsize ?: images[0].image?.link?.let { link ->
                                                 "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
                                             } ?: "",
-                                            contentDescription = image.alt,
+                                            contentDescription = images[0].alt,
                                             modifier = Modifier
                                                 .fillMaxSize()
-                                                .aspectRatio(1f)
-                                                .clip(RoundedCornerShape(4.dp))
-                                                .clickable { onImageClick(image) },
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .clickable { selectedImageIndex = 0 },
                                             contentScale = ContentScale.Crop
                                         )
+                                    }
+                                } else {
+                                    LazyVerticalGrid(
+                                        columns = GridCells.Fixed(2),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(IntrinsicSize.Min)
+                                    ) {
+                                        items(images) { image ->
+                                            Box(
+                                                modifier = Modifier
+                                                    .aspectRatio(1f)
+                                                    .padding(2.dp)
+                                            ) {
+                                                AsyncImage(
+                                                    model = image.fullsize ?: image.image?.link?.let { link ->
+                                                        "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
+                                                    } ?: "",
+                                                    contentDescription = image.alt,
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .clip(RoundedCornerShape(4.dp))
+                                                        .clickable { selectedImageIndex = images.indexOf(image) },
+                                                    contentScale = ContentScale.Crop
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -456,6 +492,17 @@ fun ThreadCard(
                     delay(800)
                     showHeartAnimation = false
                 }
+            }
+        }
+
+        // Add ImageViewer overlay
+        feedPost.post.embed?.images?.let { images ->
+            selectedImageIndex?.let { index ->
+                ImageViewer(
+                    images = images,
+                    initialImageIndex = index,
+                    onDismiss = { selectedImageIndex = null }
+                )
             }
         }
     }
