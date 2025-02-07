@@ -184,12 +184,37 @@ app/
   - Smooth animations and transitions
   
 - **Engagement Features**
-  - Right-aligned engagement column
+  - Adaptive layout based on orientation:
+    - Portrait: Vertical column on right edge
+    - Landscape: Horizontal row aligned at top-right
   - Haptic feedback on actions
   - Proper state persistence
   - Consistent styling with main feed
   - Proper count formatting (K, M suffixes)
   
+- **Orientation-Specific Behavior**
+  1. **Portrait Mode**
+     - Vertical scrolling feed
+     - Vertical engagement column on right
+     - Bottom-aligned author info
+     - Full-screen video/image display
+
+  2. **Landscape Mode**
+     - Horizontal scrolling feed with TikTok-style smooth transitions
+     - Horizontal engagement row at top-right
+     - Bottom-left aligned author info
+     - Optimized layout for wider screens
+     - Spring-based animation for smooth scrolling:
+       ```kotlin
+       flingBehavior = PagerDefaults.flingBehavior(
+           state = pagerState,
+           snapAnimationSpec = spring(
+               dampingRatio = Spring.DampingRatioMediumBouncy,
+               stiffness = Spring.StiffnessLow
+           )
+       )
+       ```
+
 - **UI/UX Considerations**
   - Bottom sheet comments overlay
   - Smooth animations

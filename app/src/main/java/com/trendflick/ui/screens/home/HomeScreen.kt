@@ -682,10 +682,10 @@ fun VideoItem(
             )
         }
 
-        // Author info
+        // Author info - always at bottom
         Box(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
+                .align(Alignment.BottomStart)  // Always bottom left
                 .fillMaxWidth()
                 .background(
                     brush = Brush.verticalGradient(
@@ -697,6 +697,7 @@ fun VideoItem(
                 )
                 .padding(16.dp)
         ) {
+            // Author row
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -730,26 +731,51 @@ fun VideoItem(
             }
         }
 
-        // Engagement column
-        Box(
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .padding(end = 16.dp)
-        ) {
-            EngagementColumn(
-                isLiked = isLiked,
-                isReposted = repostedPosts.contains(video.uri),
-                likeCount = video.likes,
-                replyCount = video.comments,
-                repostCount = video.shares,
-                onLikeClick = {
-                    view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                    onLikeClick()
-                },
-                onCommentClick = onCommentClick,
-                onRepostClick = { viewModel.repost(video.uri) },
-                onShareClick = onShareClick
-            )
+        // Engagement actions
+        if (isLandscape) {
+            // Horizontal engagement row at top right in landscape
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(end = 16.dp)  // Removed top padding to align with screen top
+            ) {
+                EngagementColumn(
+                    isLiked = isLiked,
+                    isReposted = repostedPosts.contains(video.uri),
+                    likeCount = video.likes,
+                    replyCount = video.comments,
+                    repostCount = video.shares,
+                    onLikeClick = {
+                        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                        onLikeClick()
+                    },
+                    onCommentClick = onCommentClick,
+                    onRepostClick = { viewModel.repost(video.uri) },
+                    onShareClick = onShareClick
+                )
+            }
+        } else {
+            // Vertical engagement column in portrait
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 16.dp)
+            ) {
+                EngagementColumn(
+                    isLiked = isLiked,
+                    isReposted = repostedPosts.contains(video.uri),
+                    likeCount = video.likes,
+                    replyCount = video.comments,
+                    repostCount = video.shares,
+                    onLikeClick = {
+                        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                        onLikeClick()
+                    },
+                    onCommentClick = onCommentClick,
+                    onRepostClick = { viewModel.repost(video.uri) },
+                    onShareClick = onShareClick
+                )
+            }
         }
 
         // Rich text overlay
@@ -1234,8 +1260,8 @@ private fun CommentItem(
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.surfaceVariant)
                     .clickable { onProfileClick(comment.post.author.did) },
-                    contentScale = ContentScale.Crop
-                )
+                contentScale = ContentScale.Crop
+            )
 
             Column(modifier = Modifier.weight(1f)) {
                 Row(
@@ -1404,6 +1430,8 @@ fun VideoFeedSection(
     val showComments by viewModel.showComments.collectAsState()
     val currentThread by viewModel.currentThread.collectAsState()
     val showAuthorOnly by viewModel.showAuthorOnly.collectAsState()
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
 
     LaunchedEffect(videos, isLoading, error) {
         Log.d("VideoFeedSection", """
@@ -1512,30 +1540,29 @@ fun VideoFeedSection(
                 Log.d("VideoFeedSection", "✅ Showing ${videos.size} videos")
                 val pagerState = rememberPagerState(pageCount = { videos.size })
                 
-                VerticalPager(
-                    state = pagerState,
-                    modifier = Modifier.fillMaxSize(),
-                    key = { videos[it].uri },
-                    pageSpacing = 1.dp,
-                    userScrollEnabled = true,
-                    beyondBoundsPageCount = 1,
-                    flingBehavior = PagerDefaults.flingBehavior(
+                if (isLandscape) {
+                    // Horizontal pager for landscape
+                    HorizontalPager(
                         state = pagerState,
-                        snapAnimationSpec = spring(
-                            dampingRatio = Spring.DampingRatioMediumBouncy,
-                            stiffness = Spring.StiffnessLow
+                        modifier = Modifier.fillMaxSize(),
+                        key = { videos[it].uri },
+                        pageSpacing = 1.dp,
+                        userScrollEnabled = true,
+                        beyondBoundsPageCount = 1,
+                        flingBehavior = PagerDefaults.flingBehavior(
+                            state = pagerState,
+                            snapAnimationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessLow
+                            )
                         )
-                    )
-                ) { page ->
-                    val video = videos[page]
-                    var itemLoadError by remember { mutableStateOf<String?>(null) }
-                    
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(ComposeColor.Black)
-                    ) {
-                        if (itemLoadError == null) {
+                    ) { page ->
+                        val video = videos[page]
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(ComposeColor.Black)
+                        ) {
                             VideoItem(
                                 video = video,
                                 isLiked = likedPosts.contains(video.uri),
@@ -1549,17 +1576,44 @@ fun VideoFeedSection(
                                 isVisible = page == pagerState.currentPage,
                                 onLongPress = { /* TODO: Implement long press action */ }
                             )
-                        } else {
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = itemLoadError ?: "Failed to load media",
-                                    color = ComposeColor.White,
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                            }
+                        }
+                    }
+                } else {
+                    // Vertical pager for portrait (existing code)
+                    VerticalPager(
+                        state = pagerState,
+                        modifier = Modifier.fillMaxSize(),
+                        key = { videos[it].uri },
+                        pageSpacing = 1.dp,
+                        userScrollEnabled = true,
+                        beyondBoundsPageCount = 1,
+                        flingBehavior = PagerDefaults.flingBehavior(
+                            state = pagerState,
+                            snapAnimationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessLow
+                            )
+                        )
+                    ) { page ->
+                        val video = videos[page]
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(ComposeColor.Black)
+                        ) {
+                            VideoItem(
+                                video = video,
+                                isLiked = likedPosts.contains(video.uri),
+                                onLikeClick = { viewModel.toggleLike(video.uri) },
+                                onCommentClick = {
+                                    viewModel.loadComments(video.uri)
+                                    viewModel.toggleComments(true)
+                                },
+                                onShareClick = { viewModel.sharePost(video.uri) },
+                                onProfileClick = { /* TODO: Implement profile navigation */ },
+                                isVisible = page == pagerState.currentPage,
+                                onLongPress = { /* TODO: Implement long press action */ }
+                            )
                         }
                     }
                 }
