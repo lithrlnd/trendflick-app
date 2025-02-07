@@ -33,6 +33,7 @@ import kotlinx.coroutines.delay
 import android.util.Log
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
+import android.net.Uri
 
 @UnstableApi
 @Composable
@@ -51,26 +52,54 @@ fun VideoPlayer(
 
     DisposableEffect(videoUrl) {
         try {
-            // Create player instance
-            val newPlayer = ExoPlayer.Builder(context).build().apply {
-                // Set up media source
-                val mediaItem = MediaItem.fromUri(videoUrl)
-                setMediaItem(mediaItem)
-                
-                // Add error listener
-                addListener(object : Player.Listener {
-                    override fun onPlayerError(error: PlaybackException) {
-                        Log.e("VideoPlayer", "Player error: ${error.message}")
-                        errorState = error.message
-                        onError(error.message ?: "Failed to load video")
+            // Create HTTP data source factory with user agent
+            val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+                .setUserAgent("TrendFlick/1.0")
+                .setConnectTimeoutMs(15000)
+                .setReadTimeoutMs(15000)
+                .setAllowCrossProtocolRedirects(true)
+
+            // Create media source factory
+            val mediaSourceFactory = DefaultMediaSourceFactory(context)
+                .setDataSourceFactory(httpDataSourceFactory)
+
+            // Create player instance with custom factory
+            val newPlayer = ExoPlayer.Builder(context)
+                .setMediaSourceFactory(mediaSourceFactory)
+                .build().apply {
+                    // Handle different URL types
+                    val finalUrl = when {
+                        // Handle Bluesky CDN videos
+                        videoUrl.contains("cdn.bsky.app/video") -> videoUrl
+                        // Handle oEmbed URLs
+                        videoUrl.contains("bsky.app/profile") -> {
+                            val oEmbedUrl = "https://embed.bsky.app/oembed?url=${Uri.encode(videoUrl)}&format=json"
+                            Log.d("VideoPlayer", "🔗 Fetching oEmbed data from: $oEmbedUrl")
+                            oEmbedUrl
+                        }
+                        else -> videoUrl
                     }
-                })
-                
-                // Prepare player
-                prepare()
-                playWhenReady = !isPaused
-                repeatMode = Player.REPEAT_MODE_ONE
-            }
+
+                    Log.d("VideoPlayer", "🎥 Playing video from URL: $finalUrl")
+                    
+                    // Set up media source
+                    val mediaItem = MediaItem.fromUri(finalUrl)
+                    setMediaItem(mediaItem)
+                    
+                    // Add error listener
+                    addListener(object : Player.Listener {
+                        override fun onPlayerError(error: PlaybackException) {
+                            Log.e("VideoPlayer", "❌ Player error: ${error.message}")
+                            errorState = error.message
+                            onError(error.message ?: "Failed to load video")
+                        }
+                    })
+                    
+                    // Prepare player
+                    prepare()
+                    playWhenReady = !isPaused
+                    repeatMode = Player.REPEAT_MODE_ONE
+                }
             
             player = newPlayer
             
@@ -79,7 +108,7 @@ fun VideoPlayer(
                 player = null
             }
         } catch (e: Exception) {
-            Log.e("VideoPlayer", "Error initializing player: ${e.message}")
+            Log.e("VideoPlayer", "❌ Error initializing player: ${e.message}")
             errorState = e.message
             onError(e.message ?: "Failed to initialize video player")
             onDispose {}

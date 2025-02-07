@@ -591,6 +591,7 @@ fun VideoItem(
             }
     ) {
         if (video.isImage) {
+            Log.d("VideoItem", "📸 Displaying image: ${video.imageUrl}")
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -611,15 +612,30 @@ fun VideoItem(
                 )
             }
         } else if (video.videoUrl.isNotBlank()) {
+            Log.d("VideoItem", """
+                🎥 Attempting to play video:
+                URL: ${video.videoUrl}
+                Is Visible: $isVisible
+                Is Paused: $isPaused
+                Playback Speed: $playbackSpeed
+            """.trimIndent())
             VideoPlayer(
                 videoUrl = video.videoUrl,
                 isVisible = isVisible,
-                onProgressChanged = { newProgress -> progress = newProgress },
+                onProgressChanged = { newProgress -> 
+                    progress = newProgress
+                    Log.d("VideoItem", "📊 Video progress: $progress")
+                },
                 playbackSpeed = playbackSpeed,
                 isPaused = isPaused,
                 modifier = Modifier.fillMaxSize(),
-                onError = { error -> loadError = "Failed to load video: $error" }
+                onError = { error -> 
+                    Log.e("VideoItem", "❌ Video playback error: $error")
+                    loadError = "Failed to load video: $error" 
+                }
             )
+        } else {
+            Log.w("VideoItem", "⚠️ No media content available for video item")
         }
 
         // Error state

@@ -2,6 +2,7 @@ package com.trendflick.ui.components
 
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -39,6 +41,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.*
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -46,7 +49,9 @@ import com.trendflick.data.api.*
 import com.trendflick.utils.DateUtils
 import kotlinx.coroutines.delay
 import com.trendflick.ui.components.CategoryDrawer
+import androidx.media3.common.util.UnstableApi
 
+@UnstableApi
 @Composable
 fun ThreadCard(
     feedPost: FeedPost,
@@ -197,148 +202,145 @@ fun ThreadCard(
                                 modifier = Modifier.padding(bottom = 8.dp)
                             )
 
-                            // Post media if exists
-                            feedPost.post.embed?.images?.let { images ->
-                                Spacer(modifier = Modifier.height(12.dp))
-                                when (images.size) {
-                                    1 -> {
-                                        // Single image - preserve aspect ratio
+                            // Handle embeds immediately after text
+                            feedPost.post.embed?.let { embed ->
+                                Spacer(modifier = Modifier.height(8.dp))
+                                
+                                // Handle video content first
+                                when {
+                                    embed.video != null || (embed.external?.uri?.let { uri ->
+                                        uri.endsWith(".mp4", ignoreCase = true) ||
+                                        uri.endsWith(".mov", ignoreCase = true) ||
+                                        uri.endsWith(".webm", ignoreCase = true) ||
+                                        uri.contains("video", ignoreCase = true)
+                                    } == true) -> {
                                         Box(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .padding(vertical = 8.dp)
+                                                .aspectRatio(16f/9f)
                                         ) {
-                                            AsyncImage(
-                                                model = images[0].fullsize ?: images[0].image?.link?.let { link ->
-                                                    "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
-                                                } ?: "",
-                                                contentDescription = images[0].alt,
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .clip(RoundedCornerShape(12.dp))
-                                                    .clickable { selectedImageIndex = 0 },
-                                                contentScale = ContentScale.FillWidth
-                                            )
-                                        }
-                                    }
-                                    2 -> {
-                                        // Two images side by side
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(vertical = 8.dp),
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            images.forEachIndexed { index, image ->
-                                                Box(
-                                                    modifier = Modifier
-                                                        .weight(1f)
-                                                        .aspectRatio(1f)
-                                                ) {
-                                                    AsyncImage(
-                                                        model = image.fullsize ?: image.image?.link?.let { link ->
-                                                            "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
-                                                        } ?: "",
-                                                        contentDescription = image.alt,
-                                                        modifier = Modifier
-                                                            .fillMaxSize()
-                                                            .clip(RoundedCornerShape(12.dp))
-                                                            .clickable { selectedImageIndex = index },
-                                                        contentScale = ContentScale.Crop
-                                                    )
+                                            var isPaused by remember { mutableStateOf(false) }
+                                            var progress by remember { mutableStateOf(0f) }
+                                            var loadError by remember { mutableStateOf<String?>(null) }
+
+                                            val videoUrl = when {
+                                                embed.video?.ref?.link != null -> {
+                                                    "https://cdn.bsky.app/video/plain/${embed.video.ref.link}"
                                                 }
-                                            }
-                                        }
-                                    }
-                                    3 -> {
-                                        // Three images - one large, two small
-                                        Column(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(vertical = 8.dp),
-                                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            // First image takes full width
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .aspectRatio(16f/9f)
-                                            ) {
-                                                AsyncImage(
-                                                    model = images[0].fullsize ?: images[0].image?.link?.let { link ->
-                                                        "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
-                                                    } ?: "",
-                                                    contentDescription = images[0].alt,
-                                                    modifier = Modifier
-                                                        .fillMaxSize()
-                                                        .clip(RoundedCornerShape(12.dp))
-                                                        .clickable { selectedImageIndex = 0 },
-                                                    contentScale = ContentScale.Crop
-                                                )
-                                            }
-                                            
-                                            // Two images side by side
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                            ) {
-                                                for (i in 1..2) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .weight(1f)
-                                                            .aspectRatio(16f/9f)
-                                                    ) {
-                                                        AsyncImage(
-                                                            model = images[i].fullsize ?: images[i].image?.link?.let { link ->
-                                                                "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
-                                                            } ?: "",
-                                                            contentDescription = images[i].alt,
-                                                            modifier = Modifier
-                                                                .fillMaxSize()
-                                                                .clip(RoundedCornerShape(12.dp))
-                                                                .clickable { selectedImageIndex = i },
-                                                            contentScale = ContentScale.Crop
-                                                        )
+                                                embed.external?.uri != null -> {
+                                                    when {
+                                                        embed.external.uri.contains("bsky.app/profile") -> {
+                                                            val encodedUrl = Uri.encode(embed.external.uri)
+                                                            "https://embed.bsky.app/oembed?url=$encodedUrl&format=json"
+                                                        }
+                                                        else -> embed.external.uri
                                                     }
                                                 }
+                                                else -> ""
                                             }
-                                        }
-                                    }
-                                    4 -> {
-                                        // Four images in a grid
-                                        Column(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(vertical = 8.dp),
-                                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            for (row in 0..1) {
-                                                Row(
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+
+                                            if (videoUrl.isNotEmpty()) {
+                                                VideoPlayer(
+                                                    videoUrl = videoUrl,
+                                                    isVisible = true,
+                                                    onProgressChanged = { progress = it },
+                                                    isPaused = isPaused,
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    onError = { loadError = it }
+                                                )
+
+                                                // Tap to play/pause
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .pointerInput(Unit) {
+                                                            detectTapGestures(
+                                                                onTap = { isPaused = !isPaused }
+                                                            )
+                                                        }
+                                                )
+
+                                                // Progress bar
+                                                Box(
+                                                    modifier = Modifier
+                                                        .align(Alignment.BottomCenter)
+                                                        .fillMaxWidth()
+                                                        .height(2.dp)
+                                                        .background(Color.Black.copy(alpha = 0.3f))
                                                 ) {
-                                                    for (col in 0..1) {
-                                                        val index = row * 2 + col
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .weight(1f)
-                                                                .aspectRatio(1f)
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth(progress)
+                                                            .fillMaxHeight()
+                                                            .background(Color(0xFF6B4EFF))
+                                                    )
+                                                }
+
+                                                // Error state
+                                                loadError?.let { error ->
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .fillMaxSize()
+                                                            .background(Color.Black.copy(alpha = 0.7f)),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Column(
+                                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                                            verticalArrangement = Arrangement.spacedBy(8.dp)
                                                         ) {
-                                                            AsyncImage(
-                                                                model = images[index].fullsize ?: images[index].image?.link?.let { link ->
-                                                                    "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
-                                                                } ?: "",
-                                                                contentDescription = images[index].alt,
-                                                                modifier = Modifier
-                                                                    .fillMaxSize()
-                                                                    .clip(RoundedCornerShape(12.dp))
-                                                                    .clickable { selectedImageIndex = index },
-                                                                contentScale = ContentScale.Crop
+                                                            Icon(
+                                                                imageVector = Icons.Default.Error,
+                                                                contentDescription = null,
+                                                                tint = Color.White,
+                                                                modifier = Modifier.size(48.dp)
+                                                            )
+                                                            Text(
+                                                                text = error,
+                                                                color = Color.White,
+                                                                style = MaterialTheme.typography.bodyMedium,
+                                                                textAlign = TextAlign.Center,
+                                                                modifier = Modifier.padding(horizontal = 16.dp)
                                                             )
                                                         }
                                                     }
                                                 }
                                             }
+                                        }
+                                    }
+                                    // Handle external website embeds
+                                    embed.external != null -> {
+                                        EmbeddedLink(
+                                            title = embed.external.title ?: "Untitled",
+                                            description = embed.external.description,
+                                            thumbnail = embed.external,
+                                            url = embed.external.uri,
+                                            onClick = { 
+                                                onLinkClick?.invoke(embed.external.uri) ?: run {
+                                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(embed.external.uri))
+                                                    context.startActivity(intent)
+                                                }
+                                            }
+                                        )
+                                    }
+                                    // Handle images
+                                    embed.images != null -> {
+                                        when (embed.images.size) {
+                                            1 -> SingleImageLayout(
+                                                image = embed.images[0],
+                                                onImageClick = { selectedImageIndex = 0 }
+                                            )
+                                            2 -> TwoImagesLayout(
+                                                images = embed.images,
+                                                onImageClick = { image -> selectedImageIndex = embed.images.indexOf(image) }
+                                            )
+                                            3 -> ThreeImagesLayout(
+                                                images = embed.images,
+                                                onImageClick = { image -> selectedImageIndex = embed.images.indexOf(image) }
+                                            )
+                                            4 -> FourImagesLayout(
+                                                images = embed.images,
+                                                onImageClick = { image -> selectedImageIndex = embed.images.indexOf(image) }
+                                            )
                                         }
                                     }
                                 }
@@ -461,148 +463,145 @@ fun ThreadCard(
                                 }
                             )
 
-                            // Post media if exists
-                            feedPost.post.embed?.images?.let { images ->
-                                Spacer(modifier = Modifier.height(12.dp))
-                                when (images.size) {
-                                    1 -> {
-                                        // Single image - preserve aspect ratio
+                            // Handle embeds immediately after text
+                            feedPost.post.embed?.let { embed ->
+                                Spacer(modifier = Modifier.height(8.dp))
+                                
+                                // Handle video content first
+                                when {
+                                    embed.video != null || (embed.external?.uri?.let { uri ->
+                                        uri.endsWith(".mp4", ignoreCase = true) ||
+                                        uri.endsWith(".mov", ignoreCase = true) ||
+                                        uri.endsWith(".webm", ignoreCase = true) ||
+                                        uri.contains("video", ignoreCase = true)
+                                    } == true) -> {
                                         Box(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .padding(vertical = 8.dp)
+                                                .aspectRatio(16f/9f)
                                         ) {
-                                            AsyncImage(
-                                                model = images[0].fullsize ?: images[0].image?.link?.let { link ->
-                                                    "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
-                                                } ?: "",
-                                                contentDescription = images[0].alt,
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .clip(RoundedCornerShape(12.dp))
-                                                    .clickable { selectedImageIndex = 0 },
-                                                contentScale = ContentScale.FillWidth
-                                            )
-                                        }
-                                    }
-                                    2 -> {
-                                        // Two images side by side
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(vertical = 8.dp),
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            images.forEachIndexed { index, image ->
-                                                Box(
-                                                    modifier = Modifier
-                                                        .weight(1f)
-                                                        .aspectRatio(1f)
-                                                ) {
-                                                    AsyncImage(
-                                                        model = image.fullsize ?: image.image?.link?.let { link ->
-                                                            "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
-                                                        } ?: "",
-                                                        contentDescription = image.alt,
-                                                        modifier = Modifier
-                                                            .fillMaxSize()
-                                                            .clip(RoundedCornerShape(12.dp))
-                                                            .clickable { selectedImageIndex = index },
-                                                        contentScale = ContentScale.Crop
-                                                    )
+                                            var isPaused by remember { mutableStateOf(false) }
+                                            var progress by remember { mutableStateOf(0f) }
+                                            var loadError by remember { mutableStateOf<String?>(null) }
+
+                                            val videoUrl = when {
+                                                embed.video?.ref?.link != null -> {
+                                                    "https://cdn.bsky.app/video/plain/${embed.video.ref.link}"
                                                 }
-                                            }
-                                        }
-                                    }
-                                    3 -> {
-                                        // Three images - one large, two small
-                                        Column(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(vertical = 8.dp),
-                                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            // First image takes full width
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .aspectRatio(16f/9f)
-                                            ) {
-                                                AsyncImage(
-                                                    model = images[0].fullsize ?: images[0].image?.link?.let { link ->
-                                                        "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
-                                                    } ?: "",
-                                                    contentDescription = images[0].alt,
-                                                    modifier = Modifier
-                                                        .fillMaxSize()
-                                                        .clip(RoundedCornerShape(12.dp))
-                                                        .clickable { selectedImageIndex = 0 },
-                                                    contentScale = ContentScale.Crop
-                                                )
-                                            }
-                                            
-                                            // Two images side by side
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                            ) {
-                                                for (i in 1..2) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .weight(1f)
-                                                            .aspectRatio(16f/9f)
-                                                    ) {
-                                                        AsyncImage(
-                                                            model = images[i].fullsize ?: images[i].image?.link?.let { link ->
-                                                                "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
-                                                            } ?: "",
-                                                            contentDescription = images[i].alt,
-                                                            modifier = Modifier
-                                                                .fillMaxSize()
-                                                                .clip(RoundedCornerShape(12.dp))
-                                                                .clickable { selectedImageIndex = i },
-                                                            contentScale = ContentScale.Crop
-                                                        )
+                                                embed.external?.uri != null -> {
+                                                    when {
+                                                        embed.external.uri.contains("bsky.app/profile") -> {
+                                                            val encodedUrl = Uri.encode(embed.external.uri)
+                                                            "https://embed.bsky.app/oembed?url=$encodedUrl&format=json"
+                                                        }
+                                                        else -> embed.external.uri
                                                     }
                                                 }
+                                                else -> ""
                                             }
-                                        }
-                                    }
-                                    4 -> {
-                                        // Four images in a grid
-                                        Column(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(vertical = 8.dp),
-                                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            for (row in 0..1) {
-                                                Row(
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+
+                                            if (videoUrl.isNotEmpty()) {
+                                                VideoPlayer(
+                                                    videoUrl = videoUrl,
+                                                    isVisible = true,
+                                                    onProgressChanged = { progress = it },
+                                                    isPaused = isPaused,
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    onError = { loadError = it }
+                                                )
+
+                                                // Tap to play/pause
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .pointerInput(Unit) {
+                                                            detectTapGestures(
+                                                                onTap = { isPaused = !isPaused }
+                                                            )
+                                                        }
+                                                )
+
+                                                // Progress bar
+                                                Box(
+                                                    modifier = Modifier
+                                                        .align(Alignment.BottomCenter)
+                                                        .fillMaxWidth()
+                                                        .height(2.dp)
+                                                        .background(Color.Black.copy(alpha = 0.3f))
                                                 ) {
-                                                    for (col in 0..1) {
-                                                        val index = row * 2 + col
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .weight(1f)
-                                                                .aspectRatio(1f)
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth(progress)
+                                                            .fillMaxHeight()
+                                                            .background(Color(0xFF6B4EFF))
+                                                    )
+                                                }
+
+                                                // Error state
+                                                loadError?.let { error ->
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .fillMaxSize()
+                                                            .background(Color.Black.copy(alpha = 0.7f)),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Column(
+                                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                                            verticalArrangement = Arrangement.spacedBy(8.dp)
                                                         ) {
-                                                            AsyncImage(
-                                                                model = images[index].fullsize ?: images[index].image?.link?.let { link ->
-                                                                    "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
-                                                                } ?: "",
-                                                                contentDescription = images[index].alt,
-                                                                modifier = Modifier
-                                                                    .fillMaxSize()
-                                                                    .clip(RoundedCornerShape(12.dp))
-                                                                    .clickable { selectedImageIndex = index },
-                                                                contentScale = ContentScale.Crop
+                                                            Icon(
+                                                                imageVector = Icons.Default.Error,
+                                                                contentDescription = null,
+                                                                tint = Color.White,
+                                                                modifier = Modifier.size(48.dp)
+                                                            )
+                                                            Text(
+                                                                text = error,
+                                                                color = Color.White,
+                                                                style = MaterialTheme.typography.bodyMedium,
+                                                                textAlign = TextAlign.Center,
+                                                                modifier = Modifier.padding(horizontal = 16.dp)
                                                             )
                                                         }
                                                     }
                                                 }
                                             }
+                                        }
+                                    }
+                                    // Handle external website embeds
+                                    embed.external != null -> {
+                                        EmbeddedLink(
+                                            title = embed.external.title ?: "Untitled",
+                                            description = embed.external.description,
+                                            thumbnail = embed.external,
+                                            url = embed.external.uri,
+                                            onClick = { 
+                                                onLinkClick?.invoke(embed.external.uri) ?: run {
+                                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(embed.external.uri))
+                                                    context.startActivity(intent)
+                                                }
+                                            }
+                                        )
+                                    }
+                                    // Handle images
+                                    embed.images != null -> {
+                                        when (embed.images.size) {
+                                            1 -> SingleImageLayout(
+                                                image = embed.images[0],
+                                                onImageClick = { selectedImageIndex = 0 }
+                                            )
+                                            2 -> TwoImagesLayout(
+                                                images = embed.images,
+                                                onImageClick = { image -> selectedImageIndex = embed.images.indexOf(image) }
+                                            )
+                                            3 -> ThreeImagesLayout(
+                                                images = embed.images,
+                                                onImageClick = { image -> selectedImageIndex = embed.images.indexOf(image) }
+                                            )
+                                            4 -> FourImagesLayout(
+                                                images = embed.images,
+                                                onImageClick = { image -> selectedImageIndex = embed.images.indexOf(image) }
+                                            )
                                         }
                                     }
                                 }
@@ -1188,6 +1187,136 @@ fun CommentsSection(
                     authorDid = authorDid,
                     showAuthorOnly = showAuthorOnly
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SingleImageLayout(image: ImageEmbed, onImageClick: (ImageEmbed) -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onImageClick(image) }
+    ) {
+        AsyncImage(
+            model = image.fullsize ?: image.image?.link?.let { link ->
+                "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
+            } ?: "",
+            contentDescription = image.alt,
+            modifier = Modifier.fillMaxWidth(),
+            contentScale = ContentScale.FillWidth
+        )
+    }
+}
+
+@Composable
+private fun TwoImagesLayout(images: List<ImageEmbed>, onImageClick: (ImageEmbed) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        images.forEach { image ->
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .aspectRatio(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { onImageClick(image) }
+            ) {
+                AsyncImage(
+                    model = image.fullsize ?: image.image?.link?.let { link ->
+                        "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
+                    } ?: "",
+                    contentDescription = image.alt,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThreeImagesLayout(images: List<ImageEmbed>, onImageClick: (ImageEmbed) -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f/9f)
+                .clip(RoundedCornerShape(12.dp))
+                .clickable { onImageClick(images[0]) }
+        ) {
+            AsyncImage(
+                model = images[0].fullsize ?: images[0].image?.link?.let { link ->
+                    "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
+                } ?: "",
+                contentDescription = images[0].alt,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        }
+        
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            for (i in 1..2) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .aspectRatio(16f/9f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onImageClick(images[i]) }
+                ) {
+                    AsyncImage(
+                        model = images[i].fullsize ?: images[i].image?.link?.let { link ->
+                            "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
+                        } ?: "",
+                        contentDescription = images[i].alt,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FourImagesLayout(images: List<ImageEmbed>, onImageClick: (ImageEmbed) -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        for (row in 0..1) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                for (col in 0..1) {
+                    val index = row * 2 + col
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onImageClick(images[index]) }
+                    ) {
+                        AsyncImage(
+                            model = images[index].fullsize ?: images[index].image?.link?.let { link ->
+                                "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
+                            } ?: "",
+                            contentDescription = images[index].alt,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                }
             }
         }
     }
