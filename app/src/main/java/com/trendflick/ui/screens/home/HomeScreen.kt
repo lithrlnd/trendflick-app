@@ -96,6 +96,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.zIndex
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
@@ -167,65 +168,81 @@ fun HomeScreen(
                     .background(ComposeColor.Black),
                 contentWindowInsets = WindowInsets(0, 0, 0, 0),
                 topBar = {
-                    Box(
+                    Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 12.dp)
+                            .zIndex(1f),
+                        color = ComposeColor.Transparent
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .background(
-                                        color = ComposeColor(0xFF1A1A1A),
-                                        shape = RoundedCornerShape(20.dp)
-                                    )
-                                    .padding(4.dp)
-                            ) {
-                                Button(
-                                    onClick = { 
-                                        sharedViewModel.updateSelectedFeed("Trends")
-                                    },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (selectedFeed == "Trends") ComposeColor(0xFF6B4EFF) else ComposeColor.Transparent,
-                                        contentColor = if (selectedFeed == "Trends") ComposeColor.White else ComposeColor.White.copy(alpha = 0.7f)
-                                    ),
-                                    shape = RoundedCornerShape(18.dp),
-                                    modifier = Modifier.height(36.dp)
+                        TopAppBar(
+                            title = {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(end = 48.dp),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = "Trends",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Medium
-                                    )
+                                    Row(
+                                        modifier = Modifier
+                                            .background(
+                                                color = ComposeColor(0xFF1A1A1A),
+                                                shape = RoundedCornerShape(20.dp)
+                                            )
+                                            .padding(4.dp)
+                                    ) {
+                                        Button(
+                                            onClick = { 
+                                                sharedViewModel.updateSelectedFeed("Trends")
+                                            },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = if (selectedFeed == "Trends") ComposeColor(0xFF6B4EFF) else ComposeColor.Transparent,
+                                                contentColor = if (selectedFeed == "Trends") ComposeColor.White else ComposeColor.White.copy(alpha = 0.7f)
+                                            ),
+                                            shape = RoundedCornerShape(18.dp),
+                                            modifier = Modifier.height(36.dp)
+                                        ) {
+                                            Text(
+                                                text = "Trends",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                        
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        
+                                        Button(
+                                            onClick = { 
+                                                sharedViewModel.updateSelectedFeed("Flicks")
+                                            },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = if (selectedFeed == "Flicks") ComposeColor(0xFF6B4EFF) else ComposeColor.Transparent,
+                                                contentColor = if (selectedFeed == "Flicks") ComposeColor.White else ComposeColor.White.copy(alpha = 0.7f)
+                                            ),
+                                            shape = RoundedCornerShape(18.dp),
+                                            modifier = Modifier.height(36.dp)
+                                        ) {
+                                            Text(
+                                                text = "Flicks",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                    }
                                 }
-                                
-                                Spacer(modifier = Modifier.width(8.dp))
-                                
-                                Button(
-                                    onClick = { 
-                                        sharedViewModel.updateSelectedFeed("Flicks")
-                                    },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (selectedFeed == "Flicks") ComposeColor(0xFF6B4EFF) else ComposeColor.Transparent,
-                                        contentColor = if (selectedFeed == "Flicks") ComposeColor.White else ComposeColor.White.copy(alpha = 0.7f)
-                                    ),
-                                    shape = RoundedCornerShape(18.dp),
-                                    modifier = Modifier.height(36.dp)
-                                ) {
-                                    Text(
-                                        text = "Flicks",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                            }
-                        }
+                            },
+                            actions = {
+                                CastButton(
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .padding(end = 8.dp),
+                                    tint = ComposeColor.White
+                                )
+                            },
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = ComposeColor.Transparent
+                            )
+                        )
                     }
                 }
             ) { paddingValues ->
@@ -459,18 +476,47 @@ fun HomeScreen(
             )
         }
 
-        // Single browser overlay declaration
+        // Move the browser overlay outside the main content Box but inside the root Box
         AnimatedVisibility(
             visible = currentBrowserUrl != null,
             enter = slideInVertically(initialOffsetY = { it }),
-            exit = slideOutVertically(targetOffsetY = { it })
+            exit = slideOutVertically(targetOffsetY = { it }),
+            modifier = Modifier.zIndex(2f)
         ) {
             currentBrowserUrl?.let { url ->
-                InAppBrowser(
-                    url = url,
-                    onDismiss = { currentBrowserUrl = null },
-                    modifier = Modifier.align(Alignment.BottomCenter)
-                )
+                Surface(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = 56.dp),
+                    color = ComposeColor.Black
+                ) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        InAppBrowser(
+                            url = url,
+                            onDismiss = { currentBrowserUrl = null },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        
+                        // Add a close button that's always visible
+                        IconButton(
+                            onClick = { currentBrowserUrl = null },
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(8.dp)
+                                .size(40.dp)
+                                .background(
+                                    color = ComposeColor.Black.copy(alpha = 0.5f),
+                                    shape = CircleShape
+                                )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close browser",
+                                tint = ComposeColor.White
+                            )
+                        }
+                    }
+                }
             }
         }
     }

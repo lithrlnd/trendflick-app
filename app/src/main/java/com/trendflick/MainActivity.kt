@@ -157,28 +157,6 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                         }
-
-                        // Top App Bar with Cast Button - now on top of everything
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .align(Alignment.TopCenter)
-                        ) {
-                            TopAppBar(
-                                title = { },
-                                actions = {
-                                    CastButton(
-                                        modifier = Modifier
-                                            .size(48.dp)
-                                            .padding(end = 8.dp),
-                                        tint = Color.White
-                                    )
-                                },
-                                colors = TopAppBarDefaults.topAppBarColors(
-                                    containerColor = Color.Transparent
-                                )
-                            )
-                        }
                     }
                 }
             }

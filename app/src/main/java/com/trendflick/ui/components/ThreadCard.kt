@@ -199,50 +199,145 @@ fun ThreadCard(
 
                             // Post media if exists
                             feedPost.post.embed?.images?.let { images ->
-                                if (images.size == 1) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .aspectRatio(16f/9f)
-                                            .padding(vertical = 8.dp)
-                                    ) {
-                                        AsyncImage(
-                                            model = images[0].fullsize ?: images[0].image?.link?.let { link ->
-                                                "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
-                                            } ?: "",
-                                            contentDescription = images[0].alt,
+                                Spacer(modifier = Modifier.height(12.dp))
+                                when (images.size) {
+                                    1 -> {
+                                        // Single image - preserve aspect ratio
+                                        Box(
                                             modifier = Modifier
-                                                .fillMaxSize()
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .clickable { selectedImageIndex = 0 },
-                                            contentScale = ContentScale.Crop
-                                        )
+                                                .fillMaxWidth()
+                                                .padding(vertical = 8.dp)
+                                        ) {
+                                            AsyncImage(
+                                                model = images[0].fullsize ?: images[0].image?.link?.let { link ->
+                                                    "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
+                                                } ?: "",
+                                                contentDescription = images[0].alt,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .clickable { selectedImageIndex = 0 },
+                                                contentScale = ContentScale.FillWidth
+                                            )
+                                        }
                                     }
-                                } else {
-                                    LazyVerticalGrid(
-                                        columns = GridCells.Fixed(2),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .aspectRatio(1f)
-                                            .padding(vertical = 8.dp)
-                                    ) {
-                                        items(images) { image ->
+                                    2 -> {
+                                        // Two images side by side
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 8.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            images.forEachIndexed { index, image ->
+                                                Box(
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .aspectRatio(1f)
+                                                ) {
+                                                    AsyncImage(
+                                                        model = image.fullsize ?: image.image?.link?.let { link ->
+                                                            "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
+                                                        } ?: "",
+                                                        contentDescription = image.alt,
+                                                        modifier = Modifier
+                                                            .fillMaxSize()
+                                                            .clip(RoundedCornerShape(12.dp))
+                                                            .clickable { selectedImageIndex = index },
+                                                        contentScale = ContentScale.Crop
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                    3 -> {
+                                        // Three images - one large, two small
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 8.dp),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            // First image takes full width
                                             Box(
                                                 modifier = Modifier
-                                                    .aspectRatio(1f)
-                                                    .padding(2.dp)
+                                                    .fillMaxWidth()
+                                                    .aspectRatio(16f/9f)
                                             ) {
                                                 AsyncImage(
-                                                    model = image.fullsize ?: image.image?.link?.let { link ->
+                                                    model = images[0].fullsize ?: images[0].image?.link?.let { link ->
                                                         "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
                                                     } ?: "",
-                                                    contentDescription = image.alt,
+                                                    contentDescription = images[0].alt,
                                                     modifier = Modifier
                                                         .fillMaxSize()
-                                                        .clip(RoundedCornerShape(4.dp))
-                                                        .clickable { selectedImageIndex = images.indexOf(image) },
+                                                        .clip(RoundedCornerShape(12.dp))
+                                                        .clickable { selectedImageIndex = 0 },
                                                     contentScale = ContentScale.Crop
                                                 )
+                                            }
+                                            
+                                            // Two images side by side
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                for (i in 1..2) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .weight(1f)
+                                                            .aspectRatio(16f/9f)
+                                                    ) {
+                                                        AsyncImage(
+                                                            model = images[i].fullsize ?: images[i].image?.link?.let { link ->
+                                                                "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
+                                                            } ?: "",
+                                                            contentDescription = images[i].alt,
+                                                            modifier = Modifier
+                                                                .fillMaxSize()
+                                                                .clip(RoundedCornerShape(12.dp))
+                                                                .clickable { selectedImageIndex = i },
+                                                            contentScale = ContentScale.Crop
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    4 -> {
+                                        // Four images in a grid
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 8.dp),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            for (row in 0..1) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                ) {
+                                                    for (col in 0..1) {
+                                                        val index = row * 2 + col
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .weight(1f)
+                                                                .aspectRatio(1f)
+                                                        ) {
+                                                            AsyncImage(
+                                                                model = images[index].fullsize ?: images[index].image?.link?.let { link ->
+                                                                    "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
+                                                                } ?: "",
+                                                                contentDescription = images[index].alt,
+                                                                modifier = Modifier
+                                                                    .fillMaxSize()
+                                                                    .clip(RoundedCornerShape(12.dp))
+                                                                    .clickable { selectedImageIndex = index },
+                                                                contentScale = ContentScale.Crop
+                                                            )
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -369,48 +464,144 @@ fun ThreadCard(
                             // Post media if exists
                             feedPost.post.embed?.images?.let { images ->
                                 Spacer(modifier = Modifier.height(12.dp))
-                                if (images.size == 1) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .aspectRatio(16f/9f)
-                                    ) {
-                                        AsyncImage(
-                                            model = images[0].fullsize ?: images[0].image?.link?.let { link ->
-                                                "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
-                                            } ?: "",
-                                            contentDescription = images[0].alt,
+                                when (images.size) {
+                                    1 -> {
+                                        // Single image - preserve aspect ratio
+                                        Box(
                                             modifier = Modifier
-                                                .fillMaxSize()
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .clickable { selectedImageIndex = 0 },
-                                            contentScale = ContentScale.Crop
-                                        )
+                                                .fillMaxWidth()
+                                                .padding(vertical = 8.dp)
+                                        ) {
+                                            AsyncImage(
+                                                model = images[0].fullsize ?: images[0].image?.link?.let { link ->
+                                                    "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
+                                                } ?: "",
+                                                contentDescription = images[0].alt,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .clickable { selectedImageIndex = 0 },
+                                                contentScale = ContentScale.FillWidth
+                                            )
+                                        }
                                     }
-                                } else {
-                                    LazyVerticalGrid(
-                                        columns = GridCells.Fixed(2),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(IntrinsicSize.Min)
-                                    ) {
-                                        items(images) { image ->
+                                    2 -> {
+                                        // Two images side by side
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 8.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            images.forEachIndexed { index, image ->
+                                                Box(
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .aspectRatio(1f)
+                                                ) {
+                                                    AsyncImage(
+                                                        model = image.fullsize ?: image.image?.link?.let { link ->
+                                                            "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
+                                                        } ?: "",
+                                                        contentDescription = image.alt,
+                                                        modifier = Modifier
+                                                            .fillMaxSize()
+                                                            .clip(RoundedCornerShape(12.dp))
+                                                            .clickable { selectedImageIndex = index },
+                                                        contentScale = ContentScale.Crop
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                    3 -> {
+                                        // Three images - one large, two small
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 8.dp),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            // First image takes full width
                                             Box(
                                                 modifier = Modifier
-                                                    .aspectRatio(1f)
-                                                    .padding(2.dp)
+                                                    .fillMaxWidth()
+                                                    .aspectRatio(16f/9f)
                                             ) {
                                                 AsyncImage(
-                                                    model = image.fullsize ?: image.image?.link?.let { link ->
+                                                    model = images[0].fullsize ?: images[0].image?.link?.let { link ->
                                                         "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
                                                     } ?: "",
-                                                    contentDescription = image.alt,
+                                                    contentDescription = images[0].alt,
                                                     modifier = Modifier
                                                         .fillMaxSize()
-                                                        .clip(RoundedCornerShape(4.dp))
-                                                        .clickable { selectedImageIndex = images.indexOf(image) },
+                                                        .clip(RoundedCornerShape(12.dp))
+                                                        .clickable { selectedImageIndex = 0 },
                                                     contentScale = ContentScale.Crop
                                                 )
+                                            }
+                                            
+                                            // Two images side by side
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                for (i in 1..2) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .weight(1f)
+                                                            .aspectRatio(16f/9f)
+                                                    ) {
+                                                        AsyncImage(
+                                                            model = images[i].fullsize ?: images[i].image?.link?.let { link ->
+                                                                "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
+                                                            } ?: "",
+                                                            contentDescription = images[i].alt,
+                                                            modifier = Modifier
+                                                                .fillMaxSize()
+                                                                .clip(RoundedCornerShape(12.dp))
+                                                                .clickable { selectedImageIndex = i },
+                                                            contentScale = ContentScale.Crop
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    4 -> {
+                                        // Four images in a grid
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 8.dp),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            for (row in 0..1) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                ) {
+                                                    for (col in 0..1) {
+                                                        val index = row * 2 + col
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .weight(1f)
+                                                                .aspectRatio(1f)
+                                                        ) {
+                                                            AsyncImage(
+                                                                model = images[index].fullsize ?: images[index].image?.link?.let { link ->
+                                                                    "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
+                                                                } ?: "",
+                                                                contentDescription = images[index].alt,
+                                                                modifier = Modifier
+                                                                    .fillMaxSize()
+                                                                    .clip(RoundedCornerShape(12.dp))
+                                                                    .clickable { selectedImageIndex = index },
+                                                                contentScale = ContentScale.Crop
+                                                            )
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }
