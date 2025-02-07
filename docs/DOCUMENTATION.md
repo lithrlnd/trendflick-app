@@ -233,366 +233,144 @@ app/
     - Proper handling of different text lengths
     - Support for AT Protocol rich text features
 
-### Rich Text Implementation
-The comment system implements AT Protocol's rich text specification:
+### Orientation-Specific Layout Implementation
 
-1. **Facet Processing**
-   - UTF-8 byte-based indices for proper text handling
-   - Support for @mentions, #hashtags, and URLs
-   - Proper emoji and special character handling
-   - Facet overlap prevention
-   - Validation of facet ranges
+#### Landscape Mode Behavior
+- **Media Content Layout**
+  - Left panel takes 60% of screen width for media content
+  - Media properly scaled and centered
+  - Maintains aspect ratio for different content types
+  - Supports videos, images, and link previews
+  - Proper error state handling
 
-2. **Rich Text Overlay**
-   - Long-press activation with haptic feedback
-   - Smooth fade animations for overlay visibility
-   - Fallback mechanism between caption and description
-   - Proper text rendering with AT Protocol facets
-   - Consistent dark theme styling
-   - Tap-to-dismiss functionality
-   - Scrollable content for long text
-   - Comprehensive state logging
-   - Error state handling
+- **Content Types Handling**
+  1. **Posts with Media**
+     ```kotlin
+     Row(modifier = Modifier.fillMaxSize()) {
+         // Left side: Media (60% width)
+         Box(modifier = Modifier.weight(0.6f))
+         // Right side: Content (40% width)
+         Column(modifier = Modifier.weight(0.4f))
+     }
+     ```
+     - Videos maintain 16:9 aspect ratio
+     - Images scale appropriately
+     - Link previews centered in media panel
+     - Proper error state handling
 
-3. **Implementation Details**
+  2. **Text-Only Posts**
+     - Uses full width of screen
+     - Engagement actions at top
+     - Content flows naturally below
+     - Proper spacing and alignment
+
+- **Engagement Actions**
+  - Horizontal layout in landscape mode
+  - Aligned to top-right of content
+  - Maintains consistent styling
+  - Proper spacing between actions
+
+- **Content Organization**
+  - Author info below engagement actions
+  - Rich text content with proper padding
+  - External links rendered appropriately
+  - Proper spacing between elements
+
+#### Portrait Mode Behavior
+- Vertical scrolling feed
+- FAB visible for post creation
+- Engagement actions in vertical column
+- Full-width media content
+- Bottom-aligned author info
+
+#### Implementation Guidelines
+1. **Media Handling**
    ```kotlin
-   RichTextPostOverlay(
-       visible: Boolean,
-       text: String,
-       facets: List<Facet>,
-       onDismiss: () -> Unit
+   Box(
+       modifier = Modifier
+           .fillMaxSize()
+           .aspectRatio(16f/9f)
+           .align(Alignment.Center)
    )
    ```
-   
-   Key Features:
-   - Semi-transparent black background (alpha: 0.85)
-   - Rounded corner surface for content
-   - Centered positioning
-   - Proper padding and spacing
-   - Support for both image and video content
-   - Maintains aspect ratio of media content
-   - Handles empty caption states
+   - Use proper aspect ratios
+   - Center content in container
+   - Handle different media types
+   - Implement error states
 
-4. **Usage Guidelines**
-   - Implement long-press detection using `pointerInput`
-   - Add haptic feedback using `HapticFeedbackConstants.LONG_PRESS`
-   - Manage overlay visibility with `remember` state
-   - Use proper logging for state changes
-   - Handle both caption and description fields
-   - Implement proper cleanup on dismiss
-   - Follow accessibility guidelines
-
-5. **Best Practices**
-   - Always provide haptic feedback for long-press
-   - Use fallback text when caption is empty
-   - Maintain proper state management
-   - Log important state changes
-   - Handle edge cases (empty text, null facets)
-   - Follow consistent animation patterns
-   - Ensure proper contrast for text
-   - Test with various content lengths
-
-6. **Common Issues**
-   - Handle empty captions gracefully
-   - Manage proper text contrast
-   - Handle orientation changes
-   - Manage proper z-indexing
-   - Handle system interruptions
-   - Manage memory efficiently
-
-### Development Guidelines
-
-When working with the comment system:
-1. Always use proper UTF-8 handling for facets
-2. Maintain consistent styling with the main feed
-3. Implement proper error handling
-4. Follow AT Protocol specifications for rich text
-5. Ensure proper state management
-6. Handle all edge cases (empty states, errors, etc.)
-7. Maintain consistent engagement behavior
-8. Use proper animation timings
-9. Implement proper cleanup
-10. Follow accessibility guidelines
-
-### Common Implementation Notes
-
-#### Media3 and Experimental Features
-When using experimental features and Media3 components:
-1. **UnstableApi Annotation**
+2. **Layout Switching**
    ```kotlin
-   @file:OptIn(
-       ExperimentalMaterial3Api::class,
-       ExperimentalMaterialApi::class,
-       ExperimentalFoundationApi::class
-   )
-   @file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-   ```
-   - Separate Media3's UnstableApi annotation from other OptIn annotations
-   - Use fully qualified path for UnstableApi annotation
-   - Place file annotations before package declaration
-
-2. **Compose Shape System**
-   - Import shape components explicitly: `import androidx.compose.foundation.shape.CircleShape`
-   - Use consistent shape system across the application
-   - Maintain shape hierarchy for nested components
-   - Follow Material Design shape guidelines
-
-3. **Best Practices**
-   - Keep experimental feature annotations at file level when possible
-   - Document usage of experimental APIs
-   - Plan for API changes in experimental features
-   - Maintain consistent import organization
-   - Group related imports together
-   - Use explicit imports over wildcards
-
-4. **Common Issues and Solutions**
-   - UnstableApi annotation conflicts: Use separate file annotation
-   - Shape resolution issues: Ensure proper imports
-   - Experimental feature warnings: Document and track usage
-   - Import conflicts: Use alias for conflicting names
-   - State management: Implement proper state hoisting
-
-### Engagement System
-#### Visual Implementation
-- **Color Scheme**
-  - Active State: `Color(0xFF6B4EFF)` - Deep purple for activated elements
-  - Inactive State: `Color(0xFFB4A5FF)` - Light purple for better visibility
-  - Consistent across both Trends and Flicks interfaces
-  - Designed for visibility against both light and dark backgrounds
-
-- **Animation Effects**
-  - Scale animation on interaction (0.8f to 1f)
-  - Spring-based animation with medium bouncy damping
-  - Smooth transitions for state changes
-  - Visual feedback for user interactions
-
-- **Haptic Feedback**
-  - Dual haptic response system:
-    - `HapticFeedbackConstants.VIRTUAL_KEY`
-    - `HapticFeedbackConstants.KEYBOARD_TAP`
-  - Consistent feedback across all engagement actions
-  - Enhanced tactile response for better user experience
-
-#### Implementation Details
-```kotlin
-@Composable
-private fun EngagementAction(
-    icon: ImageVector,
-    count: Int = 0,
-    isActive: Boolean = false,
-    tint: Color = Color(0xFFB4A5FF),
-    isHorizontal: Boolean = false,
-    onClick: () -> Unit
-)
-```
-
-- **Features**:
-  - Like/Unlike with heart animation
-  - Comment system with count display
-  - Repost functionality
-  - Share capability
-  - Numeric formatting (K, M suffixes)
-  - Responsive layout (portrait/landscape)
-
-- **Layout Variants**:
-  - Portrait: Vertical column on right edge
-  - Landscape: Horizontal row at top
-  - Adaptive spacing and alignment
-  - Proper edge padding and spacing
-
-#### Integration Points
-- **Trends Page**:
-  - Integrated with `ThreadCard.kt`
-  - Consistent styling with text content
-  - Proper state management
-  - Rich text post context
-
-- **Flicks Page**:
-  - Integrated with video/image content
-  - Enhanced visibility against media
-  - Maintained interaction consistency
-  - Media-specific optimizations
-
-#### Best Practices
-1. **State Management**
-   - Use `remember` for local state
-   - Implement proper state hoisting
-   - Handle all interaction states
-   - Maintain consistency across screens
-
-2. **Performance**
-   - Efficient recomposition
-   - Proper animation cleanup
-   - Optimized haptic feedback
-   - Smart layout measurements
-
-3. **Accessibility**
-   - Clear touch targets
-   - Proper content descriptions
-   - Consistent interaction patterns
-   - Adequate contrast ratios
-
-4. **Error Handling**
-   - Graceful state updates
-   - Proper error recovery
-   - Network failure handling
-   - State restoration
-
-#### Usage Guidelines
-```kotlin
-EngagementColumn(
-    isLiked = isLiked,
-    isReposted = isReposted,
-    likeCount = likeCount,
-    replyCount = replyCount,
-    repostCount = repostCount,
-    onLikeClick = { /* Handle like */ },
-    onCommentClick = { /* Handle comment */ },
-    onRepostClick = { /* Handle repost */ },
-    onShareClick = { /* Handle share */ }
-)
-```
-
-Developers should:
-1. Maintain consistent color usage
-2. Preserve haptic feedback implementation
-3. Handle all interaction states
-4. Implement proper error handling
-5. Follow the established animation patterns
-6. Ensure proper state management
-7. Test against various background contents
-8. Verify landscape/portrait adaptations
-9. Maintain accessibility standards
-10. Follow performance guidelines
-
-### Image Viewer Implementation
-The image viewer provides a full-screen image viewing experience similar to popular social media platforms.
-
-#### Components
-1. **ImageViewer.kt**
-   ```kotlin
-   @Composable
-   fun ImageViewer(
-       images: List<ImageEmbed>,
-       initialImageIndex: Int = 0,
-       onDismiss: () -> Unit
-   )
-   ```
-
-   Key Features:
-   - Full-screen display with black background
-   - Horizontal paging for multiple images
-   - Purple close button (Color: `0xFF6B4EFF`)
-   - Interactive pagination dots
-   - Proper image scaling and aspect ratio
-
-2. **Integration with ThreadCard**
-   - Tracks selected image index
-   - Handles image click events
-   - Manages viewer visibility state
-   - Provides smooth transitions
-
-#### Visual Implementation
-- **Layout**
-  - Full-screen overlay with black background
-  - Top-aligned close button
-  - Center-aligned image content
-  - Bottom-aligned pagination dots
-  - Proper status bar padding
-
-- **Navigation**
-  - Horizontal swipe between images
-  - Tap to dismiss
-  - Visual feedback for current image
-  - Smooth transitions between images
-
-- **Styling**
-  - Close Button: Circle shape with purple background
-  - Pagination Dots:
-    - Selected: Solid purple (`0xFF6B4EFF`)
-    - Unselected: Semi-transparent white
-  - Image Scaling: `ContentScale.Fit`
-  - Background: Solid black for optimal viewing
-
-#### Usage Guidelines
-1. **Implementation**
-   ```kotlin
-   var selectedImageIndex by remember { mutableStateOf<Int?>(null) }
-
-   // Show viewer when image is clicked
-   AsyncImage(
-       modifier = Modifier.clickable { selectedImageIndex = index }
-   )
-
-   // Add viewer overlay
-   selectedImageIndex?.let { index ->
-       ImageViewer(
-           images = images,
-           initialImageIndex = index,
-           onDismiss = { selectedImageIndex = null }
-       )
+   val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+   if (isLandscape) {
+       // Landscape layout
+   } else {
+       // Portrait layout
    }
    ```
+   - Check orientation using LocalConfiguration
+   - Apply appropriate layout
+   - Handle transitions smoothly
+   - Maintain state during rotation
 
-2. **Best Practices**
-   - Handle proper image loading states
-   - Implement error handling for failed loads
-   - Maintain aspect ratios
-   - Consider memory management for large images
-   - Implement proper cleanup on dismiss
-   - Handle configuration changes
-   - Support accessibility features
+3. **Best Practices**
+   - Always maintain aspect ratios
+   - Center content appropriately
+   - Handle all media types
+   - Implement proper error states
+   - Consider different screen sizes
+   - Test on various devices
+   - Handle edge cases gracefully
 
-3. **Error Handling**
-   - Handle null or invalid image URLs
-   - Provide fallback for loading failures
-   - Manage memory efficiently
-   - Handle network connectivity issues
+4. **Common Issues**
+   - Content scaling in landscape
+   - Media aspect ratio maintenance
+   - Engagement action positioning
+   - State preservation during rotation
+   - Error state handling
+   - Memory management for media
 
-4. **Performance Considerations**
-   - Lazy loading of images
-   - Proper image caching
-   - Memory management for large images
-   - Efficient state management
-   - Smooth animations and transitions
+5. **Testing Guidelines**
+   - Test on different screen sizes
+   - Verify media scaling
+   - Check engagement action placement
+   - Validate error states
+   - Test orientation changes
+   - Verify state preservation
 
-#### Integration Points
-1. **ThreadCard Integration**
-   - Image click handling
-   - State management
-   - Proper layout integration
-   - Consistent styling
+#### Usage Example
+```kotlin
+// Check orientation
+val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
-2. **AT Protocol Compliance**
-   - Proper image URL construction
-   - Blob reference handling
-   - Proper alt text support
-   - Accessibility considerations
+// Apply appropriate layout
+when {
+    isLandscape && hasMedia -> {
+        // Split layout with media
+        Row(modifier = Modifier.fillMaxSize()) {
+            // Media content (60%)
+            Box(modifier = Modifier.weight(0.6f))
+            // Post content (40%)
+            Column(modifier = Modifier.weight(0.4f))
+        }
+    }
+    isLandscape -> {
+        // Full-width layout for text-only posts
+        Column(modifier = Modifier.fillMaxSize())
+    }
+    else -> {
+        // Portrait layout
+        Box(modifier = Modifier.fillMaxSize())
+    }
+}
+```
 
-#### Common Issues and Solutions
-1. **Image Loading**
-   - Use proper error handling
-   - Implement loading states
-   - Handle network failures
-   - Manage memory efficiently
-
-2. **Navigation**
-   - Handle gesture conflicts
-   - Maintain smooth transitions
-   - Proper state management
-   - Handle edge cases
-
-3. **State Management**
-   - Track selected image index
-   - Handle configuration changes
-   - Manage viewer visibility
-   - Clean up resources
-
-4. **Performance**
-   - Optimize image loading
-   - Manage memory usage
-   - Handle large image sets
-   - Smooth animations
+#### Performance Considerations
+- Proper image loading and caching
+- Efficient layout recomposition
+- Memory management for media
+- Smooth orientation transitions
+- State preservation
+- Error handling and recovery
 
 ## AT Protocol Integration
 

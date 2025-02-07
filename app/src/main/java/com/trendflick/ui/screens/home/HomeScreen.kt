@@ -1658,21 +1658,23 @@ fun VideoFeedSection(
             }
         }
 
-        // Update FloatingActionButton
-        FloatingActionButton(
-            onClick = onCreateVideo,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(16.dp)
-                .navigationBarsPadding(),
-            containerColor = ComposeColor(0xFF6B4EFF),
-            contentColor = ComposeColor.White
-        ) {
-            Icon(
-                imageVector = Icons.Default.Add,
-                contentDescription = "Create new flick",
-                modifier = Modifier.size(24.dp)
-            )
+        // Only show FAB in portrait mode
+        if (!isLandscape) {
+            FloatingActionButton(
+                onClick = onCreateVideo,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp)
+                    .navigationBarsPadding(),
+                containerColor = ComposeColor(0xFF6B4EFF),
+                contentColor = ComposeColor.White
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Create new video",
+                    modifier = Modifier.size(24.dp)
+                )
+            }
         }
     }
 }

@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -99,52 +100,282 @@ fun ThreadCard(
     ) {
         if (isLandscape) {
             // Landscape layout
-            Column(modifier = Modifier.fillMaxSize()) {
-                // Top row with engagement actions
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                ) {
-                    // Engagement actions in landscape
-                    Box(modifier = Modifier.align(Alignment.TopEnd)) {
-                        EngagementColumn(
-                            isLiked = isLiked,
-                            isReposted = isReposted,
-                            likeCount = feedPost.post.likeCount ?: 0,
-                            replyCount = feedPost.post.replyCount ?: 0,
-                            repostCount = feedPost.post.repostCount ?: 0,
-                            onLikeClick = {
-                                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                                onLikeClick()
-                            },
-                            onCommentClick = onCommentClick,
-                            onRepostClick = {
-                                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                                onRepostClick()
-                            },
-                            onShareClick = onShareClick
-                        )
+            when {
+                // Case 1: Post has media (images/video) or external link
+                feedPost.post.embed != null -> {
+                    Row(modifier = Modifier.fillMaxSize()) {
+                        // Left side - Media content or link preview
+                        Box(
+                            modifier = Modifier
+                                .weight(0.6f)  // Give more space to media
+                                .fillMaxHeight()
+                                .padding(8.dp)
+                        ) {
+                            when {
+                                // Handle video content
+                                feedPost.post.embed?.video != null || (feedPost.post.embed?.external?.uri?.let { uri ->
+                                    uri.endsWith(".mp4", ignoreCase = true) ||
+                                    uri.endsWith(".mov", ignoreCase = true) ||
+                                    uri.endsWith(".webm", ignoreCase = true) ||
+                                    uri.contains("video", ignoreCase = true)
+                                } == true) -> {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .aspectRatio(16f/9f)
+                                            .align(Alignment.Center)
+                                    ) {
+                                        var isPaused by remember { mutableStateOf(false) }
+                                        var progress by remember { mutableStateOf(0f) }
+                                        var loadError by remember { mutableStateOf<String?>(null) }
+
+                                        val videoUrl = when {
+                                            feedPost.post.embed?.video?.ref?.link != null -> {
+                                                "https://cdn.bsky.app/video/plain/${feedPost.post.embed?.video?.ref?.link}"
+                                            }
+                                            feedPost.post.embed?.external?.uri != null -> {
+                                                when {
+                                                    feedPost.post.embed?.external?.uri?.contains("bsky.app/profile") == true -> {
+                                                        val encodedUrl = Uri.encode(feedPost.post.embed?.external?.uri)
+                                                        "https://embed.bsky.app/oembed?url=$encodedUrl&format=json"
+                                                    }
+                                                    else -> feedPost.post.embed?.external?.uri
+                                                }
+                                            }
+                                            else -> ""
+                                        }
+
+                                        if (videoUrl.isNotEmpty()) {
+                                            VideoPlayer(
+                                                videoUrl = videoUrl,
+                                                isVisible = true,
+                                                onProgressChanged = { progress = it },
+                                                isPaused = isPaused,
+                                                modifier = Modifier.fillMaxSize(),
+                                                onError = { loadError = it }
+                                            )
+                                        }
+                                    }
+                                }
+                                // Handle images
+                                feedPost.post.embed?.images != null -> {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .align(Alignment.Center)
+                                    ) {
+                                        when (feedPost.post.embed?.images?.size) {
+                                            1 -> SingleImageLayout(
+                                                image = feedPost.post.embed?.images!![0],
+                                                onImageClick = { selectedImageIndex = 0 },
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                            2 -> TwoImagesLayout(
+                                                images = feedPost.post.embed?.images!!,
+                                                onImageClick = { image -> selectedImageIndex = feedPost.post.embed?.images?.indexOf(image) },
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                            3 -> ThreeImagesLayout(
+                                                images = feedPost.post.embed?.images!!,
+                                                onImageClick = { image -> selectedImageIndex = feedPost.post.embed?.images?.indexOf(image) },
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                            4 -> FourImagesLayout(
+                                                images = feedPost.post.embed?.images!!,
+                                                onImageClick = { image -> selectedImageIndex = feedPost.post.embed?.images?.indexOf(image) },
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        }
+                                    }
+                                }
+                                // Handle external link preview
+                                feedPost.post.embed?.external != null -> {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .align(Alignment.Center)
+                                    ) {
+                                        EmbeddedLink(
+                                            title = feedPost.post.embed?.external?.title ?: "Untitled",
+                                            description = feedPost.post.embed?.external?.description,
+                                            thumbnail = feedPost.post.embed?.external!!,
+                                            url = feedPost.post.embed?.external?.uri ?: "",
+                                            onClick = { 
+                                                onLinkClick?.invoke(feedPost.post.embed?.external?.uri ?: "") ?: run {
+                                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(feedPost.post.embed?.external?.uri))
+                                                    context.startActivity(intent)
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxWidth(0.8f)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Right side - Post content and engagement
+                        Column(
+                            modifier = Modifier
+                                .weight(0.4f)  // Less space for content
+                                .fillMaxHeight()
+                                .padding(end = 16.dp)
+                        ) {
+                            // Top engagement row
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 16.dp, bottom = 8.dp),
+                                horizontalArrangement = Arrangement.End,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                EngagementColumn(
+                                    isLiked = isLiked,
+                                    isReposted = isReposted,
+                                    likeCount = feedPost.post.likeCount ?: 0,
+                                    replyCount = feedPost.post.replyCount ?: 0,
+                                    repostCount = feedPost.post.repostCount ?: 0,
+                                    onLikeClick = {
+                                        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                        onLikeClick()
+                                    },
+                                    onCommentClick = onCommentClick,
+                                    onRepostClick = {
+                                        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                        onRepostClick()
+                                    },
+                                    onShareClick = onShareClick
+                                )
+                            }
+
+                            // Author info and post content
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(top = 8.dp)
+                            ) {
+                                // Author row
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onProfileClick() },
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    AsyncImage(
+                                        model = feedPost.post.author.avatar,
+                                        contentDescription = "Profile picture",
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFF1A1A1A)),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                    
+                                    Column {
+                                        Text(
+                                            text = feedPost.post.author.displayName ?: feedPost.post.author.handle,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = Color.White,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "@${feedPost.post.author.handle}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Color.White.copy(alpha = 0.7f)
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.weight(1f))
+
+                                    Text(
+                                        text = DateUtils.formatTimestamp(feedPost.post.record.createdAt),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.White.copy(alpha = 0.5f)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                // Post content
+                                RichTextRenderer(
+                                    text = feedPost.post.record.text,
+                                    facets = feedPost.post.record.facets ?: emptyList(),
+                                    onMentionClick = { did: String -> onProfileClick() },
+                                    onHashtagClick = { tag: String -> onHashtagClick?.invoke(tag) },
+                                    onLinkClick = { url: String -> 
+                                        onLinkClick?.invoke(url) ?: run {
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                            context.startActivity(intent)
+                                        }
+                                    }
+                                )
+
+                                // Handle external embeds if present
+                                feedPost.post.embed?.external?.let { external ->
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    EmbeddedLink(
+                                        title = external.title ?: "Untitled",
+                                        description = external.description,
+                                        thumbnail = external,
+                                        url = external.uri,
+                                        onClick = { 
+                                            onLinkClick?.invoke(external.uri) ?: run {
+                                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(external.uri))
+                                                context.startActivity(intent)
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth(0.8f)
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
-
-                // Main content
-                Box(modifier = Modifier.weight(1f)) {
+                // Case 2: Text-only post
+                else -> {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(horizontal = 16.dp)
                     ) {
-                        // Author row
+                        // Top engagement row
                         Row(
                             modifier = Modifier
-                                .fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                                .fillMaxWidth()
+                                .padding(top = 16.dp, bottom = 8.dp),
+                            horizontalArrangement = Arrangement.End,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            EngagementColumn(
+                                isLiked = isLiked,
+                                isReposted = isReposted,
+                                likeCount = feedPost.post.likeCount ?: 0,
+                                replyCount = feedPost.post.replyCount ?: 0,
+                                repostCount = feedPost.post.repostCount ?: 0,
+                                onLikeClick = {
+                                    view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                    onLikeClick()
+                                },
+                                onCommentClick = onCommentClick,
+                                onRepostClick = {
+                                    view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                    onRepostClick()
+                                },
+                                onShareClick = onShareClick
+                            )
+                        }
+
+                        // Author info and post content
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(top = 8.dp)
+                        ) {
+                            // Author row
                             Row(
                                 modifier = Modifier
-                                    .weight(1f)
+                                    .fillMaxWidth()
                                     .clickable { onProfileClick() },
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -155,42 +386,31 @@ fun ThreadCard(
                                     modifier = Modifier
                                         .size(40.dp)
                                         .clip(CircleShape)
-                                        .background(Color(0xFF1A1A1A)),
+                                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                                        .clickable { onProfileClick() },
                                     contentScale = ContentScale.Crop
                                 )
+                                
+                                Spacer(modifier = Modifier.width(8.dp))
                                 
                                 Column {
                                     Text(
                                         text = feedPost.post.author.displayName ?: feedPost.post.author.handle,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = Color.White,
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = "@${feedPost.post.author.handle}",
+                                        text = "@${feedPost.post.author.handle} · ${DateUtils.formatTimestamp(feedPost.post.record.createdAt)}",
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = Color.White.copy(alpha = 0.7f)
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
-                            
-                            Text(
-                                text = DateUtils.formatTimestamp(feedPost.post.record.createdAt),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.White.copy(alpha = 0.5f)
-                            )
-                        }
 
-                        Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(16.dp))
 
-                        // Post content
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f)
-                        ) {
-                            // Rich text content
+                            // Post content
                             RichTextRenderer(
                                 text = feedPost.post.record.text,
                                 facets = feedPost.post.record.facets ?: emptyList(),
@@ -201,152 +421,25 @@ fun ThreadCard(
                                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                                         context.startActivity(intent)
                                     }
-                                },
-                                modifier = Modifier.padding(bottom = 8.dp)
+                                }
                             )
 
-                            // Handle embeds immediately after text
-                            feedPost.post.embed?.let { embed ->
+                            // Handle external embeds if present
+                            feedPost.post.embed?.external?.let { external ->
                                 Spacer(modifier = Modifier.height(8.dp))
-                                
-                                // Handle video content first
-                                when {
-                                    embed.video != null || (embed.external?.uri?.let { uri ->
-                                        uri.endsWith(".mp4", ignoreCase = true) ||
-                                        uri.endsWith(".mov", ignoreCase = true) ||
-                                        uri.endsWith(".webm", ignoreCase = true) ||
-                                        uri.contains("video", ignoreCase = true)
-                                    } == true) -> {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .aspectRatio(16f/9f)
-                                        ) {
-                                            var isPaused by remember { mutableStateOf(false) }
-                                            var progress by remember { mutableStateOf(0f) }
-                                            var loadError by remember { mutableStateOf<String?>(null) }
-
-                                            val videoUrl = when {
-                                                embed.video?.ref?.link != null -> {
-                                                    "https://cdn.bsky.app/video/plain/${embed.video.ref.link}"
-                                                }
-                                                embed.external?.uri != null -> {
-                                                    when {
-                                                        embed.external.uri.contains("bsky.app/profile") -> {
-                                                            val encodedUrl = Uri.encode(embed.external.uri)
-                                                            "https://embed.bsky.app/oembed?url=$encodedUrl&format=json"
-                                                        }
-                                                        else -> embed.external.uri
-                                                    }
-                                                }
-                                                else -> ""
-                                            }
-
-                                            if (videoUrl.isNotEmpty()) {
-                                                VideoPlayer(
-                                                    videoUrl = videoUrl,
-                                                    isVisible = true,
-                                                    onProgressChanged = { progress = it },
-                                                    isPaused = isPaused,
-                                                    modifier = Modifier.fillMaxSize(),
-                                                    onError = { loadError = it }
-                                                )
-
-                                                // Tap to play/pause
-                                                Box(
-                                                    modifier = Modifier
-                                                        .fillMaxSize()
-                                                        .pointerInput(Unit) {
-                                                            detectTapGestures(
-                                                                onTap = { isPaused = !isPaused }
-                                                            )
-                                                        }
-                                                )
-
-                                                // Progress bar
-                                                Box(
-                                                    modifier = Modifier
-                                                        .align(Alignment.BottomCenter)
-                                                        .fillMaxWidth()
-                                                        .height(2.dp)
-                                                        .background(Color.Black.copy(alpha = 0.3f))
-                                                ) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .fillMaxWidth(progress)
-                                                            .fillMaxHeight()
-                                                            .background(Color(0xFF6B4EFF))
-                                                    )
-                                                }
-
-                                                // Error state
-                                                loadError?.let { error ->
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .fillMaxSize()
-                                                            .background(Color.Black.copy(alpha = 0.7f)),
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Column(
-                                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                                                        ) {
-                                                            Icon(
-                                                                imageVector = Icons.Default.Error,
-                                                                contentDescription = null,
-                                                                tint = Color.White,
-                                                                modifier = Modifier.size(48.dp)
-                                                            )
-                                                            Text(
-                                                                text = error,
-                                                                color = Color.White,
-                                                                style = MaterialTheme.typography.bodyMedium,
-                                                                textAlign = TextAlign.Center,
-                                                                modifier = Modifier.padding(horizontal = 16.dp)
-                                                            )
-                                                        }
-                                                    }
-                                                }
-                                            }
+                                EmbeddedLink(
+                                    title = external.title ?: "Untitled",
+                                    description = external.description,
+                                    thumbnail = external,
+                                    url = external.uri,
+                                    onClick = { 
+                                        onLinkClick?.invoke(external.uri) ?: run {
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(external.uri))
+                                            context.startActivity(intent)
                                         }
-                                    }
-                                    // Handle external website embeds
-                                    embed.external != null -> {
-                                        EmbeddedLink(
-                                            title = embed.external.title ?: "Untitled",
-                                            description = embed.external.description,
-                                            thumbnail = embed.external,
-                                            url = embed.external.uri,
-                                            onClick = { 
-                                                onLinkClick?.invoke(embed.external.uri) ?: run {
-                                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(embed.external.uri))
-                                                    context.startActivity(intent)
-                                                }
-                                            }
-                                        )
-                                    }
-                                    // Handle images
-                                    embed.images != null -> {
-                                        when (embed.images.size) {
-                                            1 -> SingleImageLayout(
-                                                image = embed.images[0],
-                                                onImageClick = { selectedImageIndex = 0 }
-                                            )
-                                            2 -> TwoImagesLayout(
-                                                images = embed.images,
-                                                onImageClick = { image -> selectedImageIndex = embed.images.indexOf(image) }
-                                            )
-                                            3 -> ThreeImagesLayout(
-                                                images = embed.images,
-                                                onImageClick = { image -> selectedImageIndex = embed.images.indexOf(image) }
-                                            )
-                                            4 -> FourImagesLayout(
-                                                images = embed.images,
-                                                onImageClick = { image -> selectedImageIndex = embed.images.indexOf(image) }
-                                            )
-                                        }
-                                    }
-                                }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(0.8f)
+                                )
                             }
                         }
                     }
@@ -583,7 +676,8 @@ fun ThreadCard(
                                                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(embed.external.uri))
                                                     context.startActivity(intent)
                                                 }
-                                            }
+                                            },
+                                            modifier = Modifier.fillMaxWidth(0.8f)
                                         )
                                     }
                                     // Handle images
@@ -664,6 +758,23 @@ fun ThreadCard(
                         modifier = Modifier
                             .width(300.dp)
                             .fillMaxHeight()
+                    )
+                }
+
+                // Only show FAB in portrait mode
+                FloatingActionButton(
+                    onClick = onCreatePost,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(16.dp)
+                        .navigationBarsPadding(),
+                    containerColor = Color(0xFF6B4EFF),
+                    contentColor = Color.White
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Create new post",
+                        modifier = Modifier.size(24.dp)
                     )
                 }
             }
@@ -916,10 +1027,11 @@ fun EmbeddedLink(
     description: String?,
     thumbnail: ExternalEmbed,
     url: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp)
             .pointerInput(Unit) {
@@ -1190,10 +1302,13 @@ fun CommentsSection(
 }
 
 @Composable
-private fun SingleImageLayout(image: ImageEmbed, onImageClick: (ImageEmbed) -> Unit) {
+private fun SingleImageLayout(
+    image: ImageEmbed,
+    onImageClick: (ImageEmbed) -> Unit,
+    modifier: Modifier = Modifier
+) {
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
+        modifier = modifier
             .clip(RoundedCornerShape(12.dp))
             .clickable { onImageClick(image) }
     ) {
@@ -1202,17 +1317,21 @@ private fun SingleImageLayout(image: ImageEmbed, onImageClick: (ImageEmbed) -> U
                 "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
             } ?: "",
             contentDescription = image.alt,
-            modifier = Modifier.fillMaxWidth(),
-            contentScale = ContentScale.FillWidth
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Fit
         )
     }
 }
 
 @Composable
-private fun TwoImagesLayout(images: List<ImageEmbed>, onImageClick: (ImageEmbed) -> Unit) {
+private fun TwoImagesLayout(
+    images: List<ImageEmbed>,
+    onImageClick: (ImageEmbed) -> Unit,
+    modifier: Modifier = Modifier
+) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
     ) {
         images.forEach { image ->
             Box(
@@ -1236,10 +1355,14 @@ private fun TwoImagesLayout(images: List<ImageEmbed>, onImageClick: (ImageEmbed)
 }
 
 @Composable
-private fun ThreeImagesLayout(images: List<ImageEmbed>, onImageClick: (ImageEmbed) -> Unit) {
+private fun ThreeImagesLayout(
+    images: List<ImageEmbed>,
+    onImageClick: (ImageEmbed) -> Unit,
+    modifier: Modifier = Modifier
+) {
     Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
     ) {
         Box(
             modifier = Modifier
@@ -1285,10 +1408,14 @@ private fun ThreeImagesLayout(images: List<ImageEmbed>, onImageClick: (ImageEmbe
 }
 
 @Composable
-private fun FourImagesLayout(images: List<ImageEmbed>, onImageClick: (ImageEmbed) -> Unit) {
+private fun FourImagesLayout(
+    images: List<ImageEmbed>,
+    onImageClick: (ImageEmbed) -> Unit,
+    modifier: Modifier = Modifier
+) {
     Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
     ) {
         for (row in 0..1) {
             Row(
