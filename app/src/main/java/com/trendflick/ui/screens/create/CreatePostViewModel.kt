@@ -83,15 +83,18 @@ class CreatePostViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(isLoading = true)
                 val timestamp = Instant.now().toString()
                 
+                // Add TrendFlick signature
+                val signedText = "$text\n\nPosted from TrendFlick ✨"
+                
                 // Make facets optional
                 val facets = try {
-                    repository.parseFacets(text)
+                    repository.parseFacets(signedText)
                 } catch (e: Exception) {
                     null // If facet parsing fails, continue without facets
                 }
                 
                 repository.createPost(
-                    text = text,
+                    text = signedText,
                     timestamp = timestamp,
                     facets = facets
                 )
@@ -141,10 +144,54 @@ class CreatePostViewModel @Inject constructor(
         viewModelScope.launch {
             _aiEnhancedContent.value = AIEnhancementState.Loading
             try {
-                val enhancement = repository.enhancePostWithAI(text)
-                _aiEnhancedContent.value = AIEnhancementState.Success(enhancement)
+                // Use OpenAI repository to get AI-enhanced content
+                val aiResponse = openAIRepository.generateAIResponse(
+                    "Enhance this social media post and suggest relevant hashtags. " +
+                    "Format the response as JSON with 'enhancedPost' and 'hashtags' fields. " +
+                    "Keep the enhanced post under 300 characters. Original post: $text"
+                )
+                
+                aiResponse.fold(
+                    onSuccess = { jsonResponse ->
+                        try {
+                            // Parse hashtags from response
+                            val hashtags = jsonResponse
+                                .substringAfter("\"hashtags\":")
+                                .substringBefore("]")
+                                .substringAfter("[")
+                                .split(",")
+                                .map { it.trim().trim('"') }
+                                .filter { it.isNotEmpty() }
+                            
+                            // Parse enhanced post
+                            val enhancedPost = jsonResponse
+                                .substringAfter("\"enhancedPost\":")
+                                .substringAfter("\"")
+                                .substringBefore("\"")
+                                .trim()
+                            
+                            _aiEnhancedContent.value = AIEnhancementState.Success(
+                                AIEnhancement(
+                                    enhancedPost = enhancedPost,
+                                    hashtags = hashtags
+                                )
+                            )
+                        } catch (e: Exception) {
+                            _aiEnhancedContent.value = AIEnhancementState.Error(
+                                "Failed to parse AI response: ${e.message}"
+                            )
+                        }
+                    },
+                    onFailure = { error ->
+                        _aiEnhancedContent.value = AIEnhancementState.Error(
+                            error.message ?: "Failed to enhance post"
+                        )
+                    }
+                )
             } catch (e: Exception) {
-                _aiEnhancedContent.value = AIEnhancementState.Error(e.message ?: "Failed to enhance post")
+                _aiEnhancedContent.value = AIEnhancementState.Error(
+                    e.message ?: "Failed to enhance post"
+                )
             }
         }
     }

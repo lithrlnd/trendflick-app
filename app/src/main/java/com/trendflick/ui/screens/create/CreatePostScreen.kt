@@ -3,7 +3,8 @@
     ExperimentalMaterial3Api::class,
     ExperimentalLayoutApi::class,
     ExperimentalFoundationApi::class,
-    ExperimentalComposeUiApi::class
+    ExperimentalComposeUiApi::class,
+    ExperimentalAnimationApi::class
 )
 
 package com.trendflick.ui.screens.create
@@ -13,11 +14,13 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -45,6 +48,8 @@ import androidx.navigation.NavController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import com.trendflick.R
 import com.trendflick.ui.components.SuggestionPopup
 import com.trendflick.ui.model.SuggestionItem
@@ -71,6 +76,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.sp
+import kotlin.math.cos
+import kotlin.math.sin
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
+import java.time.LocalTime
+import kotlin.math.PI
 
 @Composable
 private fun rememberMentionHashtagTransformation(highlightColor: Color): VisualTransformation {
@@ -158,6 +179,160 @@ private fun rememberMentionHashtagTransformation(highlightColor: Color): VisualT
     }
 }
 
+@Composable
+private fun AnimatedTimeRing(
+    modifier: Modifier = Modifier,
+    color: Color = MaterialTheme.colorScheme.primary
+) {
+    val currentTime = LocalTime.now()
+    val infiniteTransition = rememberInfiniteTransition(label = "ring")
+    val angle = infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(60000, easing = LinearEasing)
+        ),
+        label = "ring rotation"
+    )
+    
+    Canvas(modifier = modifier) {
+        val center = Offset(size.width / 2, size.height / 2)
+        val radius = size.width / 2
+        
+        // Draw 12 dots representing hours
+        for (i in 0..11) {
+            val dotAngle = i * 30f * (PI / 180f)
+            val x = center.x + (radius - 8.dp.toPx()) * cos(dotAngle).toFloat()
+            val y = center.y + (radius - 8.dp.toPx()) * sin(dotAngle).toFloat()
+            
+            drawCircle(
+                color = color.copy(alpha = 0.3f),
+                radius = 3.dp.toPx(),
+                center = Offset(x, y)
+            )
+        }
+        
+        // Draw animated arc
+        drawArc(
+            color = color.copy(alpha = 0.2f),
+            startAngle = angle.value,
+            sweepAngle = 120f,
+            useCenter = false,
+            style = Stroke(
+                width = 2.dp.toPx(),
+                cap = StrokeCap.Round
+            )
+        )
+        
+        // Draw time markers
+        val hourAngle = (currentTime.hour % 12) * 30f + currentTime.minute / 2f
+        val minuteAngle = currentTime.minute * 6f
+        
+        // Hour marker
+        val hourX = center.x + (radius - 20.dp.toPx()) * cos(hourAngle * (PI / 180f)).toFloat()
+        val hourY = center.y + (radius - 20.dp.toPx()) * sin(hourAngle * (PI / 180f)).toFloat()
+        drawLine(
+            color = color.copy(alpha = 0.5f),
+            start = center,
+            end = Offset(hourX, hourY),
+            strokeWidth = 2.dp.toPx()
+        )
+        
+        // Minute marker
+        val minuteX = center.x + (radius - 12.dp.toPx()) * cos(minuteAngle * (PI / 180f)).toFloat()
+        val minuteY = center.y + (radius - 12.dp.toPx()) * sin(minuteAngle * (PI / 180f)).toFloat()
+        drawLine(
+            color = color.copy(alpha = 0.3f),
+            start = center,
+            end = Offset(minuteX, minuteY),
+            strokeWidth = 1.5f.dp.toPx()
+        )
+    }
+}
+
+@Composable
+private fun AnimatedBorder(
+    modifier: Modifier = Modifier,
+    color: Color = Color(0xFF6B4EFF)  // Using the consistent purple theme color
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "border")
+    val pulseAlpha = infiniteTransition.animateFloat(
+        initialValue = 0.2f,
+        targetValue = 0.6f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse"
+    )
+    
+    val dotPulse = infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 0.8f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "dot pulse"
+    )
+
+    Canvas(modifier = modifier) {
+        val width = size.width
+        val height = size.height
+        val cornerRadius = 16.dp.toPx()
+        
+        // Draw main border
+        drawRoundRect(
+            color = color.copy(alpha = pulseAlpha.value),
+            size = size,
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerRadius),
+            style = Stroke(width = 2.dp.toPx())
+        )
+        
+        // Calculate positions for evenly spaced dots
+        val dotSpacing = 20.dp.toPx()
+        val topDots = (width / dotSpacing).toInt()
+        val sideDots = (height / dotSpacing).toInt()
+        
+        // Draw dots on all sides
+        val dotRadius = 3.dp.toPx()
+        
+        // Top and bottom dots
+        for (i in 0..topDots) {
+            val x = (i * dotSpacing).coerceAtMost(width)
+            // Top dots
+            drawCircle(
+                color = color.copy(alpha = (dotPulse.value * (1 - i.toFloat() / topDots))),
+                radius = dotRadius,
+                center = Offset(x, 0f)
+            )
+            // Bottom dots
+            drawCircle(
+                color = color.copy(alpha = (dotPulse.value * (i.toFloat() / topDots))),
+                radius = dotRadius,
+                center = Offset(x, height)
+            )
+        }
+        
+        // Left and right dots
+        for (i in 0..sideDots) {
+            val y = (i * dotSpacing).coerceAtMost(height)
+            // Left dots
+            drawCircle(
+                color = color.copy(alpha = (dotPulse.value * (1 - i.toFloat() / sideDots))),
+                radius = dotRadius,
+                center = Offset(0f, y)
+            )
+            // Right dots
+            drawCircle(
+                color = color.copy(alpha = (dotPulse.value * (i.toFloat() / sideDots))),
+                radius = dotRadius,
+                center = Offset(width, y)
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreatePostScreen(
@@ -172,6 +347,9 @@ fun CreatePostScreen(
     var showSuggestions by remember { mutableStateOf(false) }
     var currentQuery by remember { mutableStateOf("") }
     var queryType by remember { mutableStateOf<QueryType?>(null) }
+    var swipeProgress by remember { mutableStateOf(0f) }
+    var isEnhancementExpanded by remember { mutableStateOf(false) }
+    
     val suggestions by viewModel.suggestions.collectAsStateWithLifecycle(initialValue = emptyList())
     val aiEnhancedContent by viewModel.aiEnhancedContent.collectAsStateWithLifecycle()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -251,13 +429,17 @@ fun CreatePostScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(16.dp)
         ) {
-            // Top bar with post button
+            // Top Bar with Close Button and Character Count
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -265,165 +447,167 @@ fun CreatePostScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = { navController.navigateUp() }) {
+                IconButton(
+                    onClick = { navController.navigateUp() }
+                ) {
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = "Close"
+                        contentDescription = "Close",
+                        tint = MaterialTheme.colorScheme.onBackground
                     )
                 }
                 
-                Row {
-                    // AI Enhancement Button
-                    Button(
-                        onClick = { 
-                            if (postTextFieldValue.text.isNotBlank()) {
-                                viewModel.enhancePostWithAI(postTextFieldValue.text)
-                            }
-                        },
-                        enabled = postTextFieldValue.text.isNotBlank() && 
-                                aiEnhancedContent !is AIEnhancementState.Loading,
-                        modifier = Modifier.padding(end = 8.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
-                    ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = if (aiEnhancedContent is AIEnhancementState.Loading)
-                                    Icons.Default.Refresh
-                                else
-                                    Icons.Default.AutoAwesome,
-                                contentDescription = "Enhance with AI"
-                            )
-                            Text("Enhance")
-                        }
-                    }
-                    
-                    // Post Button
-                    Button(
-                        onClick = {
-                            keyboardController?.hide()
-                            viewModel.createPost(postTextFieldValue.text)
-                        },
-                        enabled = postTextFieldValue.text.isNotBlank() && 
-                                postTextFieldValue.text.length <= 300,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF6B4EFF),
-                            contentColor = Color.White,
-                            disabledContainerColor = Color(0xFF6B4EFF).copy(alpha = 0.5f)
-                        )
-                    ) {
-                        Text("Post")
-                    }
-                }
+                Text(
+                    text = "${300 - postTextFieldValue.text.length}",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (postTextFieldValue.text.length > 280)
+                        MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onBackground
+                )
             }
 
-            Box(modifier = Modifier.weight(1f)) {
-                OutlinedTextField(
-                    value = postTextFieldValue,
-                    onValueChange = { newValue ->
-                        if (newValue.text.length <= 300) {
-                            postTextFieldValue = newValue
-                            
-                            // Check for @ or # triggers
-                            val lastChar = newValue.text.lastOrNull()
-                            when (lastChar) {
-                                '@' -> {
-                                    queryType = QueryType.MENTION
-                                    currentQuery = ""
-                                    showSuggestions = true
-                                    viewModel.searchMentions("")
-                                }
-                                '#' -> {
-                                    queryType = QueryType.HASHTAG
-                                    currentQuery = ""
-                                    showSuggestions = true
-                                    viewModel.searchHashtags("")
-                                }
-                                ' ' -> {
-                                    showSuggestions = false
-                                    queryType = null
-                                }
-                                else -> {
-                                    // Check if we're in the middle of a mention/hashtag
-                                    val text = newValue.text
-                                    val lastMentionIndex = text.lastIndexOf('@')
-                                    val lastHashtagIndex = text.lastIndexOf('#')
-                                    val lastSpaceIndex = text.lastIndexOf(' ')
-                                    
-                                    when {
-                                        lastMentionIndex > lastSpaceIndex -> {
-                                            queryType = QueryType.MENTION
-                                            currentQuery = text.substring(lastMentionIndex + 1)
-                                            showSuggestions = true
-                                            viewModel.searchMentions(currentQuery)
-                                        }
-                                        lastHashtagIndex > lastSpaceIndex -> {
-                                            queryType = QueryType.HASHTAG
-                                            currentQuery = text.substring(lastHashtagIndex + 1)
-                                            showSuggestions = true
-                                            viewModel.searchHashtags(currentQuery)
-                                        }
+            // Enhance Button above rectangle
+            FloatingActionButton(
+                onClick = {
+                    isEnhancementExpanded = !isEnhancementExpanded
+                    if (postTextFieldValue.text.isNotBlank()) {
+                        viewModel.enhancePostWithAI(postTextFieldValue.text)
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(bottom = 16.dp),
+                containerColor = MaterialTheme.colorScheme.secondaryContainer
+            ) {
+                Icon(
+                    imageVector = if (aiEnhancedContent is AIEnhancementState.Loading)
+                        Icons.Default.Refresh
+                    else
+                        Icons.Default.AutoAwesome,
+                    contentDescription = "Enhance"
+                )
+            }
+
+            // Rectangular Composition Area
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(2.dp)
+                ) {
+                    // Animated border
+                    AnimatedBorder(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    
+                    // Text field
+                    OutlinedTextField(
+                        value = postTextFieldValue,
+                        onValueChange = { newValue ->
+                            if (newValue.text.length <= 300) {
+                                postTextFieldValue = newValue
+                                val lastChar = newValue.text.lastOrNull()
+                                when (lastChar) {
+                                    '@' -> {
+                                        queryType = QueryType.MENTION
+                                        currentQuery = ""
+                                        showSuggestions = true
+                                        viewModel.searchMentions("")
+                                    }
+                                    '#' -> {
+                                        queryType = QueryType.HASHTAG
+                                        currentQuery = ""
+                                        showSuggestions = true
+                                        viewModel.searchHashtags("")
                                     }
                                 }
                             }
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 150.dp),
-                    placeholder = { Text("What's on your mind?") },
-                    colors = TextFieldDefaults.colors(
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                        focusedContainerColor = MaterialTheme.colorScheme.surface
-                    ),
-                    visualTransformation = mentionHashtagTransformation
-                )
+                        },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp),
+                        textStyle = MaterialTheme.typography.bodyLarge,
+                        placeholder = {
+                            Text(
+                                "What's on your mind?",
+                                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                            )
+                        },
+                        colors = TextFieldDefaults.colors(
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedContainerColor = Color.Transparent,
+                            disabledContainerColor = Color.Transparent,
+                            errorContainerColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            focusedIndicatorColor = Color.Transparent
+                        ),
+                        visualTransformation = mentionHashtagTransformation
+                    )
 
-                // Suggestions dropdown
-                if (showSuggestions && suggestions.isNotEmpty()) {
+                    // Post Button at bottom right with progress
                     Box(
                         modifier = Modifier
-                            .padding(top = 60.dp)
-                            .fillMaxWidth()
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 16.dp, bottom = 16.dp)
                     ) {
+                        CircularProgressIndicator(
+                            progress = postTextFieldValue.text.length / 300f,
+                            modifier = Modifier.size(56.dp),
+                            color = if (postTextFieldValue.text.length > 280)
+                                MaterialTheme.colorScheme.error
+                            else Color(0xFF6B4EFF),
+                            strokeWidth = 2.dp
+                        )
+                        
+                        FloatingActionButton(
+                            onClick = {
+                                keyboardController?.hide()
+                                viewModel.createPost(postTextFieldValue.text)
+                            },
+                            modifier = Modifier.size(48.dp),
+                            containerColor = Color(0xFF6B4EFF),
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Send,
+                                contentDescription = "Post",
+                                tint = Color.White
+                            )
+                        }
+                    }
+
+                    // Suggestions popup (appearing above the cursor)
+                    if (showSuggestions && suggestions.isNotEmpty()) {
+                        val cursorPosition = postTextFieldValue.selection.start
                         Surface(
                             modifier = Modifier
-                                .fillMaxWidth()
+                                .align(Alignment.TopCenter)
+                                .padding(bottom = 8.dp)
                                 .heightIn(max = 200.dp),
-                            shape = MaterialTheme.shapes.medium,
-                            tonalElevation = 2.dp,
-                            shadowElevation = 4.dp
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            tonalElevation = 2.dp
                         ) {
-                            LazyColumn {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
                                 items(suggestions) { suggestion ->
                                     when (suggestion) {
-                                        is SuggestionItem.Mention -> {
-                                            MentionSuggestionItem(
-                                                mention = suggestion,
-                                                onClick = {
-                                                    val text = postTextFieldValue.text
-                                                    val lastAtIndex = text.lastIndexOf('@')
-                                                    if (lastAtIndex != -1) {
-                                                        val newText = text.substring(0, lastAtIndex) + "@${suggestion.handle} "
-                                                        postTextFieldValue = TextFieldValue(
-                                                            text = newText,
-                                                            selection = TextRange(newText.length)
-                                                        )
-                                                        showSuggestions = false
-                                                        viewModel.clearSuggestions()
-                                                    }
-                                                }
-                                            )
-                                        }
                                         is SuggestionItem.Hashtag -> {
-                                            HashtagSuggestionItem(
-                                                hashtag = suggestion,
-                                                onClick = {
+                                            ListItem(
+                                                headlineContent = { 
+                                                    Text("#${suggestion.tag}") 
+                                                },
+                                                supportingContent = suggestion.postCount?.let { count ->
+                                                    { Text("${formatCount(count)} posts") }
+                                                },
+                                                modifier = Modifier.clickable {
                                                     val text = postTextFieldValue.text
                                                     val lastHashIndex = text.lastIndexOf('#')
                                                     if (lastHashIndex != -1) {
@@ -432,17 +616,45 @@ fun CreatePostScreen(
                                                             text = newText,
                                                             selection = TextRange(newText.length)
                                                         )
-                                                        showSuggestions = false
-                                                        viewModel.clearSuggestions()
                                                     }
+                                                    showSuggestions = false
+                                                }
+                                            )
+                                        }
+                                        is SuggestionItem.Mention -> {
+                                            ListItem(
+                                                headlineContent = { 
+                                                    Text("@${suggestion.handle}") 
+                                                },
+                                                supportingContent = suggestion.displayName?.let { name ->
+                                                    { Text(name) }
+                                                },
+                                                leadingContent = {
+                                                    AsyncImage(
+                                                        model = suggestion.avatar,
+                                                        contentDescription = null,
+                                                        modifier = Modifier
+                                                            .size(32.dp)
+                                                            .clip(CircleShape),
+                                                        contentScale = ContentScale.Crop
+                                                    )
+                                                },
+                                                modifier = Modifier.clickable {
+                                                    val text = postTextFieldValue.text
+                                                    val lastAtIndex = text.lastIndexOf('@')
+                                                    if (lastAtIndex != -1) {
+                                                        val newText = text.substring(0, lastAtIndex) + "@${suggestion.handle} "
+                                                        postTextFieldValue = TextFieldValue(
+                                                            text = newText,
+                                                            selection = TextRange(newText.length)
+                                                        )
+                                                    }
+                                                    showSuggestions = false
                                                 }
                                             )
                                         }
                                     }
-                                    Divider(
-                                        color = MaterialTheme.colorScheme.outlineVariant,
-                                        thickness = 0.5.dp
-                                    )
+                                    Divider()
                                 }
                             }
                         }
@@ -450,18 +662,55 @@ fun CreatePostScreen(
                 }
             }
 
-            // Character count
-            Text(
-                text = "${300 - postTextFieldValue.text.length} characters remaining",
-                style = MaterialTheme.typography.labelSmall,
-                color = if (postTextFieldValue.text.length > 280)
-                    MaterialTheme.colorScheme.error
-                else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 8.dp)
-            )
+            // Enhancement Panel
+            AnimatedVisibility(
+                visible = isEnhancementExpanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp)
+                        .background(
+                            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+                            RoundedCornerShape(16.dp)
+                        )
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        "Enhancement Options",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilterChip(
+                            selected = true,
+                            onClick = { /* enhance for engagement */ },
+                            label = { Text("✨ Engagement") }
+                        )
+                        FilterChip(
+                            selected = false,
+                            onClick = { /* enhance for clarity */ },
+                            label = { Text("📝 Clarity") }
+                        )
+                        FilterChip(
+                            selected = false,
+                            onClick = { /* enhance for reach */ },
+                            label = { Text("🚀 Reach") }
+                        )
+                    }
+                }
+            }
         }
-        
-        // Loading indicator for AI enhancement
+
+        // Loading Overlay
         if (aiEnhancedContent is AIEnhancementState.Loading) {
             Box(
                 modifier = Modifier
@@ -478,48 +727,35 @@ fun CreatePostScreen(
 }
 
 @Composable
-private fun MentionSuggestionItem(
-    mention: SuggestionItem.Mention,
+private fun HashtagBubble(
+    hashtag: String,
+    postCount: Int? = null,
     onClick: () -> Unit
 ) {
     Surface(
+        onClick = onClick,
         modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        color = MaterialTheme.colorScheme.surface
+            .graphicsLayer {
+                translationY = sin(System.currentTimeMillis() / 1000f) * 4f
+            },
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(mention.avatar)
-                    .crossfade(true)
-                    .build(),
-                contentDescription = "Profile picture",
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(CircleShape),
-                contentScale = ContentScale.Crop
+            Text(
+                text = "#$hashtag",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
             )
-            
-            Spacer(modifier = Modifier.width(12.dp))
-            
-            Column {
-                mention.displayName?.let { name ->
-                    Text(
-                        text = name,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
+            postCount?.let {
                 Text(
-                    text = "@${mention.handle}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text = formatCount(it),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                 )
             }
         }
@@ -527,51 +763,54 @@ private fun MentionSuggestionItem(
 }
 
 @Composable
-private fun HashtagSuggestionItem(
-    hashtag: SuggestionItem.Hashtag,
+private fun MentionBubble(
+    mention: SuggestionItem.Mention,
     onClick: () -> Unit
 ) {
     Surface(
+        onClick = onClick,
         modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        color = MaterialTheme.colorScheme.surface
+            .graphicsLayer {
+                translationY = cos(System.currentTimeMillis() / 1000f) * 4f
+            },
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier.padding(8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Tag,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                
-                Spacer(modifier = Modifier.width(12.dp))
-                
+            AsyncImage(
+                model = mention.avatar,
+                contentDescription = null,
+                modifier = Modifier
+                    .size(24.dp)
+                    .clip(CircleShape),
+                contentScale = ContentScale.Crop
+            )
+            Column {
+                mention.displayName?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
                 Text(
-                    text = "#${hashtag.tag}",
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontWeight = FontWeight.Medium
-                    ),
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-            
-            if (hashtag.postCount != null) {
-                Text(
-                    text = "${hashtag.postCount} posts",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text = "@${mention.handle}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
                 )
             }
         }
+    }
+}
+
+private fun formatCount(count: Int): String {
+    return when {
+        count >= 1_000_000 -> String.format("%.1fM", count / 1_000_000f)
+        count >= 1_000 -> String.format("%.1fK", count / 1_000f)
+        else -> count.toString()
     }
 } 

@@ -126,6 +126,7 @@ fun HomeScreen(
     val videoLoadError by viewModel.videoLoadError.collectAsState()
     val selectedCategory = remember { mutableStateOf("Trends") }
     var currentBrowserUrl by remember { mutableStateOf<String?>(null) }
+    var isTransitioning by remember { mutableStateOf(false) }
 
     // Collect share events
     LaunchedEffect(Unit) {
@@ -140,10 +141,38 @@ fun HomeScreen(
     }
 
     LaunchedEffect(selectedFeed) {
-        viewModel.updateSelectedFeed(selectedFeed)
-        if (selectedFeed == "Flicks") {
-            Log.d("HomeScreen", "🎥 Switching to Flicks tab, refreshing video feed")
-            viewModel.refreshVideoFeed()
+        if (isTransitioning) return@LaunchedEffect
+        
+        try {
+            isTransitioning = true
+            Log.d("HomeScreen", "🔄 Switching feed to: $selectedFeed")
+            
+            // Clear current content before switching
+            if (selectedFeed == "Flicks") {
+                viewModel.clearThreads()
+            } else {
+                viewModel.clearVideos()
+            }
+            
+            // Add delay for smooth transition
+            delay(300)
+            
+            viewModel.updateSelectedFeed(selectedFeed)
+            
+            if (selectedFeed == "Flicks") {
+                Log.d("HomeScreen", "🎥 Initializing video feed")
+                viewModel.refreshVideoFeed()
+            } else {
+                Log.d("HomeScreen", "📱 Initializing trends feed")
+                viewModel.loadMoreThreads()
+            }
+            
+            delay(200) // Allow time for content to load
+            isTransitioning = false
+            
+        } catch (e: Exception) {
+            Log.e("HomeScreen", "❌ Error switching feeds: ${e.message}")
+            isTransitioning = false
         }
     }
 
@@ -193,14 +222,17 @@ fun HomeScreen(
                                     ) {
                                         Button(
                                             onClick = { 
-                                                sharedViewModel.updateSelectedFeed("Trends")
+                                                if (!isTransitioning && selectedFeed != "Trends") {
+                                                    sharedViewModel.updateSelectedFeed("Trends")
+                                                }
                                             },
                                             colors = ButtonDefaults.buttonColors(
                                                 containerColor = if (selectedFeed == "Trends") ComposeColor(0xFF6B4EFF) else ComposeColor.Transparent,
                                                 contentColor = if (selectedFeed == "Trends") ComposeColor.White else ComposeColor.White.copy(alpha = 0.7f)
                                             ),
                                             shape = RoundedCornerShape(18.dp),
-                                            modifier = Modifier.height(36.dp)
+                                            modifier = Modifier.height(36.dp),
+                                            enabled = !isLoading && !isLoadingVideos && !isTransitioning
                                         ) {
                                             Text(
                                                 text = "Trends",
@@ -213,14 +245,17 @@ fun HomeScreen(
                                         
                                         Button(
                                             onClick = { 
-                                                sharedViewModel.updateSelectedFeed("Flicks")
+                                                if (!isTransitioning && selectedFeed != "Flicks") {
+                                                    sharedViewModel.updateSelectedFeed("Flicks")
+                                                }
                                             },
                                             colors = ButtonDefaults.buttonColors(
                                                 containerColor = if (selectedFeed == "Flicks") ComposeColor(0xFF6B4EFF) else ComposeColor.Transparent,
                                                 contentColor = if (selectedFeed == "Flicks") ComposeColor.White else ComposeColor.White.copy(alpha = 0.7f)
                                             ),
                                             shape = RoundedCornerShape(18.dp),
-                                            modifier = Modifier.height(36.dp)
+                                            modifier = Modifier.height(36.dp),
+                                            enabled = !isLoading && !isLoadingVideos && !isTransitioning
                                         ) {
                                             Text(
                                                 text = "Flicks",

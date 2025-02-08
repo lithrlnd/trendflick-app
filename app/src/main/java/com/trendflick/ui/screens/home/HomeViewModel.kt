@@ -1160,6 +1160,18 @@ class HomeViewModel @Inject constructor(
             }
         }
     }
+
+    fun clearThreads() {
+        viewModelScope.launch {
+            _threads.value = emptyList()
+        }
+    }
+
+    fun clearVideos() {
+        viewModelScope.launch {
+            _videos.value = emptyList()
+        }
+    }
 }
 
    
