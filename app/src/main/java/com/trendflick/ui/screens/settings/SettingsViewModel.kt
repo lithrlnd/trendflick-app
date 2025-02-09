@@ -46,27 +46,50 @@ class SettingsViewModel @Inject constructor(
             try {
                 _uiState.update { it.copy(isLoading = true) }
                 
+                // Ensure we have a valid session first
+                if (!atProtocolRepository.ensureValidSession()) {
+                    throw Exception("No valid session available. Please log in again.")
+                }
+                
+                Log.d(TAG, "🖼️ Starting profile picture update process")
+                
                 // Upload image to BlueSky's blob store
+                Log.d(TAG, "📤 Uploading image to Bluesky blob store")
                 val blobResult = atProtocolRepository.uploadBlob(uri)
+                
+                if (blobResult.blobUri.isEmpty()) {
+                    throw Exception("Failed to get blob URI from Bluesky")
+                }
+                
+                Log.d(TAG, "✅ Image uploaded successfully. Blob URI: ${blobResult.blobUri}")
                 
                 // Update user profile with new avatar
                 uiState.value.user?.let { currentUser ->
+                    Log.d(TAG, "👤 Updating user profile with new avatar")
                     val updatedUser = currentUser.copy(
                         avatar = blobResult.blobUri
                     )
                     userRepository.updateUser(updatedUser)
                     
                     // Update profile on BlueSky
+                    Log.d(TAG, "🔄 Syncing profile update with Bluesky")
                     atProtocolRepository.updateProfile(
                         did = updatedUser.did,
                         displayName = updatedUser.displayName,
                         description = updatedUser.description,
                         avatar = blobResult.blobUri
                     )
-                }
+                    
+                    Log.d(TAG, "✅ Profile picture update completed successfully")
+                    _uiState.update { it.copy(
+                        isLoading = false,
+                        user = updatedUser
+                    ) }
+                } ?: throw Exception("No current user found")
                 
-                _uiState.update { it.copy(isLoading = false) }
             } catch (e: Exception) {
+                Log.e(TAG, "❌ Failed to update profile picture: ${e.message}")
+                Log.e(TAG, "Stack trace: ${e.stackTraceToString()}")
                 _uiState.update { 
                     it.copy(
                         isLoading = false,
