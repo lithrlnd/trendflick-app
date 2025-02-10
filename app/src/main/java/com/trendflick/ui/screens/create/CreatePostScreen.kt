@@ -565,20 +565,31 @@ fun CreatePostScreen(
                             strokeWidth = 2.dp
                         )
                         
-                        FloatingActionButton(
+                        Button(
                             onClick = {
                                 keyboardController?.hide()
                                 viewModel.createPost(postTextFieldValue.text)
                             },
                             modifier = Modifier.size(48.dp),
-                            containerColor = Color(0xFF6B4EFF),
-                            interactionSource = remember { MutableInteractionSource() }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Send,
-                                contentDescription = "Post",
-                                tint = Color.White
+                            enabled = !isPosting && postTextFieldValue.text.isNotBlank(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                disabledContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
                             )
+                        ) {
+                            if (isPosting) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(24.dp),
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Send,
+                                    contentDescription = "Post",
+                                    tint = MaterialTheme.colorScheme.onPrimary
+                                )
+                            }
                         }
                     }
 

@@ -10,35 +10,41 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun SettingsSwitch(
     title: String,
-    subtitle: String? = null,
+    subtitle: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Row(
         modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(modifier = Modifier.weight(1f)) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(end = 16.dp)
+        ) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.bodyLarge
+                style = MaterialTheme.typography.titleMedium
             )
-            if (subtitle != null) {
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange,
-            modifier = Modifier.padding(start = 16.dp)
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = MaterialTheme.colorScheme.primary,
+                checkedTrackColor = MaterialTheme.colorScheme.primaryContainer,
+                uncheckedThumbColor = MaterialTheme.colorScheme.outline,
+                uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
+            )
         )
     }
 } 

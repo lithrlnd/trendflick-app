@@ -48,8 +48,9 @@ fun BottomNavigationBar(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth(),
-            containerColor = Color.Black,
-            contentColor = Color.White
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            tonalElevation = 8.dp
         ) {
             NavigationBarItem(
                 icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
@@ -62,10 +63,11 @@ fun BottomNavigationBar(
                     }
                 },
                 colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = Color(0xFF6B4EFF),
-                    selectedTextColor = Color(0xFF6B4EFF),
-                    unselectedIconColor = Color.Gray,
-                    unselectedTextColor = Color.Gray
+                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                    unselectedIconColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                    unselectedTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                    indicatorColor = MaterialTheme.colorScheme.primaryContainer
                 )
             )
             
@@ -79,10 +81,11 @@ fun BottomNavigationBar(
                     }
                 },
                 colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = Color(0xFF6B4EFF),
-                    selectedTextColor = Color(0xFF6B4EFF),
-                    unselectedIconColor = Color.Gray,
-                    unselectedTextColor = Color.Gray
+                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                    unselectedIconColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                    unselectedTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                    indicatorColor = MaterialTheme.colorScheme.primaryContainer
                 )
             )
 
@@ -94,10 +97,11 @@ fun BottomNavigationBar(
                     // TODO: Implement search navigation
                 },
                 colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = Color(0xFF6B4EFF),
-                    selectedTextColor = Color(0xFF6B4EFF),
-                    unselectedIconColor = Color.Gray,
-                    unselectedTextColor = Color.Gray
+                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                    unselectedIconColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                    unselectedTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                    indicatorColor = MaterialTheme.colorScheme.primaryContainer
                 )
             )
 
@@ -111,10 +115,11 @@ fun BottomNavigationBar(
                     }
                 },
                 colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = Color(0xFF6B4EFF),
-                    selectedTextColor = Color(0xFF6B4EFF),
-                    unselectedIconColor = Color.Gray,
-                    unselectedTextColor = Color.Gray
+                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                    unselectedIconColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                    unselectedTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                    indicatorColor = MaterialTheme.colorScheme.primaryContainer
                 )
             )
 
@@ -128,10 +133,11 @@ fun BottomNavigationBar(
                     }
                 },
                 colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = Color(0xFF6B4EFF),
-                    selectedTextColor = Color(0xFF6B4EFF),
-                    unselectedIconColor = Color.Gray,
-                    unselectedTextColor = Color.Gray
+                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                    unselectedIconColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                    unselectedTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                    indicatorColor = MaterialTheme.colorScheme.primaryContainer
                 )
             )
         }

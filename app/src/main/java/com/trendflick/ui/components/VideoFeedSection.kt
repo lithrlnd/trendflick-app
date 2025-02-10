@@ -50,7 +50,7 @@ fun VideoFeedSection(
             isLoading -> {
                 CircularProgressIndicator(
                     modifier = Modifier.align(Alignment.Center),
-                    color = Color(0xFF6B4EFF)
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
             error != null -> {
@@ -64,19 +64,20 @@ fun VideoFeedSection(
                     Icon(
                         imageVector = Icons.Default.Error,
                         contentDescription = null,
-                        tint = Color.White.copy(alpha = 0.7f),
+                        tint = MaterialTheme.colorScheme.error,
                         modifier = Modifier.size(48.dp)
                     )
                     Text(
                         text = error,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(alpha = 0.7f),
+                        color = MaterialTheme.colorScheme.onSurface,
                         textAlign = TextAlign.Center
                     )
                     Button(
                         onClick = onRefresh,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF6B4EFF)
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
                         )
                     ) {
                         Text("Retry")
@@ -94,15 +95,18 @@ fun VideoFeedSection(
                     Text(
                         text = "No videos available",
                         style = MaterialTheme.typography.titleMedium,
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Button(
                         onClick = onRefresh,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF6B4EFF)
+                            containerColor = MaterialTheme.colorScheme.primary
                         )
                     ) {
-                        Text("Refresh")
+                        Text(
+                            text = "Refresh",
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
                     }
                 }
             }
@@ -136,21 +140,6 @@ fun VideoFeedSection(
                 }
             }
         }
-
-        FloatingActionButton(
-            onClick = onCreateVideo,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(16.dp),
-            containerColor = Color(0xFF6B4EFF),
-            contentColor = Color.White
-        ) {
-            Icon(
-                imageVector = Icons.Default.Add,
-                contentDescription = "Create new video",
-                modifier = Modifier.size(24.dp)
-            )
-        }
     }
 }
 
@@ -173,7 +162,7 @@ private fun VideoItem(
 
     Box(
         modifier = modifier
-            .background(Color.Black)
+            .background(MaterialTheme.colorScheme.surface)
             .pointerInput(Unit) {
                 detectTapGestures(
                     onDoubleTap = { 
@@ -214,7 +203,7 @@ private fun VideoItem(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()
-                .background(Color.Black.copy(alpha = 0.3f))
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.3f))
                 .padding(16.dp)
         ) {
             Row(
@@ -230,7 +219,7 @@ private fun VideoItem(
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFF1A1A1A)),
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
                     contentScale = ContentScale.Crop
                 )
                 
@@ -238,13 +227,13 @@ private fun VideoItem(
                     Text(
                         text = video.authorName,
                         style = MaterialTheme.typography.bodyLarge,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
                         text = "@${video.username}",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(alpha = 0.7f)
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                     )
                 }
             }
@@ -261,16 +250,19 @@ private fun VideoItem(
             EngagementAction(
                 icon = Icons.Default.Favorite,
                 count = video.likes,
+                isActive = video.likes > 0,
                 onClick = onLikeClick
             )
             EngagementAction(
                 icon = Icons.Default.ChatBubble,
                 count = video.comments,
+                isActive = video.comments > 0,
                 onClick = onCommentClick
             )
             EngagementAction(
                 icon = Icons.Default.Share,
                 count = video.shares,
+                isActive = video.shares > 0,
                 onClick = onShareClick
             )
         }
@@ -280,7 +272,7 @@ private fun VideoItem(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.7f)),
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)),
                 contentAlignment = Alignment.Center
             ) {
                 Column(
@@ -290,12 +282,12 @@ private fun VideoItem(
                     Icon(
                         imageVector = Icons.Default.Error,
                         contentDescription = null,
-                        tint = Color.White,
+                        tint = MaterialTheme.colorScheme.error,
                         modifier = Modifier.size(48.dp)
                     )
                     Text(
                         text = error,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onSurface,
                         style = MaterialTheme.typography.bodyMedium,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(horizontal = 16.dp)
@@ -310,13 +302,13 @@ private fun VideoItem(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .height(2.dp)
-                .background(Color.Black.copy(alpha = 0.3f))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth(progress)
                     .fillMaxHeight()
-                    .background(Color(0xFF6B4EFF))
+                    .background(MaterialTheme.colorScheme.primary)
             )
         }
 
@@ -325,7 +317,7 @@ private fun VideoItem(
             Icon(
                 imageVector = Icons.Default.Favorite,
                 contentDescription = null,
-                tint = Color(0xFF6B4EFF),
+                tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier
                     .align(Alignment.Center)
                     .size(100.dp)
@@ -347,7 +339,9 @@ private fun VideoItem(
 @Composable
 private fun EngagementAction(
     icon: ImageVector,
-    count: Int,
+    count: Int = 0,
+    isActive: Boolean = false,
+    tint: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
     onClick: () -> Unit
 ) {
     Column(
@@ -361,14 +355,14 @@ private fun EngagementAction(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = Color.White,
+                tint = if (isActive) MaterialTheme.colorScheme.primary else tint,
                 modifier = Modifier.size(28.dp)
             )
         }
         Text(
             text = formatCount(count),
             style = MaterialTheme.typography.labelMedium,
-            color = Color.White
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
         )
     }
 }

@@ -731,7 +731,7 @@ fun ThreadCard(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(Color.Black.copy(alpha = 0.5f))
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
                             .clickable { isDrawerOpen = false }
                     )
                 }
@@ -751,7 +751,7 @@ fun ThreadCard(
                         onHashtagSelected = { hashtag ->
                             // Handle hashtag selection
                         },
-                        trendingHashtags = emptyList(), // Pass actual trending hashtags
+                        trendingHashtags = emptyList(),
                         currentHashtag = null,
                         currentCategory = "",
                         onDismiss = { isDrawerOpen = false },
@@ -768,8 +768,8 @@ fun ThreadCard(
                         .align(Alignment.BottomEnd)
                         .padding(16.dp)
                         .navigationBarsPadding(),
-                    containerColor = Color(0xFF6B4EFF),
-                    contentColor = Color.White
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add,
@@ -792,16 +792,9 @@ fun ThreadCard(
             Icon(
                 imageVector = Icons.Default.Favorite,
                 contentDescription = null,
-                tint = Color(0xFF6B4EFF),
+                tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(100.dp)
             )
-
-            LaunchedEffect(showHeartAnimation) {
-                if (showHeartAnimation) {
-                    delay(800)
-                    showHeartAnimation = false
-                }
-            }
         }
 
         // Add ImageViewer overlay
@@ -846,7 +839,7 @@ private fun EngagementColumn(
                 count = likeCount,
                 isActive = isLiked,
                 onClick = onLikeClick,
-                tint = if (isLiked) Color(0xFF6B4EFF) else Color(0xFFB4A5FF),
+                tint = if (isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                 isHorizontal = true
             )
 
@@ -864,7 +857,7 @@ private fun EngagementColumn(
                 count = repostCount,
                 isActive = isReposted,
                 onClick = onRepostClick,
-                tint = if (isReposted) Color(0xFF6B4EFF) else Color(0xFFB4A5FF),
+                tint = if (isReposted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                 isHorizontal = true
             )
 
@@ -892,7 +885,7 @@ private fun EngagementColumn(
                 count = likeCount,
                 isActive = isLiked,
                 onClick = onLikeClick,
-                tint = if (isLiked) Color(0xFF6B4EFF) else Color(0xFFB4A5FF)
+                tint = if (isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
             )
 
             Spacer(modifier = Modifier.height(28.dp))
@@ -912,7 +905,7 @@ private fun EngagementColumn(
                 count = repostCount,
                 isActive = isReposted,
                 onClick = onRepostClick,
-                tint = if (isReposted) Color(0xFF6B4EFF) else Color(0xFFB4A5FF)
+                tint = if (isReposted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
             )
 
             Spacer(modifier = Modifier.height(28.dp))
@@ -933,7 +926,7 @@ private fun EngagementAction(
     icon: ImageVector,
     count: Int = 0,
     isActive: Boolean = false,
-    tint: Color = Color(0xFFB4A5FF),
+    tint: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
     isHorizontal: Boolean = false,
     onClick: () -> Unit
 ) {
@@ -971,7 +964,7 @@ private fun EngagementAction(
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = tint,
+                    tint = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                     modifier = Modifier.size(24.dp)
                 )
             }
@@ -979,7 +972,7 @@ private fun EngagementAction(
                 Text(
                     text = CommonUtils.formatCount(count),
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFFB4A5FF)
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
             }
         }
@@ -1006,7 +999,7 @@ private fun EngagementAction(
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = tint,
+                    tint = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                     modifier = Modifier.size(24.dp)
                 )
             }
@@ -1014,7 +1007,7 @@ private fun EngagementAction(
                 Text(
                     text = CommonUtils.formatCount(count),
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFFB4A5FF)
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
             }
         }
@@ -1459,10 +1452,10 @@ public fun HashtagBadge(
             .clickable(onClick = onClick)
             .border(
                 width = 1.dp,
-                color = Color(0xFF6B4EFF).copy(alpha = 0.2f),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
                 shape = RoundedCornerShape(16.dp)
             ),
-        color = Color(0xFF6B4EFF).copy(alpha = 0.1f)
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
@@ -1472,14 +1465,14 @@ public fun HashtagBadge(
             Text(
                 text = "#$hashtag",
                 style = MaterialTheme.typography.labelMedium,
-                color = Color(0xFF6B4EFF)
+                color = MaterialTheme.colorScheme.primary
             )
             
             if (isTrending) {
                 Icon(
                     imageVector = Icons.Default.TrendingUp,
                     contentDescription = "Trending",
-                    tint = Color(0xFF6B4EFF),
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(14.dp)
                 )
             }
@@ -1488,7 +1481,7 @@ public fun HashtagBadge(
                 Text(
                     text = CommonUtils.formatCount(it),
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFF6B4EFF).copy(alpha = 0.7f)
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
                 )
             }
         }

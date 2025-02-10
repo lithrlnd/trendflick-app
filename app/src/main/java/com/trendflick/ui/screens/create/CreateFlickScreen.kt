@@ -223,8 +223,8 @@ fun CreateFlickScreen(
                                 },
                                 enabled = textFieldValue.text.isNotEmpty() && selectedVideoUri != null && !uiState.isLoading,
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFF6B4EFF),
-                                    disabledContainerColor = Color(0xFF6B4EFF).copy(alpha = 0.5f)
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    disabledContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
                                 )
                             ) {
                                 if (uiState.isLoading) {

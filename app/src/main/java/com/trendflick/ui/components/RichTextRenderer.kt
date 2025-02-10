@@ -77,8 +77,8 @@ fun RichTextRenderer(
                         // Enhanced hashtag styling
                         addStyle(
                             style = SpanStyle(
-                                color = Color(0xFF6B4EFF),
-                                background = Color(0xFF6B4EFF).copy(alpha = 0.1f),
+                                color = MaterialTheme.colorScheme.primary,
+                                background = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
                                 fontWeight = FontWeight.Medium,
                                 letterSpacing = 0.5.sp
                             ),
@@ -95,7 +95,7 @@ fun RichTextRenderer(
                     is MentionFeature -> {
                         addStyle(
                             style = SpanStyle(
-                                color = Color(0xFF6B4EFF),
+                                color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Medium,
                                 letterSpacing = 0.5.sp
                             ),
@@ -112,7 +112,7 @@ fun RichTextRenderer(
                     is LinkFeature -> {
                         addStyle(
                             style = SpanStyle(
-                                color = Color(0xFF6B4EFF),
+                                color = MaterialTheme.colorScheme.primary,
                                 textDecoration = TextDecoration.Underline,
                                 letterSpacing = 0.5.sp
                             ),
@@ -172,7 +172,7 @@ fun RichTextRenderer(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .alpha(0.1f),
-                                color = Color(0xFF6B4EFF)
+                                color = MaterialTheme.colorScheme.primary
                             ) {}
                         }
                     }

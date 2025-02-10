@@ -201,7 +201,7 @@ fun HomeScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .zIndex(1f),
-                        color = ComposeColor.Transparent
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
                     ) {
                         TopAppBar(
                             title = {
@@ -215,7 +215,7 @@ fun HomeScreen(
                                     Row(
                                         modifier = Modifier
                                             .background(
-                                                color = ComposeColor(0xFF1A1A1A),
+                                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
                                                 shape = RoundedCornerShape(20.dp)
                                             )
                                             .padding(4.dp)
@@ -227,8 +227,8 @@ fun HomeScreen(
                                                 }
                                             },
                                             colors = ButtonDefaults.buttonColors(
-                                                containerColor = if (selectedFeed == "Trends") ComposeColor(0xFF6B4EFF) else ComposeColor.Transparent,
-                                                contentColor = if (selectedFeed == "Trends") ComposeColor.White else ComposeColor.White.copy(alpha = 0.7f)
+                                                containerColor = if (selectedFeed == "Trends") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                                                contentColor = if (selectedFeed == "Trends") MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                                             ),
                                             shape = RoundedCornerShape(18.dp),
                                             modifier = Modifier.height(36.dp),
@@ -250,8 +250,8 @@ fun HomeScreen(
                                                 }
                                             },
                                             colors = ButtonDefaults.buttonColors(
-                                                containerColor = if (selectedFeed == "Flicks") ComposeColor(0xFF6B4EFF) else ComposeColor.Transparent,
-                                                contentColor = if (selectedFeed == "Flicks") ComposeColor.White else ComposeColor.White.copy(alpha = 0.7f)
+                                                containerColor = if (selectedFeed == "Flicks") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                                                contentColor = if (selectedFeed == "Flicks") MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                                             ),
                                             shape = RoundedCornerShape(18.dp),
                                             modifier = Modifier.height(36.dp),
@@ -271,11 +271,11 @@ fun HomeScreen(
                                     modifier = Modifier
                                         .size(48.dp)
                                         .padding(end = 8.dp),
-                                    tint = ComposeColor.White
+                                    tint = MaterialTheme.colorScheme.onSurface
                                 )
                             },
                             colors = TopAppBarDefaults.topAppBarColors(
-                                containerColor = ComposeColor.Transparent
+                                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.1f)
                             )
                         )
                     }
@@ -388,24 +388,7 @@ fun HomeScreen(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
                                     .padding(16.dp),
-                                color = ComposeColor(0xFF6B4EFF)
-                            )
-                        }
-
-                        // Add FloatingActionButton for creating posts
-                        FloatingActionButton(
-                            onClick = { navController.navigate(Screen.CreatePost.route) },
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(16.dp)
-                                .navigationBarsPadding(),
-                            containerColor = ComposeColor(0xFF6B4EFF),
-                            contentColor = ComposeColor.White
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = "Create new post",
-                                modifier = Modifier.size(24.dp)
+                                color = MaterialTheme.colorScheme.primary
                             )
                         }
                     } else {
@@ -506,8 +489,8 @@ fun HomeScreen(
                 refreshing = isRefreshing,
                 state = pullRefreshState,
                 modifier = Modifier.align(Alignment.TopCenter),
-                backgroundColor = ComposeColor(0xFF6B4EFF),
-                contentColor = ComposeColor.White
+                backgroundColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
             )
         }
 
@@ -547,11 +530,36 @@ fun HomeScreen(
                             Icon(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = "Close browser",
-                                tint = ComposeColor.White
+                                tint = MaterialTheme.colorScheme.onSurface
                             )
                         }
                     }
                 }
+            }
+        }
+
+        // Show FAB based on selected feed
+        if (!isLandscape) {
+            FloatingActionButton(
+                onClick = { 
+                    if (selectedFeed == "Trends") {
+                        navController.navigate(Screen.CreatePost.route)
+                    } else {
+                        navController.navigate(Screen.CreateFlick.route)
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp)
+                    .navigationBarsPadding(),
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = if (selectedFeed == "Trends") "Create new post" else "Create new video",
+                    modifier = Modifier.size(24.dp)
+                )
             }
         }
     }
@@ -713,7 +721,7 @@ fun VideoItem(
                 modifier = Modifier
                     .fillMaxWidth(progress)
                     .fillMaxHeight()
-                    .background(ComposeColor(0xFF6B4EFF))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.8f))
             )
         }
 
@@ -746,7 +754,7 @@ fun VideoItem(
                     modifier = Modifier
                         .size(32.dp)
                         .clip(CircleShape)
-                        .background(ComposeColor(0xFF1A1A1A)),
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
                     contentScale = ContentScale.Crop
                 )
                 
@@ -754,13 +762,13 @@ fun VideoItem(
                     Text(
                         text = video.authorName,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = ComposeColor.White,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
                         text = "@${video.username}",
                         style = MaterialTheme.typography.bodySmall,
-                        color = ComposeColor.White.copy(alpha = 0.7f)
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                     )
                 }
             }
@@ -861,8 +869,7 @@ private fun EngagementColumn(
                 count = likeCount,
                 isActive = isLiked,
                 onClick = onLikeClick,
-                tint = if (isLiked) ComposeColor(0xFF6B4EFF) else ComposeColor(0xFFB4A5FF),
-                isHorizontal = true
+                tint = if (isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
             )
 
             // Comment
@@ -870,7 +877,7 @@ private fun EngagementColumn(
                 icon = Icons.Default.ChatBubbleOutline,
                 count = replyCount,
                 onClick = onCommentClick,
-                isHorizontal = true
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
             )
 
             // Repost
@@ -879,15 +886,14 @@ private fun EngagementColumn(
                 count = repostCount,
                 isActive = isReposted,
                 onClick = onRepostClick,
-                tint = if (isReposted) ComposeColor(0xFF6B4EFF) else ComposeColor(0xFFB4A5FF),
-                isHorizontal = true
+                tint = if (isReposted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
             )
 
             // Share
             EngagementAction(
                 icon = Icons.Default.Share,
                 onClick = onShareClick,
-                isHorizontal = true
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
             )
         }
     } else {
@@ -907,7 +913,7 @@ private fun EngagementColumn(
                 count = likeCount,
                 isActive = isLiked,
                 onClick = onLikeClick,
-                tint = if (isLiked) ComposeColor(0xFF6B4EFF) else ComposeColor(0xFFB4A5FF)
+                tint = if (isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
             )
 
             Spacer(modifier = Modifier.height(28.dp))
@@ -916,7 +922,8 @@ private fun EngagementColumn(
             EngagementAction(
                 icon = Icons.Default.ChatBubbleOutline,
                 count = replyCount,
-                onClick = onCommentClick
+                onClick = onCommentClick,
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
             )
 
             Spacer(modifier = Modifier.height(28.dp))
@@ -927,7 +934,7 @@ private fun EngagementColumn(
                 count = repostCount,
                 isActive = isReposted,
                 onClick = onRepostClick,
-                tint = if (isReposted) ComposeColor(0xFF6B4EFF) else ComposeColor(0xFFB4A5FF)
+                tint = if (isReposted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
             )
 
             Spacer(modifier = Modifier.height(28.dp))
@@ -935,7 +942,8 @@ private fun EngagementColumn(
             // Share
             EngagementAction(
                 icon = Icons.Default.Share,
-                onClick = onShareClick
+                onClick = onShareClick,
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
             )
 
             Spacer(modifier = Modifier.weight(0.5f))
@@ -948,7 +956,7 @@ private fun EngagementAction(
     icon: ImageVector,
     count: Int = 0,
     isActive: Boolean = false,
-    tint: ComposeColor = ComposeColor(0xFFB4A5FF),
+    tint: ComposeColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
     isHorizontal: Boolean = false,
     onClick: () -> Unit
 ) {
@@ -986,7 +994,7 @@ private fun EngagementAction(
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = tint,
+                    tint = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                     modifier = Modifier.size(24.dp)
                 )
             }
@@ -994,7 +1002,7 @@ private fun EngagementAction(
                 Text(
                     text = formatEngagementCount(count),
                     style = MaterialTheme.typography.labelSmall,
-                    color = ComposeColor(0xFFB4A5FF)
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
             }
         }
@@ -1021,7 +1029,7 @@ private fun EngagementAction(
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = tint,
+                    tint = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                     modifier = Modifier.size(24.dp)
                 )
             }
@@ -1029,7 +1037,7 @@ private fun EngagementAction(
                 Text(
                     text = formatEngagementCount(count),
                     style = MaterialTheme.typography.labelSmall,
-                    color = ComposeColor(0xFFB4A5FF)
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
             }
         }
@@ -1491,13 +1499,13 @@ fun VideoFeedSection(
                 ) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(36.dp),
-                        color = ComposeColor(0xFF6B4EFF)
+                        color = MaterialTheme.colorScheme.primary
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = "Loading media feed...",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = ComposeColor.White.copy(alpha = 0.7f)
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                     )
                 }
             }
@@ -1530,7 +1538,8 @@ fun VideoFeedSection(
                             onRefresh()
                         },
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = ComposeColor(0xFF6B4EFF)
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            disabledContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
                         )
                     ) {
                         Text("Retry")
@@ -1564,7 +1573,8 @@ fun VideoFeedSection(
                             onRefresh()
                         },
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = ComposeColor(0xFF6B4EFF)
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            disabledContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
                         )
                     ) {
                         Text("Refresh Feed")
@@ -1701,8 +1711,8 @@ fun VideoFeedSection(
                     .align(Alignment.BottomEnd)
                     .padding(16.dp)
                     .navigationBarsPadding(),
-                containerColor = ComposeColor(0xFF6B4EFF),
-                contentColor = ComposeColor.White
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
             ) {
                 Icon(
                     imageVector = Icons.Default.Add,
@@ -1743,7 +1753,7 @@ private fun CommentsHeader(
             Text(
                 text = "Comments",
                 style = MaterialTheme.typography.titleMedium,
-                color = ComposeColor.White
+                color = MaterialTheme.colorScheme.onSurface
             )
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -1752,7 +1762,7 @@ private fun CommentsHeader(
                 Text(
                     text = if (showAuthorOnly) "Author Only" else "All Comments",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = ComposeColor.White.copy(alpha = 0.7f)
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
                 Switch(
                     checked = showAuthorOnly,
