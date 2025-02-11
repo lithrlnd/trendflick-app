@@ -45,6 +45,8 @@ import kotlin.comparisons.compareByDescending
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import java.time.Duration
+import kotlinx.coroutines.flow.update
+import com.trendflick.ui.navigation.NavItem
 
 @OptIn(kotlin.experimental.ExperimentalTypeInference::class)
 @HiltViewModel
@@ -120,6 +122,10 @@ class HomeViewModel @Inject constructor(
 
     private val _showAuthorOnly = MutableStateFlow(false)
     val showAuthorOnly = _showAuthorOnly.asStateFlow()
+
+    // Add new state for custom navigation
+    private val _customNavItems = MutableStateFlow<List<NavItem>>(emptyList())
+    val customNavItems: StateFlow<List<NavItem>> = _customNavItems.asStateFlow()
 
     companion object {
         private const val MAX_COMMENT_LENGTH = 300
@@ -1170,6 +1176,32 @@ class HomeViewModel @Inject constructor(
     fun clearVideos() {
         viewModelScope.launch {
             _videos.value = emptyList()
+        }
+    }
+
+    fun addCustomNavItem(item: NavItem) {
+        viewModelScope.launch {
+            _customNavItems.update { current ->
+                if (current.size < 7) {
+                    (current as List<NavItem>) + item
+                } else {
+                    current
+                }
+            }
+        }
+    }
+
+    fun removeCustomNavItem(item: NavItem) {
+        viewModelScope.launch {
+            _customNavItems.update { current ->
+                (current as List<NavItem>).filter { it != item }
+            }
+        }
+    }
+
+    fun reorderCustomNavItems(items: List<NavItem>) {
+        viewModelScope.launch {
+            _customNavItems.value = items
         }
     }
 }

@@ -34,7 +34,8 @@ fun LoginScreen(
             error = state.error
             if (state.isLoggedIn) {
                 navController.navigate(Screen.Home.route) {
-                    popUpTo(Screen.Login.route) { inclusive = true }
+                    popUpTo(Screen.Login.route)
+                    launchSingleTop = true
                 }
             }
         }

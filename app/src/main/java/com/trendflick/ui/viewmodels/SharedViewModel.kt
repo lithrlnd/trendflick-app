@@ -12,7 +12,14 @@ class SharedViewModel @Inject constructor() : ViewModel() {
     private val _selectedFeed = MutableStateFlow("Trends")
     val selectedFeed: StateFlow<String> = _selectedFeed.asStateFlow()
 
+    private val _isBottomSheetVisible = MutableStateFlow(false)
+    val isBottomSheetVisible: StateFlow<Boolean> = _isBottomSheetVisible.asStateFlow()
+
     fun updateSelectedFeed(feed: String) {
         _selectedFeed.value = feed
+    }
+
+    fun toggleBottomSheet(show: Boolean) {
+        _isBottomSheetVisible.value = show
     }
 } 
