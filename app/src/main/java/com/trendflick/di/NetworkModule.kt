@@ -29,6 +29,8 @@ import com.squareup.moshi.JsonDataException
 import android.util.Log
 import android.content.SharedPreferences
 import java.util.concurrent.TimeUnit
+import com.trendflick.data.api.BlueskyApi
+import retrofit2.converter.gson.GsonConverterFactory
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -356,10 +358,24 @@ object NetworkModule {
             authorName = post.author.displayName,
             authorAvatar = post.author.avatar,
             createdAt = post.record.createdAt,
-            likes = post.likeCount,
-            comments = post.replyCount,
-            reposts = post.repostCount,
+            likes = post.likeCount ?: 0,
+            comments = post.replyCount ?: 0,
+            reposts = post.repostCount ?: 0,
             aspectRatio = post.embed?.video?.aspectRatio?.let { it.width.toFloat() / it.height.toFloat() }
         )
+    }
+
+    @Provides
+    @Singleton
+    fun provideBlueskyApi(
+        okHttpClient: OkHttpClient,
+        moshi: Moshi
+    ): BlueskyApi {
+        return Retrofit.Builder()
+            .baseUrl(BASE_URL)
+            .client(okHttpClient)
+            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .build()
+            .create(BlueskyApi::class.java)
     }
 } 

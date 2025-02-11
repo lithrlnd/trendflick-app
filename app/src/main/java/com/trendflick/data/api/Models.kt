@@ -167,11 +167,12 @@ data class Post(
     @field:Json(name = "cid") val cid: String,
     @field:Json(name = "author") val author: Author,
     @field:Json(name = "record") val record: PostRecord,
-    @field:Json(name = "embed") val embed: Embed? = null,
+    @field:Json(name = "embed") val embed: Embed?,
     @field:Json(name = "indexedAt") val indexedAt: String,
-    @field:Json(name = "likeCount") val likeCount: Int = 0,
-    @field:Json(name = "replyCount") val replyCount: Int = 0,
-    @field:Json(name = "repostCount") val repostCount: Int = 0
+    @field:Json(name = "likeCount") val likeCount: Int?,
+    @field:Json(name = "replyCount") val replyCount: Int?,
+    @field:Json(name = "repostCount") val repostCount: Int?,
+    @field:Json(name = "viewer") val viewer: PostViewer?
 )
 
 @JsonClass(generateAdapter = true)
@@ -234,7 +235,12 @@ data class AspectRatio(
     @field:Json(name = "height") val height: Int
 )
 
-// Other Models
+@JsonClass(generateAdapter = true)
+data class PostViewer(
+    @field:Json(name = "like") val like: String?,
+    @field:Json(name = "repost") val repost: String?
+)
+
 @JsonClass(generateAdapter = true)
 data class ReplyRef(
     @field:Json(name = "root") val root: PostRef,
@@ -250,24 +256,41 @@ data class PostRef(
 @JsonClass(generateAdapter = true)
 data class ReasonType(
     @field:Json(name = "by") val by: Author? = null,
-    @field:Json(name = "indexedAt") val indexedAt: String? = null
+    @field:Json(name = "indexedAt") val indexedAt: String? = null,
+    @field:Json(name = "type") val type: String? = null
 )
 
 @JsonClass(generateAdapter = true)
-data class GetLikesResponse(
-    @field:Json(name = "likes") val likes: List<Like>
+data class GetTimelineRequest(
+    @field:Json(name = "algorithm") val algorithm: String = "reverse-chronological",
+    @field:Json(name = "limit") val limit: Int = 50,
+    @field:Json(name = "cursor") val cursor: String? = null
 )
 
 @JsonClass(generateAdapter = true)
-data class Like(
-    @field:Json(name = "actor") val actor: AtIdentity,
-    @field:Json(name = "createdAt") val createdAt: String
-)
-
-@JsonClass(generateAdapter = true)
-data class FollowsResponse(
-    @field:Json(name = "follows") val follows: List<AtProfile>,
+data class GetTimelineResponse(
+    @field:Json(name = "feed") val feed: List<FeedView>,
     @field:Json(name = "cursor") val cursor: String?
+)
+
+@JsonClass(generateAdapter = true)
+data class GetPostThreadResponse(
+    @field:Json(name = "thread") val thread: ThreadView,
+    @field:Json(name = "uri") val uri: String
+)
+
+@JsonClass(generateAdapter = true)
+data class ThreadView(
+    @field:Json(name = "post") val post: Post,
+    @field:Json(name = "parent") val parent: ThreadView?,
+    @field:Json(name = "replies") val replies: List<ThreadView>?
+)
+
+@JsonClass(generateAdapter = true)
+data class FeedView(
+    @field:Json(name = "post") val post: Post,
+    @field:Json(name = "reply") val reply: ReplyRef?,
+    @field:Json(name = "reason") val reason: ReasonType?
 )
 
 @JsonClass(generateAdapter = true)
@@ -286,4 +309,23 @@ data class VideoModel(
     val comments: Int = 0,
     val reposts: Int = 0,
     val aspectRatio: Float? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class GetLikesResponse(
+    @field:Json(name = "likes") val likes: List<Like>,
+    @field:Json(name = "cursor") val cursor: String?
+)
+
+@JsonClass(generateAdapter = true)
+data class Like(
+    @field:Json(name = "actor") val actor: AtIdentity,
+    @field:Json(name = "createdAt") val createdAt: String,
+    @field:Json(name = "indexedAt") val indexedAt: String?
+)
+
+@JsonClass(generateAdapter = true)
+data class FollowsResponse(
+    @field:Json(name = "follows") val follows: List<AtProfile>,
+    @field:Json(name = "cursor") val cursor: String?
 ) 

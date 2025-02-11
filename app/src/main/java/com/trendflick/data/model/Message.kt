@@ -30,13 +30,6 @@ data class Reference(
     val cid: String
 )
 
-data class Author(
-    val did: String,         // Decentralized identifier
-    val handle: String,      // User handle
-    val displayName: String? = null,
-    val avatar: String? = null
-)
-
 data class Facet(
     val index: FacetIndex,
     val features: List<FacetFeature>

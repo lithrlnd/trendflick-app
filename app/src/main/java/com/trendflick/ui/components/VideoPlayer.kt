@@ -39,108 +39,54 @@ import android.net.Uri
 @Composable
 fun VideoPlayer(
     videoUrl: String,
-    isVisible: Boolean,
-    onProgressChanged: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+    isVisible: Boolean = true,
+    onProgressChanged: (Float) -> Unit = {},
+    onError: (String) -> Unit = {},
     playbackSpeed: Float = 1f,
     isPaused: Boolean = false,
-    modifier: Modifier = Modifier,
-    onError: (String) -> Unit = {}
+    thumbnailUrl: String? = null
 ) {
     val context = LocalContext.current
-    var player by remember { mutableStateOf<ExoPlayer?>(null) }
-    var errorState by remember { mutableStateOf<String?>(null) }
-
-    DisposableEffect(videoUrl) {
-        try {
-            // Create HTTP data source factory with user agent
-            val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-                .setUserAgent("TrendFlick/1.0")
-                .setConnectTimeoutMs(15000)
-                .setReadTimeoutMs(15000)
-                .setAllowCrossProtocolRedirects(true)
-
-            // Create media source factory
-            val mediaSourceFactory = DefaultMediaSourceFactory(context)
-                .setDataSourceFactory(httpDataSourceFactory)
-
-            // Create player instance with custom factory
-            val newPlayer = ExoPlayer.Builder(context)
-                .setMediaSourceFactory(mediaSourceFactory)
-                .build().apply {
-                    // Handle different URL types
-                    val finalUrl = when {
-                        // Handle Bluesky CDN videos
-                        videoUrl.contains("cdn.bsky.app/video") -> videoUrl
-                        // Handle oEmbed URLs
-                        videoUrl.contains("bsky.app/profile") -> {
-                            val oEmbedUrl = "https://embed.bsky.app/oembed?url=${Uri.encode(videoUrl)}&format=json"
-                            Log.d("VideoPlayer", "🔗 Fetching oEmbed data from: $oEmbedUrl")
-                            oEmbedUrl
-                        }
-                        else -> videoUrl
-                    }
-
-                    Log.d("VideoPlayer", "🎥 Playing video from URL: $finalUrl")
-                    
-                    // Set up media source
-                    val mediaItem = MediaItem.fromUri(finalUrl)
-                    setMediaItem(mediaItem)
-                    
-                    // Add error listener
-                    addListener(object : Player.Listener {
-                        override fun onPlayerError(error: PlaybackException) {
-                            Log.e("VideoPlayer", "❌ Player error: ${error.message}")
-                            errorState = error.message
-                            onError(error.message ?: "Failed to load video")
-                        }
-                    })
-                    
-                    // Prepare player
-                    prepare()
-                    playWhenReady = !isPaused
-                    repeatMode = Player.REPEAT_MODE_ONE
-                }
-            
-            player = newPlayer
-            
-            onDispose {
-                newPlayer.release()
-                player = null
-            }
-        } catch (e: Exception) {
-            Log.e("VideoPlayer", "❌ Error initializing player: ${e.message}")
-            errorState = e.message
-            onError(e.message ?: "Failed to initialize video player")
-            onDispose {}
+    val exoPlayer = remember {
+        ExoPlayer.Builder(context).build().apply {
+            repeatMode = Player.REPEAT_MODE_ONE
+            volume = 1f
+            playWhenReady = true
         }
     }
 
-    // Handle visibility changes
+    DisposableEffect(videoUrl) {
+        try {
+            val mediaItem = MediaItem.fromUri(videoUrl)
+            exoPlayer.setMediaItem(mediaItem)
+            exoPlayer.prepare()
+        } catch (e: Exception) {
+            onError("Failed to load video: ${e.message}")
+        }
+
+        onDispose {
+            exoPlayer.release()
+        }
+    }
+
     LaunchedEffect(isVisible) {
-        player?.playWhenReady = isVisible && !isPaused
+        if (!isVisible) {
+            exoPlayer.pause()
+        } else {
+            exoPlayer.play()
+        }
     }
 
-    // Handle pause state changes
-    LaunchedEffect(isPaused) {
-        player?.playWhenReady = !isPaused && isVisible
-    }
-
-    // Handle playback speed changes
     LaunchedEffect(playbackSpeed) {
-        player?.setPlaybackSpeed(playbackSpeed)
+        exoPlayer.setPlaybackSpeed(playbackSpeed)
     }
 
-    // Update progress
-    LaunchedEffect(player) {
-        while (true) {
-            delay(16) // ~60fps
-            player?.let { exoPlayer ->
-                if (exoPlayer.isPlaying) {
-                    val progress = exoPlayer.currentPosition.toFloat() / 
-                                 exoPlayer.duration.coerceAtLeast(1)
-                    onProgressChanged(progress.coerceIn(0f, 1f))
-                }
-            }
+    LaunchedEffect(isPaused) {
+        if (isPaused) {
+            exoPlayer.pause()
+        } else {
+            exoPlayer.play()
         }
     }
 
@@ -148,41 +94,13 @@ fun VideoPlayer(
         AndroidView(
             factory = { context ->
                 PlayerView(context).apply {
-                    this.player = player
-                    useController = false
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    player = exoPlayer
+                    useController = true
+                    setShowNextButton(false)
+                    setShowPreviousButton(false)
                 }
             },
             modifier = Modifier.fillMaxSize()
         )
-
-        // Show error state if needed
-        errorState?.let { error ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.7f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Error,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(48.dp)
-                    )
-                    Text(
-                        text = "Failed to load video",
-                        color = Color.White,
-                        style = MaterialTheme.typography.bodyMedium,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-                }
-            }
-        }
     }
 } 

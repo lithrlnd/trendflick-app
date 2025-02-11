@@ -58,14 +58,90 @@ data class CustomCategory(
     val label: String,
     val type: CategoryType,
     val description: String,
-    val onClick: () -> Unit
+    val onClick: () -> Unit,
+    val allowedEngagements: Set<EngagementType> = type.engagementTypes,
+    val allowedPostTypes: Set<PostType> = type.postTypes,
+    val requiresAuth: Boolean = true,
+    val showTrending: Boolean = false,
+    val showHashtags: Boolean = false
 )
 
 enum class CategoryType {
-    APP_VIEW,
-    FEED_GENERATOR,
-    CUSTOM_FEED,
-    AGGREGATOR
+    APP_VIEW {
+        override val engagementTypes = setOf(
+            EngagementType.LIKE,
+            EngagementType.COMMENT,
+            EngagementType.REPOST,
+            EngagementType.SHARE
+        )
+        override val postTypes = setOf(
+            PostType.TEXT,
+            PostType.IMAGE,
+            PostType.VIDEO
+        )
+    },
+    FEED_GENERATOR {
+        override val engagementTypes = setOf(
+            EngagementType.LIKE,
+            EngagementType.COMMENT,
+            EngagementType.REPOST,
+            EngagementType.SHARE,
+            EngagementType.SAVE
+        )
+        override val postTypes = setOf(
+            PostType.TEXT,
+            PostType.IMAGE,
+            PostType.VIDEO,
+            PostType.RICH_MEDIA
+        )
+    },
+    CUSTOM_FEED {
+        override val engagementTypes = setOf(
+            EngagementType.LIKE,
+            EngagementType.COMMENT,
+            EngagementType.REPOST,
+            EngagementType.SHARE,
+            EngagementType.SAVE
+        )
+        override val postTypes = setOf(
+            PostType.TEXT,
+            PostType.IMAGE,
+            PostType.VIDEO
+        )
+    },
+    AGGREGATOR {
+        override val engagementTypes = setOf(
+            EngagementType.LIKE,
+            EngagementType.COMMENT,
+            EngagementType.REPOST,
+            EngagementType.SHARE
+        )
+        override val postTypes = setOf(
+            PostType.TEXT,
+            PostType.IMAGE,
+            PostType.VIDEO,
+            PostType.THREAD
+        )
+    };
+
+    abstract val engagementTypes: Set<EngagementType>
+    abstract val postTypes: Set<PostType>
+}
+
+enum class EngagementType {
+    LIKE,
+    COMMENT,
+    REPOST,
+    SHARE,
+    SAVE
+}
+
+enum class PostType {
+    TEXT,
+    IMAGE,
+    VIDEO,
+    RICH_MEDIA,
+    THREAD
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -108,30 +184,44 @@ fun BottomNavigationBar(
         listOf(
             "Feed Types" to listOf(
                 CustomCategory(
-                    id = "trending",
-                    icon = Icons.Default.TrendingUp,
-                    label = "Trending",
+                    id = "fyp",
+                    icon = Icons.Default.Recommend,
+                    label = "For You",
                     type = CategoryType.APP_VIEW,
-                    description = "Popular content across the network",
-                    onClick = { /* Handle click */ }
+                    description = "Personalized feed based on your interests",
+                    onClick = { /* Handle click */ },
+                    showTrending = true
                 ),
                 CustomCategory(
-                    id = "discover",
-                    icon = Icons.Default.Explore,
-                    label = "Discover",
-                    type = CategoryType.FEED_GENERATOR,
-                    description = "Personalized content discovery",
-                    onClick = { /* Handle click */ }
-                )
-            ),
-            "Content" to listOf(
+                    id = "trending",
+                    icon = Icons.Default.TrendingUp,
+                    label = "What's Hot",
+                    type = CategoryType.APP_VIEW,
+                    description = "Popular content across the network",
+                    onClick = { /* Handle click */ },
+                    showTrending = true,
+                    showHashtags = true
+                ),
                 CustomCategory(
                     id = "following",
                     icon = Icons.Default.People,
                     label = "Following",
-                    type = CategoryType.CUSTOM_FEED,
+                    type = CategoryType.APP_VIEW,
                     description = "Posts from people you follow",
                     onClick = { /* Handle click */ }
+                )
+            ),
+            "Discovery" to listOf(
+                CustomCategory(
+                    id = "explore",
+                    icon = Icons.Default.Explore,
+                    label = "Explore",
+                    type = CategoryType.FEED_GENERATOR,
+                    description = "Discover new content and creators",
+                    onClick = { /* Handle click */ },
+                    showTrending = true,
+                    showHashtags = true,
+                    allowedEngagements = CategoryType.FEED_GENERATOR.engagementTypes + EngagementType.SAVE
                 ),
                 CustomCategory(
                     id = "media",
@@ -139,18 +229,32 @@ fun BottomNavigationBar(
                     label = "Media",
                     type = CategoryType.APP_VIEW,
                     description = "Photos and videos",
-                    onClick = { /* Handle click */ }
+                    onClick = { /* Handle click */ },
+                    allowedPostTypes = setOf(PostType.IMAGE, PostType.VIDEO)
+                ),
+                CustomCategory(
+                    id = "hashtags",
+                    icon = Icons.Default.Tag,
+                    label = "Hashtags",
+                    type = CategoryType.AGGREGATOR,
+                    description = "Trending topics and discussions",
+                    onClick = { /* Handle click */ },
+                    showHashtags = true,
+                    showTrending = true
                 )
             ),
-            "Organization" to listOf(
+            "Content" to listOf(
                 CustomCategory(
-                    id = "topics",
-                    icon = Icons.Default.Tag,
-                    label = "Topics",
-                    type = CategoryType.AGGREGATOR,
-                    description = "Topic-based content",
-                    onClick = { /* Handle click */ }
-                ),
+                    id = "search",
+                    icon = Icons.Default.Search,
+                    label = "Search",
+                    type = CategoryType.APP_VIEW,
+                    description = "Search for content and users",
+                    onClick = { /* Handle click */ },
+                    requiresAuth = false
+                )
+            ),
+            "Personal" to listOf(
                 CustomCategory(
                     id = "bookmarks",
                     icon = Icons.Default.Bookmarks,
@@ -164,7 +268,41 @@ fun BottomNavigationBar(
                     icon = Icons.Default.List,
                     label = "Lists",
                     type = CategoryType.APP_VIEW,
-                    description = "Custom user lists",
+                    description = "Your custom lists",
+                    onClick = { /* Handle click */ }
+                ),
+                CustomCategory(
+                    id = "drafts",
+                    icon = Icons.Default.Edit,
+                    label = "Drafts",
+                    type = CategoryType.CUSTOM_FEED,
+                    description = "Your draft posts",
+                    onClick = { /* Handle click */ }
+                )
+            ),
+            "Network" to listOf(
+                CustomCategory(
+                    id = "mutuals",
+                    icon = Icons.Default.GroupAdd,
+                    label = "Mutuals",
+                    type = CategoryType.AGGREGATOR,
+                    description = "People who follow you back",
+                    onClick = { /* Handle click */ }
+                ),
+                CustomCategory(
+                    id = "mentions",
+                    icon = Icons.Default.AlternateEmail,
+                    label = "Mentions",
+                    type = CategoryType.APP_VIEW,
+                    description = "Posts you're mentioned in",
+                    onClick = { /* Handle click */ }
+                ),
+                CustomCategory(
+                    id = "reposts",
+                    icon = Icons.Default.Repeat,
+                    label = "Reposts",
+                    type = CategoryType.APP_VIEW,
+                    description = "Your reposts",
                     onClick = { /* Handle click */ }
                 )
             )

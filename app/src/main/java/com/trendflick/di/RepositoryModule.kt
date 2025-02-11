@@ -5,9 +5,8 @@ import android.content.Context
 import android.util.Log
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
-import com.trendflick.data.repository.AtProtocolRepository
-import com.trendflick.data.repository.VideoRepository
-import com.trendflick.data.repository.VideoRepositoryImpl
+import com.trendflick.data.repository.*
+import dagger.Binds
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -52,4 +51,14 @@ object RepositoryModule {
         @ApplicationContext context: Context,
         atProtocolRepository: AtProtocolRepository
     ): VideoRepository = VideoRepositoryImpl(storage, firestore, contentResolver, context, atProtocolRepository)
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+abstract class RepositoryBindings {
+    @Binds
+    @Singleton
+    abstract fun bindPostRepository(
+        blueskyPostRepository: BlueskyPostRepository
+    ): PostRepository
 } 

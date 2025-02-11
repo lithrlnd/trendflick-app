@@ -1161,9 +1161,9 @@ class AtProtocolRepositoryImpl @Inject constructor(
                     sortAt = Instant.parse(post.indexedAt),
                     title = embed.external?.title ?: "",
                     thumbnailUrl = thumbnailUrl ?: "",
-                    likes = post.likeCount,
-                    comments = post.replyCount,
-                    shares = post.repostCount,
+                    likes = post.likeCount ?: 0,
+                    comments = post.replyCount ?: 0,
+                    shares = post.repostCount ?: 0,
                     username = post.author.displayName ?: post.author.handle,
                     userId = post.author.did,
                     isImage = isImage,
@@ -1196,6 +1196,21 @@ class AtProtocolRepositoryImpl @Inject constructor(
             Log.e(TAG, "Stack trace: ${e.stackTraceToString()}")
             return null
         }
+    }
+
+    private fun mapToPost(post: Post): Post {
+        return Post(
+            uri = post.uri,
+            cid = post.cid,
+            author = post.author,
+            record = post.record,
+            embed = post.embed,
+            indexedAt = post.indexedAt,
+            likeCount = post.likeCount,
+            replyCount = post.replyCount,
+            repostCount = post.repostCount,
+            viewer = post.viewer
+        )
     }
 
     companion object {
