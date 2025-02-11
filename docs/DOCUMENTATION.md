@@ -4,10 +4,11 @@
 1. [Architecture Overview](#architecture-overview)
 2. [Setup Guide](#setup-guide)
 3. [Core Components](#core-components)
-4. [AT Protocol Integration](#at-protocol-integration)
-5. [Development Guidelines](#development-guidelines)
-6. [Security Considerations](#security-considerations)
-7. [Troubleshooting](#troubleshooting)
+4. [Navigation System](#navigation-system)
+5. [AT Protocol Integration](#at-protocol-integration)
+6. [Development Guidelines](#development-guidelines)
+7. [Security Considerations](#security-considerations)
+8. [Troubleshooting](#troubleshooting)
 
 ## Architecture Overview
 
@@ -371,6 +372,153 @@ when {
 - Smooth orientation transitions
 - State preservation
 - Error handling and recovery
+
+## Navigation System
+
+### Customizable Bottom Navigation
+The app implements a native-like customizable bottom navigation system with the following features:
+
+#### Core Components
+1. **Bottom Navigation Bar**
+   ```kotlin
+   data class NavItem(
+       val screen: Screen,
+       val label: String,
+       val selectedIcon: ImageVector,
+       val unselectedIcon: ImageVector,
+       val showBadge: Boolean = false,
+       val isLocked: Boolean = false,
+       val isDraggable: Boolean = true
+   )
+   ```
+   - Supports up to 7 navigation items
+   - Horizontal scrolling for extra items
+   - Home item always locked
+   - Slide-up gesture for customization
+
+2. **Category System**
+   ```kotlin
+   data class CustomCategory(
+       val id: String,
+       val icon: ImageVector,
+       val label: String,
+       val type: CategoryType,
+       description: String,
+       onClick: () -> Unit
+   )
+   ```
+   - Organized by type (Feed Types, Content, Organization)
+   - Drag-and-drop support
+   - Smart filtering of used/available items
+
+#### Edit Mode Features
+1. **Wiggle Animation**
+   - Native-like wiggle effect
+   - Smooth rotation and scaling
+   - Haptic feedback integration
+   - Small remove buttons (X) in iOS/Android style
+
+2. **Item Management**
+   - Long press to enter edit mode
+   - Drag and drop between sections
+   - Remove items with X button
+   - Restore removed navigation items
+   - Smart category filtering
+
+#### Implementation Details
+1. **State Management**
+   ```kotlin
+   // Track different item types
+   var currentNavItems: List<NavItem>
+   var removedInitialItems: List<NavItem>
+   var availableCategories: List<CustomCategory>
+   ```
+   - Maintains separate lists for current, removed, and available items
+   - Smart filtering to prevent duplicates
+   - Proper state preservation
+
+2. **Animation System**
+   ```kotlin
+   // Animation specifications
+   val rotation = animateFloatAsState(
+       targetValue = if (isEditMode) 1.5f else 0f,
+       animationSpec = infiniteRepeatable(
+           animation = tween(250),
+           repeatMode = RepeatMode.Reverse
+       )
+   )
+   ```
+   - Smooth transitions
+   - Spring-based scaling
+   - Color transitions
+   - Content size animations
+
+3. **Interaction Handling**
+   - Haptic feedback for all interactions
+   - Gesture detection for drag and drop
+   - Smart position tracking
+   - Error prevention
+
+#### Bottom Sheet Implementation
+1. **Sheet Content**
+   - Current Navigation section
+   - Available Items section
+   - Smart grouping of items
+   - Smooth animations
+
+2. **Drag and Drop**
+   - Native-like drag preview
+   - Position-based validation
+   - Smart category conversion
+   - Proper state updates
+
+#### Best Practices
+1. **Performance**
+   - Efficient recomposition
+   - Smart state management
+   - Proper animation cleanup
+   - Memory leak prevention
+
+2. **User Experience**
+   - Consistent haptic feedback
+   - Smooth animations
+   - Error prevention
+   - Clear visual feedback
+
+3. **State Preservation**
+   - Proper state restoration
+   - Configuration change handling
+   - Error recovery
+   - Data consistency
+
+#### Usage Example
+```kotlin
+NavigationBar {
+    currentNavItems.forEach { item ->
+        NavigationItemWithWiggle(
+            item = item,
+            isSelected = currentRoute == item.screen.route,
+            isEditMode = isEditMode,
+            onItemClick = { /* Handle click */ },
+            onLongPress = { /* Enter edit mode */ },
+            onRemove = { /* Handle removal */ }
+        )
+    }
+}
+```
+
+#### Common Issues and Solutions
+1. **State Management**
+   - Problem: Lost state during configuration changes
+   - Solution: Proper state hoisting and remembering
+
+2. **Animation Glitches**
+   - Problem: Jerky animations during drag
+   - Solution: Proper animation specs and cleanup
+
+3. **Performance**
+   - Problem: Lag during drag operations
+   - Solution: Efficient recomposition and state updates
 
 ## AT Protocol Integration
 

@@ -10,6 +10,7 @@ A Material 3 Android client for BlueSky that focuses on rich media sharing and s
 - 💬 Advanced threading and replies
 - 🎨 Dark/Light theme support
 - 🔒 Secure authentication
+- 🎯 Customizable Navigation System
 
 ## Implemented Features
 
@@ -82,6 +83,33 @@ A Material 3 Android client for BlueSky that focuses on rich media sharing and s
   - Smart formatting
 - ✅ Visual post preview
 - ✅ Character counter with visual feedback
+
+### Navigation System
+- ✅ Customizable bottom navigation:
+  - Slide-up drawer for navigation management
+  - Drag-and-drop category organization
+  - Native-like edit mode with wiggle animation
+  - Add/remove navigation items
+  - Restore removed items
+  - Smart category grouping
+  - Maximum 7 navigation items
+  - Haptic feedback for interactions
+  - Smooth animations and transitions
+  - Home item always locked
+  - Horizontal scrolling for extra items
+
+### UI/UX Features
+- ✅ Material 3 design implementation
+- ✅ Dark/Light theme support
+- ✅ Smooth animations and transitions
+- ✅ Native-like interaction patterns:
+  - iOS/Android-style edit mode
+  - Wiggle animations
+  - Small remove buttons
+  - Haptic feedback
+  - Drag and drop
+- ✅ State preservation across view changes
+- ✅ Responsive layout design
 
 ## Technical Stack
 - **Language**: Kotlin
