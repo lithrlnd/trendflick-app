@@ -16,7 +16,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -33,14 +35,38 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.offset
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.*
 import androidx.compose.animation.core.Spring
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.imePadding
+import android.view.MotionEvent
+import androidx.compose.foundation.border
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.zIndex
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import kotlin.math.abs
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.platform.LocalDensity
 
 data class NavItem(
     val screen: Screen,
@@ -49,7 +75,8 @@ data class NavItem(
     val unselectedIcon: ImageVector,
     val showBadge: Boolean = false,
     val isLocked: Boolean = false, // For Home item that can't be removed
-    val isDraggable: Boolean = true
+    val isDraggable: Boolean = true,
+    val id: String // Add unique ID field
 )
 
 data class CustomCategory(
@@ -144,6 +171,45 @@ enum class PostType {
     THREAD
 }
 
+private val defaultNavItems = listOf(
+    NavItem(
+        screen = Screen.Home,
+        label = "Home",
+        selectedIcon = Icons.Default.Home,
+        unselectedIcon = Icons.Outlined.Home,
+        isLocked = true,
+        id = "home"
+    ),
+    NavItem(
+        screen = Screen.Messages,
+        label = "Messages",
+        selectedIcon = Icons.Default.Message,
+        unselectedIcon = Icons.Outlined.Message,
+        id = "messages"
+    ),
+    NavItem(
+        screen = Screen.Search,
+        label = "Search",
+        selectedIcon = Icons.Default.Search,
+        unselectedIcon = Icons.Outlined.Search,
+        id = "search"
+    ),
+    NavItem(
+        screen = Screen.AI,
+        label = "AI",
+        selectedIcon = Icons.Default.SmartToy,
+        unselectedIcon = Icons.Outlined.SmartToy,
+        id = "ai"
+    ),
+    NavItem(
+        screen = Screen.Profile,
+        label = "Profile",
+        selectedIcon = Icons.Default.Person,
+        unselectedIcon = Icons.Outlined.Person,
+        id = "profile"
+    )
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BottomNavigationBar(
@@ -157,27 +223,56 @@ fun BottomNavigationBar(
     val isBottomSheetVisible by sharedViewModel.isBottomSheetVisible.collectAsState()
     val scope = rememberCoroutineScope()
 
-    // State for dragging and editing
+    // State for dragging and editing - now considers bottom sheet visibility
     var isEditMode by remember { mutableStateOf(false) }
     var draggedItem by remember { mutableStateOf<CustomCategory?>(null) }
     var dragPosition by remember { mutableStateOf<Offset?>(null) }
+    var draggedItemStartPosition by remember { mutableStateOf<Offset?>(null) }
+    var isDraggingToNav by remember { mutableStateOf(false) }
+
+    // Automatically disable edit mode when bottom sheet becomes visible
+    LaunchedEffect(isBottomSheetVisible) {
+        if (isBottomSheetVisible) {
+            isEditMode = false
+        }
+    }
     
-    // Track initial navigation items separately
+    // Track initial navigation items separately with unique IDs
     val initialNavItems = remember {
         listOf(
-            NavItem(Screen.Home, "Home", Icons.Default.Home, Icons.Outlined.Home, isLocked = true),
-            NavItem(Screen.Messages, "Messages", Icons.Default.Message, Icons.Outlined.Message),
-            NavItem(Screen.Search, "Search", Icons.Default.Search, Icons.Outlined.Search),
-            NavItem(Screen.AI, "AI", Icons.Default.SmartToy, Icons.Outlined.SmartToy),
-            NavItem(Screen.Profile, "Profile", Icons.Default.Person, Icons.Outlined.Person)
+            NavItem(Screen.Home, "Home", Icons.Default.Home, Icons.Outlined.Home, isLocked = true, id = "home"),
+            NavItem(Screen.Messages, "Messages", Icons.Default.Message, Icons.Outlined.Message, id = "messages"),
+            NavItem(Screen.Search, "Search", Icons.Default.Search, Icons.Outlined.Search, id = "search"),
+            NavItem(Screen.AI, "AI", Icons.Default.SmartToy, Icons.Outlined.SmartToy, id = "ai"),
+            NavItem(Screen.Profile, "Profile", Icons.Default.Person, Icons.Outlined.Person, id = "profile")
         )
     }
     
     // State for current navigation items
     var currentNavItems by remember { mutableStateOf(initialNavItems) }
     
-    // Track removed initial items
-    var removedInitialItems by remember { mutableStateOf<List<NavItem>>(emptyList()) }
+    // Track removed initial items with their unique IDs
+    var removedInitialItems by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+    // Update the screen bounds state to use Rect instead of IntRect
+    var screenBounds by remember { mutableStateOf<Rect?>(null) }
+    var navigationBounds by remember { mutableStateOf<Rect?>(null) }
+
+    // Add tap to dismiss edit mode
+    LaunchedEffect(isEditMode) {
+        if (isEditMode) {
+            // Listen for taps outside navigation items
+            val listener = { event: MotionEvent ->
+                if (event.action == MotionEvent.ACTION_DOWN) {
+                    isEditMode = false
+                    true
+                } else {
+                    false
+                }
+            }
+            // Add and remove listener as needed
+        }
+    }
 
     // Categories grouped by type
     val groupedCategories = remember {
@@ -317,17 +412,17 @@ fun BottomNavigationBar(
     // Function to handle item removal
     fun handleItemRemoval(item: NavItem) {
         if (!item.isLocked) {
-            // If it's an initial item, add to removedInitialItems
-            if (initialNavItems.any { it.screen == item.screen }) {
-                removedInitialItems = removedInitialItems + item
+            // If it's an initial item, add its ID to removedInitialItems
+            if (initialNavItems.any { it.id == item.id }) {
+                removedInitialItems = removedInitialItems + item.id
             } else {
                 // If it's a custom category, add back to available categories
                 val category = availableCategories.find { it.id == (item.screen as? Screen.Custom)?.id }
                 if (category != null) {
-                    availableCategories = availableCategories + category
+                    availableCategories = (availableCategories + category).toList()
                 }
             }
-            currentNavItems = currentNavItems - item
+            currentNavItems = currentNavItems.filter { it.id != item.id }
         }
     }
 
@@ -342,15 +437,17 @@ fun BottomNavigationBar(
 
         // For the "Navigation" group, add removed initial items
         return if (groupTitle == "Navigation") {
-            customCategories + removedInitialItems.map { navItem ->
-                CustomCategory(
-                    id = navItem.screen.route,
-                    icon = navItem.selectedIcon,
-                    label = navItem.label,
-                    type = CategoryType.APP_VIEW,
-                    description = "Navigation item",
-                    onClick = {}
-                )
+            customCategories + removedInitialItems.mapNotNull { id ->
+                initialNavItems.find { it.id == id }?.let { navItem ->
+                    CustomCategory(
+                        id = navItem.id, // Use the original ID
+                        icon = navItem.selectedIcon,
+                        label = navItem.label,
+                        type = CategoryType.APP_VIEW,
+                        description = "Navigation item",
+                        onClick = {}
+                    )
+                }
             }
         } else {
             customCategories
@@ -362,25 +459,66 @@ fun BottomNavigationBar(
     )
 
     Box(modifier = modifier.fillMaxWidth()) {
-        // Navigation bar with slide up gesture
+        // Bottom sheet content - now with higher z-index when visible
+        if (isBottomSheetVisible) {
+            ModalBottomSheet(
+                onDismissRequest = { 
+                    scope.launch {
+                        sharedViewModel.toggleBottomSheet(false)
+                    }
+                },
+                sheetState = sheetState,
+                dragHandle = {
+                    Box(
+                        modifier = Modifier
+                            .width(40.dp)
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
+                    )
+                },
+                modifier = Modifier
+                    .navigationBarsPadding()
+                    .imePadding()
+                    .zIndex(3f)  // Ensure bottom sheet is above everything
+            ) {
+                BottomSheetContent(
+                    currentNavItems = currentNavItems,
+                    availableCategories = availableCategories,
+                    isEditMode = false, // Always false in bottom sheet
+                    onItemClick = { handleItemRemoval(it) },
+                    onItemLongPress = { /* Disabled in bottom sheet */ },
+                    onItemRemove = { handleItemRemoval(it) },
+                    onCategoryDragStart = { availableCategories = availableCategories - it },
+                    onCategoryDragComplete = { _, _ -> },
+                    onNavigationUpdate = { currentNavItems = it }
+                )
+            }
+        }
+
+        // Navigation bar - now considers bottom sheet visibility for edit mode
         NavigationBar(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.surface)
                 .navigationBarsPadding()
+                .onGloballyPositioned { coordinates ->
+                    navigationBounds = coordinates.boundsInRoot()
+                }
                 .pointerInput(Unit) {
                     detectDragGestures(
                         onDrag = { change, dragAmount ->
-                            change.consume()
-                            if (dragAmount.y < -50f) { // Swipe Up
+                            if (!isBottomSheetVisible && dragAmount.y < -50f) {
+                                change.consume()
                                 scope.launch {
                                     sharedViewModel.toggleBottomSheet(true)
                                 }
                             }
                         }
                     )
-                },
+                }
+                .zIndex(if (isBottomSheetVisible) 1f else 2f), // Lower z-index when sheet is visible
             containerColor = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.onSurface,
             tonalElevation = 8.dp
@@ -393,7 +531,7 @@ fun BottomNavigationBar(
                     NavigationItemWithWiggle(
                         item = item,
                         isSelected = currentRoute == item.screen.route,
-                        isEditMode = isEditMode,
+                        isEditMode = isEditMode && !isBottomSheetVisible, // Disable edit mode when sheet is visible
                         onItemClick = {
                             if (item.screen == Screen.Search) {
                                 scope.launch {
@@ -408,208 +546,476 @@ fun BottomNavigationBar(
                                 }
                             }
                         },
-                        onLongPress = { if (!item.isLocked) isEditMode = true },
+                        onLongPress = { 
+                            if (!isBottomSheetVisible && !item.isLocked) {
+                                isEditMode = true
+                            }
+                        },
                         onRemove = { handleItemRemoval(item) }
                     )
                 }
             }
         }
-    }
 
-    // Bottom sheet content
-    if (isBottomSheetVisible) {
-        ModalBottomSheet(
-            onDismissRequest = { 
-                scope.launch {
-                    sharedViewModel.toggleBottomSheet(false)
-                    isEditMode = false
-                }
-            },
-            sheetState = sheetState,
-            dragHandle = {
+        // Dragged item overlay - now at the end of the Box to be on top
+        draggedItem?.let { item ->
+            dragPosition?.let { position ->
                 Box(
                     modifier = Modifier
-                        .width(40.dp)
-                        .height(4.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
-                )
-            },
-            modifier = Modifier
-                .navigationBarsPadding()
-                .imePadding()
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-                    .animateContentSize(
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioMediumBouncy,
-                            stiffness = Spring.StiffnessLow
-                        )
+                        .fillMaxSize()
+                        .zIndex(100f)
+                ) {
+                    DraggableCategoryChip(
+                        category = item,
+                        onDragStart = { draggedItem = item },
+                        onDragComplete = { pos ->
+                            // Check if dragged to navigation area
+                            if (pos.y < -60 && navigationBounds != null) {
+                                val navItem = NavItem(
+                                    screen = Screen.Custom(item.id),
+                                    label = item.label,
+                                    selectedIcon = item.icon,
+                                    unselectedIcon = item.icon,
+                                    id = item.id
+                                )
+                                if (currentNavItems.size < 7) {
+                                    currentNavItems = currentNavItems + navItem
+                                    // Remove the dragged item from available categories
+                                    availableCategories = availableCategories.filter { it.id != item.id }
+                                }
+                            }
+                            draggedItem = null
+                            dragPosition = null
+                        },
+                        modifier = Modifier
+                            .offset { 
+                                // Constrain position within screen bounds
+                                val x = position.x.toInt().coerceIn(
+                                    (screenBounds?.left ?: 0f).toInt(),
+                                    (screenBounds?.right ?: 0f).toInt() - 100
+                                )
+                                val y = position.y.toInt().coerceIn(
+                                    (screenBounds?.top ?: 0f).toInt() + 60,
+                                    (navigationBounds?.top ?: 0f).toInt() - 60
+                                )
+                                IntOffset(x, y)
+                            }
+                            .alpha(0.7f)
+                            .scale(1.1f)
                     )
-            ) {
-                // Current Navigation Section with animation
-                AnimatedVisibility(
-                    visible = true,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically()
-                ) {
-                    Column {
-                        Text(
-                            text = "Current Navigation",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(bottom = 16.dp)
-                        )
-
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            contentPadding = PaddingValues(bottom = 16.dp)
-                        ) {
-                            items(currentNavItems) { item ->
-                                NavigationItemWithWiggle(
-                                    item = item,
-                                    isSelected = currentRoute == item.screen.route,
-                                    isEditMode = isEditMode,
-                                    onItemClick = {},
-                                    onLongPress = { if (!item.isLocked) isEditMode = true },
-                                    onRemove = { handleItemRemoval(item) }
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Available Items Section with animation
-                AnimatedVisibility(
-                    visible = true,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically()
-                ) {
-                    Column {
-                        Text(
-                            text = "Available Items",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(vertical = 16.dp)
-                        )
-
-                        // Show Navigation group first if there are removed initial items
-                        if (removedInitialItems.isNotEmpty()) {
-                            Text(
-                                text = "Navigation",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(vertical = 8.dp)
-                            )
-                            
-                            LazyRow(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                contentPadding = PaddingValues(bottom = 16.dp)
-                            ) {
-                                items(getAllAvailableItems("Navigation")) { category ->
-                                    DraggableCategoryChip(
-                                        category = category,
-                                        onDragStart = { draggedItem = category },
-                                        onDragComplete = { position ->
-                                            if (position.y < 0 && currentNavItems.size < 7) {
-                                                // Check if it's a removed initial item
-                                                val initialItem = removedInitialItems.find { it.screen.route == category.id }
-                                                if (initialItem != null) {
-                                                    currentNavItems = currentNavItems + initialItem
-                                                    removedInitialItems = removedInitialItems - initialItem
-                                                } else {
-                                                    // Handle custom category
-                                                    val navItem = NavItem(
-                                                        screen = Screen.Custom(category.id),
-                                                        label = category.label,
-                                                        selectedIcon = category.icon,
-                                                        unselectedIcon = category.icon
-                                                    )
-                                                    availableCategories = availableCategories - category
-                                                    currentNavItems = currentNavItems + navItem
-                                                }
-                                            }
-                                        }
-                                    )
-                                }
-                            }
-                        }
-
-                        // Show other category groups
-                        groupedCategories.forEach { (groupTitle, _) ->
-                            val availableItems = getAllAvailableItems(groupTitle)
-                            if (availableItems.isNotEmpty() && groupTitle != "Navigation") {
-                                Text(
-                                    text = groupTitle,
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(vertical = 8.dp)
-                                )
-                                
-                                LazyRow(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    contentPadding = PaddingValues(bottom = 16.dp)
-                                ) {
-                                    items(availableItems) { category ->
-                                        DraggableCategoryChip(
-                                            category = category,
-                                            onDragStart = { draggedItem = category },
-                                            onDragComplete = { position ->
-                                                if (position.y < 0 && currentNavItems.size < 7) {
-                                                    val navItem = NavItem(
-                                                        screen = Screen.Custom(category.id),
-                                                        label = category.label,
-                                                        selectedIcon = category.icon,
-                                                        unselectedIcon = category.icon
-                                                    )
-                                                    availableCategories = availableCategories - category
-                                                    currentNavItems = currentNavItems + navItem
-                                                }
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
             }
         }
     }
+}
 
-    // Show drag preview if an item is being dragged
-    draggedItem?.let { item ->
-        dragPosition?.let { position ->
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun BottomSheetContent(
+    currentNavItems: List<NavItem>,
+    availableCategories: List<CustomCategory>,
+    isEditMode: Boolean,
+    onItemClick: (NavItem) -> Unit,
+    onItemLongPress: (NavItem) -> Unit,
+    onItemRemove: (NavItem) -> Unit,
+    onCategoryDragStart: (CustomCategory) -> Unit,
+    onCategoryDragComplete: (CustomCategory, Offset) -> Unit,
+    onNavigationUpdate: (List<NavItem>) -> Unit
+) {
+    var currentItems by remember { mutableStateOf(currentNavItems) }
+    var draggedNavItem by remember { mutableStateOf<NavItem?>(null) }
+    var draggedCategory by remember { mutableStateOf<CustomCategory?>(null) }
+    var dragPosition by remember { mutableStateOf<Offset?>(null) }
+    var dragStartPosition by remember { mutableStateOf<Offset?>(null) }
+    var currentNavBounds by remember { mutableStateOf<Rect?>(null) }
+    var availableItemsBounds by remember { mutableStateOf<Rect?>(null) }
+    var isDraggingToNav by remember { mutableStateOf(false) }
+    var isDraggingToAvailable by remember { mutableStateOf(false) }
+
+    // Maintain a single source of truth for available items
+    var availableItems by remember(availableCategories, currentItems) {
+        mutableStateOf(
+            (availableCategories + currentItems
+                .filter { !it.isLocked }
+                .map { navItem ->
+                    CustomCategory(
+                        id = navItem.id,
+                        icon = navItem.selectedIcon,
+                        label = navItem.label,
+                        type = CategoryType.APP_VIEW,
+                        description = "Navigation item",
+                        onClick = {}
+                    )
+                })
+                .distinctBy { it.id }
+                .filter { category ->
+                    currentItems.none { it.id == category.id }
+                }
+        )
+    }
+
+    LaunchedEffect(currentItems) {
+        onNavigationUpdate(currentItems)
+    }
+
+    // Function to handle item movement between sections
+    fun moveItemToNavigation(category: CustomCategory) {
+        if (currentItems.size < 7 && !currentItems.any { it.id == category.id }) {
+            val newNavItem = NavItem(
+                screen = Screen.Custom(category.id),
+                label = category.label,
+                selectedIcon = category.icon,
+                unselectedIcon = category.icon,
+                id = category.id
+            )
+            currentItems = currentItems + newNavItem
+            availableItems = availableItems.filter { it.id != category.id }
+        }
+    }
+
+    fun moveItemToAvailable(item: NavItem) {
+        if (!item.isLocked) {
+            currentItems = currentItems - item
+            val newCategory = CustomCategory(
+                id = item.id,
+                icon = item.selectedIcon,
+                label = item.label,
+                type = CategoryType.APP_VIEW,
+                description = "Navigation item",
+                onClick = {}
+            )
+            availableItems = (availableItems + newCategory).distinctBy { it.id }
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .zIndex(1f)
+        ) {
+            Text(
+                text = "Current Navigation",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(bottom = 16.dp, top = 16.dp)
+            )
+
+            // Current Navigation items
             Box(
                 modifier = Modifier
-                    .offset { IntOffset(position.x.toInt(), position.y.toInt()) }
-                    .alpha(0.7f)
+                    .fillMaxWidth()
+                    .onGloballyPositioned { coordinates ->
+                        currentNavBounds = coordinates.boundsInRoot()
+                    }
             ) {
-                DraggableCategoryChip(
-                    category = item,
-                    onDragStart = { draggedItem = item },
-                    onDragComplete = { pos ->
-                        // Check if dragged to navigation area
-                        if (pos.y < 0) {
-                            // Convert category to NavItem and add to navigation
-                            val navItem = NavItem(
-                                screen = Screen.Custom(item.id),
-                                label = item.label,
-                                selectedIcon = item.icon,
-                                unselectedIcon = item.icon
-                            )
-                            if (currentNavItems.size < 7) { // Limit to 7 items
-                                currentNavItems = currentNavItems + navItem
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(bottom = 16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(currentItems, key = { it.id }) { item ->
+                        DraggableItem(
+                            item = item,
+                            onDragStart = { offset, itemPosition ->
+                                if (!item.isLocked) {
+                                    draggedNavItem = item
+                                    dragStartPosition = itemPosition
+                                    dragPosition = itemPosition
+                                }
+                            },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                dragPosition = dragPosition?.plus(dragAmount)
+                                availableItemsBounds?.let { bounds ->
+                                    dragPosition?.let { pos ->
+                                        isDraggingToAvailable = pos.y > bounds.top
+                                    }
+                                }
+                            },
+                            onDragEnd = {
+                                if (isDraggingToAvailable && !item.isLocked) {
+                                    moveItemToAvailable(item)
+                                }
+                                draggedNavItem = null
+                                dragPosition = null
+                                dragStartPosition = null
+                                isDraggingToAvailable = false
+                            },
+                            onClick = { clickedItem ->
+                                (clickedItem as? NavItem)?.let { onItemClick(it) }
+                            },
+                            onLongPress = { pressedItem ->
+                                (pressedItem as? NavItem)?.let { onItemLongPress(it) }
                             }
-                        }
-                    },
-                    modifier = Modifier.scale(1.1f)
-                )
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Available Items Section with reordering grid
+            Text(
+                text = "Available Items",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onGloballyPositioned { coordinates ->
+                        availableItemsBounds = coordinates.boundsInRoot()
+                    }
+            ) {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(4),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(availableItems.size, key = { availableItems[it].id }) { index ->
+                        val category = availableItems[index]
+                        DraggableItem(
+                            item = category,
+                            onDragStart = { offset, itemPosition ->
+                                draggedCategory = category
+                                dragStartPosition = itemPosition
+                                dragPosition = itemPosition
+                            },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                dragPosition = dragPosition?.plus(dragAmount)
+                                currentNavBounds?.let { bounds ->
+                                    dragPosition?.let { pos ->
+                                        isDraggingToNav = pos.y < bounds.bottom
+                                    }
+                                }
+                            },
+                            onDragEnd = {
+                                if (isDraggingToNav) {
+                                    moveItemToNavigation(category)
+                                }
+                                draggedCategory = null
+                                dragPosition = null
+                                dragStartPosition = null
+                                isDraggingToNav = false
+                            },
+                            onClick = { clickedItem ->
+                                (clickedItem as? CustomCategory)?.onClick?.invoke()
+                            },
+                            onLongPress = { pressedItem ->
+                                if (pressedItem is CustomCategory) {
+                                    draggedCategory = pressedItem
+                                    dragStartPosition = Offset.Zero
+                                    dragPosition = Offset.Zero
+                                }
+                            }
+                        )
+                    }
+                }
             }
         }
+
+        // Drag overlay with larger icons
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(100f)
+        ) {
+            dragPosition?.let { position ->
+                draggedNavItem?.let { item ->
+                    DraggedItemOverlay(
+                        navItem = item,
+                        position = position,
+                        isDraggingToTarget = isDraggingToAvailable
+                    )
+                }
+                draggedCategory?.let { category ->
+                    DraggedItemOverlay(
+                        category = category,
+                        position = position,
+                        isDraggingToTarget = isDraggingToNav
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DraggedItemOverlay(
+    navItem: NavItem? = null,
+    category: CustomCategory? = null,
+    position: Offset,
+    isDraggingToTarget: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val scale by animateFloatAsState(
+        targetValue = if (isDraggingToTarget) 1.1f else 1f,
+        label = "scale"
+    )
+    
+    val alpha by animateFloatAsState(
+        targetValue = if (isDraggingToTarget) 0.7f else 0.9f,
+        label = "alpha"
+    )
+
+    Box(
+        modifier = modifier
+            .offset { 
+                IntOffset(
+                    (position.x - 50).toInt(),
+                    (position.y - 50).toInt()
+                )
+            }
+            .scale(scale)
+            .alpha(alpha)
+            .zIndex(100f)
+    ) {
+        when {
+            navItem != null -> NavigationItemContent(item = navItem)
+            category != null -> CategoryItemContent(category = category)
+        }
+    }
+}
+
+@Composable
+private fun DraggableItem(
+    item: Any,
+    onDragStart: (Offset, Offset) -> Unit,
+    onDrag: (PointerInputChange, Offset) -> Unit,
+    onDragEnd: () -> Unit,
+    onClick: (Any) -> Unit = {},
+    onLongPress: (Any) -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    val haptics = LocalHapticFeedback.current
+    var isDragging by remember { mutableStateOf(false) }
+    var itemPosition by remember { mutableStateOf(Offset.Zero) }
+    
+    val scale by animateFloatAsState(
+        targetValue = if (isDragging) 1.3f else 1f,
+        label = "dragScale"
+    )
+
+    Box(
+        modifier = modifier
+            .zIndex(if (isDragging) 99f else 1f)
+            .onGloballyPositioned { coordinates ->
+                itemPosition = coordinates.boundsInRoot().center
+            }
+            .graphicsLayer(
+                scaleX = scale,
+                scaleY = scale,
+                shadowElevation = if (isDragging) 8f else 0f
+            )
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = { offset -> 
+                        isDragging = true
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onDragStart(offset, itemPosition)
+                    },
+                    onDrag = { change, dragAmount ->
+                        if (dragAmount.getDistance() > 5f) {
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        }
+                        onDrag(change, dragAmount)
+                    },
+                    onDragEnd = {
+                        isDragging = false
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onDragEnd()
+                    },
+                    onDragCancel = {
+                        isDragging = false
+                        onDragEnd()
+                    }
+                )
+            }
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { onClick(item) },
+                    onLongPress = { onLongPress(item) }
+                )
+            }
+    ) {
+        when (item) {
+            is NavItem -> NavigationItemContent(
+                item = item,
+                isDragging = isDragging
+            )
+            is CustomCategory -> CategoryItemContent(
+                category = item,
+                isDragging = isDragging
+            )
+            else -> throw IllegalArgumentException("Unsupported item type")
+        }
+    }
+}
+
+@Composable
+private fun NavigationItemContent(
+    item: NavItem,
+    isDragging: Boolean = false
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.padding(8.dp)
+    ) {
+        Icon(
+            imageVector = item.selectedIcon,
+            contentDescription = item.label,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .size(if (isDragging) 40.dp else 28.dp)
+                .graphicsLayer(
+                    scaleX = if (isDragging) 1.3f else 1f,
+                    scaleY = if (isDragging) 1.3f else 1f
+                )
+        )
+        Text(
+            text = item.label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+    }
+}
+
+@Composable
+private fun CategoryItemContent(
+    category: CustomCategory,
+    isDragging: Boolean = false
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.padding(8.dp)
+    ) {
+        Icon(
+            imageVector = category.icon,
+            contentDescription = category.label,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .size(if (isDragging) 40.dp else 28.dp)
+                .graphicsLayer(
+                    scaleX = if (isDragging) 1.3f else 1f,
+                    scaleY = if (isDragging) 1.3f else 1f
+                )
+        )
+        Text(
+            text = category.label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -620,21 +1026,22 @@ private fun NavigationItemWithWiggle(
     isEditMode: Boolean,
     onItemClick: () -> Unit,
     onLongPress: () -> Unit,
-    onRemove: () -> Unit
+    onRemove: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val haptics = LocalHapticFeedback.current
     
     val rotation by animateFloatAsState(
-        targetValue = if (isEditMode && !item.isLocked) 1.5f else 0f,  // Reduced rotation
+        targetValue = if (isEditMode && !item.isLocked) 1.5f else 0f,
         animationSpec = infiniteRepeatable(
-            animation = tween(250),  // Slightly slower for better feel
+            animation = tween(500, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "wiggle"
     )
 
     val scale by animateFloatAsState(
-        targetValue = if (isSelected) 1.1f else 1f,  // Reduced scale
+        targetValue = if (isSelected) 1.1f else 1f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessLow
@@ -643,56 +1050,34 @@ private fun NavigationItemWithWiggle(
     )
 
     val iconTint by animateColorAsState(
-        targetValue = if (isSelected) 
-            MaterialTheme.colorScheme.primary 
-        else 
-            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+        targetValue = when {
+            isSelected -> MaterialTheme.colorScheme.primary
+            else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+        },
         label = "tint"
     )
 
+    val containerColor by animateColorAsState(
+        targetValue = when {
+            isSelected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.1f)
+            else -> MaterialTheme.colorScheme.surface
+        },
+        label = "container"
+    )
+
     Box(
-        modifier = Modifier
+        modifier = modifier
             .graphicsLayer(
                 rotationZ = rotation,
                 scaleX = scale,
                 scaleY = scale
             )
     ) {
-        // Show remove button when in edit mode - smaller and more native-like
-        if (isEditMode && !item.isLocked) {
-            Box(
-                modifier = Modifier
-                    .size(16.dp)  // Smaller size
-                    .align(Alignment.TopEnd)
-                    .offset(x = 6.dp, y = (-6).dp)  // Adjusted offset
-                    .background(
-                        color = MaterialTheme.colorScheme.error.copy(alpha = 0.9f),
-                        shape = CircleShape
-                    )
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onTap = {
-                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                onRemove()
-                            }
-                        )
-                    }
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "Remove",
-                    tint = MaterialTheme.colorScheme.onError,
-                    modifier = Modifier
-                        .size(12.dp)  // Smaller icon
-                        .align(Alignment.Center)
-                )
-            }
-        }
-
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
+        Surface(
+            color = containerColor,
+            shape = RoundedCornerShape(12.dp),
             modifier = Modifier
-                .padding(12.dp)
+                .padding(4.dp)
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onTap = { 
@@ -706,17 +1091,22 @@ private fun NavigationItemWithWiggle(
                     )
                 }
         ) {
-            Icon(
-                imageVector = if (isSelected) item.selectedIcon else item.unselectedIcon,
-                contentDescription = item.label,
-                tint = iconTint,
-                modifier = Modifier.size(24.dp)
-            )
-            Text(
-                text = item.label,
-                style = MaterialTheme.typography.labelSmall,
-                color = iconTint
-            )
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(12.dp)
+            ) {
+                Icon(
+                    imageVector = if (isSelected) item.selectedIcon else item.unselectedIcon,
+                    contentDescription = item.label,
+                    tint = iconTint,
+                    modifier = Modifier.size(24.dp)
+                )
+                Text(
+                    text = item.label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = iconTint
+                )
+            }
         }
     }
 }
@@ -731,9 +1121,17 @@ private fun DraggableCategoryChip(
     val haptics = LocalHapticFeedback.current
     var isDragging by remember { mutableStateOf(false) }
     var position by remember { mutableStateOf(Offset.Zero) }
+    var startPosition by remember { mutableStateOf<Offset?>(null) }
+    var isOverDropZone by remember { mutableStateOf(false) }
+    var isLongPressed by remember { mutableStateOf(false) }
 
+    // Enhanced animations
     val scale by animateFloatAsState(
-        targetValue = if (isDragging) 1.1f else 1f,
+        targetValue = when {
+            isDragging && isOverDropZone -> 1.15f
+            isDragging -> 1.1f
+            else -> 1f
+        },
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessLow
@@ -741,67 +1139,632 @@ private fun DraggableCategoryChip(
         label = "drag_scale"
     )
 
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(16.dp),
-        modifier = modifier
-            .graphicsLayer(
-                scaleX = scale,
-                scaleY = scale
-            )
-            .offset { IntOffset(position.x.toInt(), position.y.toInt()) }
-            .pointerInput(Unit) {
-                detectDragGestures(
-                    onDragStart = { 
-                        isDragging = true
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onDragStart()
-                    },
-                    onDrag = { change, dragAmount ->
-                        change.consume()
-                        position += dragAmount
-                        if (dragAmount != Offset.Zero) {
-                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        }
-                    },
-                    onDragEnd = {
-                        isDragging = false
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onDragComplete(position)
-                        position = Offset.Zero
-                    },
-                    onDragCancel = {
-                        isDragging = false
-                        position = Offset.Zero
+    val elevation by animateFloatAsState(
+        targetValue = when {
+            isDragging && isOverDropZone -> 12f
+            isDragging -> 8f
+            else -> 1f
+        },
+        label = "elevation"
+    )
+
+    val alpha by animateFloatAsState(
+        targetValue = if (isOverDropZone) 0.85f else 1f,
+        label = "alpha"
+    )
+
+    val rotationZ by animateFloatAsState(
+        targetValue = if (isDragging) 2f else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "rotation"
+    )
+
+    Box {
+        // Enhanced drop zone indicator
+        AnimatedVisibility(
+            visible = isDragging,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(60.dp)
+                    .offset(y = (-80).dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.primary.copy(
+                            alpha = if (isOverDropZone) 0.15f else 0.1f
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    .border(
+                        width = 2.dp,
+                        color = MaterialTheme.colorScheme.primary.copy(
+                            alpha = if (isOverDropZone) 0.8f else 0.3f
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary.copy(
+                            alpha = if (isOverDropZone) 0.8f else 0.3f
+                        ),
+                        modifier = Modifier.size(24.dp)
+                    )
+                    if (isOverDropZone) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Release to add to navigation",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     }
-                )
+                }
             }
+        }
+
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            shape = RoundedCornerShape(16.dp),
+            modifier = modifier
+                .graphicsLayer(
+                    scaleX = scale,
+                    scaleY = scale,
+                    shadowElevation = elevation,
+                    alpha = alpha,
+                    rotationZ = rotationZ
+                )
+                .offset { IntOffset(position.x.toInt(), position.y.toInt()) }
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onLongPress = {
+                            isLongPressed = true
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            isDragging = true
+                            onDragStart()
+                        }
+                    )
+                }
+                .pointerInput(Unit) {
+                    if (isLongPressed) {
+                        detectDragGestures(
+                            onDragStart = { offset -> 
+                                startPosition = offset
+                            },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                position += dragAmount
+                                val wasOverDropZone = isOverDropZone
+                                isOverDropZone = position.y < -60
+                                
+                                if (wasOverDropZone != isOverDropZone) {
+                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                }
+                            },
+                            onDragEnd = {
+                                isDragging = false
+                                isOverDropZone = false
+                                isLongPressed = false
+                                haptics.performHapticFeedback(
+                                    if (position.y < -60) 
+                                        HapticFeedbackType.LongPress
+                                    else 
+                                        HapticFeedbackType.TextHandleMove
+                                )
+                                if (position.y < -60) {
+                                    onDragComplete(position)
+                                }
+                                position = Offset.Zero
+                                startPosition = null
+                            },
+                            onDragCancel = {
+                                isDragging = false
+                                isOverDropZone = false
+                                isLongPressed = false
+                                position = Offset.Zero
+                                startPosition = null
+                            }
+                        )
+                    }
+                }
+        ) {
+            Row(
+                modifier = Modifier
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .animateContentSize(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = category.icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Column {
+                    Text(
+                        text = category.label,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = category.type.name.lowercase().replace('_', ' ').capitalize(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SlideUpPreview(
+    isVisible: Boolean,
+    dragProgress: Float,
+    modifier: Modifier = Modifier
+) {
+    val previewHeight by animateFloatAsState(
+        targetValue = if (isVisible) 60f else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "previewHeight"
+    )
+
+    val previewAlpha by animateFloatAsState(
+        targetValue = dragProgress.coerceIn(0f, 1f),
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "previewAlpha"
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(previewHeight.dp)
+            .alpha(previewAlpha)
+            .background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        MaterialTheme.colorScheme.surfaceVariant,
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f)
+                    )
+                )
+            )
     ) {
         Row(
             modifier = Modifier
-                .padding(horizontal = 16.dp, vertical = 12.dp)
-                .animateContentSize(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = category.icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp)
-            )
             Column {
                 Text(
-                    text = category.label,
-                    style = MaterialTheme.typography.labelMedium,
+                    text = "Customize Navigation",
+                    style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    text = category.type.name.lowercase().replace('_', ' ').capitalize(),
-                    style = MaterialTheme.typography.labelSmall,
+                    text = "Drag items to reorder or remove",
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                 )
             }
+            
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                        shape = CircleShape
+                    )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowUp,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .align(Alignment.Center)
+                        .graphicsLayer {
+                            rotationZ = dragProgress * 180f
+                        }
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun SlideUpProgressIndicator(
+    dragProgress: Float,
+    modifier: Modifier = Modifier
+) {
+    val indicatorWidth by animateFloatAsState(
+        targetValue = (dragProgress * 48f).coerceIn(24f, 48f),
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "indicatorWidth"
+    )
+
+    val indicatorAlpha by animateFloatAsState(
+        targetValue = dragProgress.coerceIn(0.2f, 0.8f),
+        label = "indicatorAlpha"
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .width(indicatorWidth.dp)
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.primary.copy(alpha = indicatorAlpha),
+                            MaterialTheme.colorScheme.primary.copy(alpha = indicatorAlpha * 1.2f)
+                        )
+                    )
+                )
+        )
+    }
+}
+
+@Composable
+private fun ScrollableNavigationBar(
+    currentItems: List<NavItem>,
+    currentRoute: String?,
+    onItemClick: (NavItem) -> Unit,
+    onItemLongPress: (NavItem) -> Unit,
+    onItemReorder: (List<NavItem>) -> Unit,
+    isEditMode: Boolean,
+    modifier: Modifier = Modifier
+) {
+    var draggingItem by remember { mutableStateOf<NavItem?>(null) }
+    var dragOffset by remember { mutableStateOf(Offset.Zero) }
+    var itemPositions by remember { mutableStateOf(mutableMapOf<String, Offset>()) }
+    val haptics = LocalHapticFeedback.current
+    val density = LocalDensity.current
+    
+    // Calculate item width including spacing
+    val itemWidth = 80.dp
+    val itemSpacing = 8.dp
+    val totalItemWidth = itemWidth + itemSpacing
+    val totalItemWidthPx = with(density) { totalItemWidth.toPx() }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(itemSpacing)
+        ) {
+            currentItems.forEachIndexed { index, item ->
+                val isDragging = draggingItem == item
+                
+                // Calculate target position for animations
+                val targetOffset = if (isDragging) {
+                    dragOffset
+                } else {
+                    val draggedIndex = currentItems.indexOf(draggingItem)
+                    if (draggedIndex != -1 && draggingItem != null) {
+                        val draggedPos = itemPositions[draggingItem!!.id] ?: Offset.Zero
+                        val thisPos = itemPositions[item.id] ?: Offset.Zero
+                        val dragDistance = draggedPos.x - thisPos.x
+                        
+                        if (abs(dragDistance) > totalItemWidthPx / 2) {
+                            // Calculate shift direction and amount
+                            val direction = if (dragDistance > 0) 1 else -1
+                            Offset(direction * totalItemWidthPx, 0f)
+                        } else {
+                            Offset.Zero
+                        }
+                    } else {
+                        Offset.Zero
+                    }
+                }
+
+                val offset by animateOffsetAsState(
+                    targetValue = targetOffset,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessLow
+                    ),
+                    label = "offset"
+                )
+
+                Box(
+                    modifier = Modifier
+                        .size(itemWidth)
+                        .offset { IntOffset(offset.x.toInt(), offset.y.toInt()) }
+                        .onGloballyPositioned { coordinates ->
+                            itemPositions[item.id] = coordinates.boundsInRoot().center
+                        }
+                        .pointerInput(Unit) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = {
+                                    if (!item.isLocked && isEditMode) {
+                                        draggingItem = item
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    }
+                                },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    if (draggingItem != null) {
+                                        dragOffset += Offset(dragAmount.x, 0f)
+                                        
+                                        // Find closest item for swapping
+                                        val draggedPos = itemPositions[draggingItem!!.id] ?: return@detectDragGesturesAfterLongPress
+                                        val targetPos = draggedPos + dragOffset
+                                        
+                                        val closestItem = itemPositions
+                                            .entries
+                                            .filter { it.key != draggingItem!!.id }
+                                            .minByOrNull { abs(it.value.x - targetPos.x) }
+                                            ?.key
+                                            ?.let { id -> currentItems.find { it.id == id } }
+                                        
+                                        if (closestItem != null && !closestItem.isLocked) {
+                                            val fromIndex = currentItems.indexOf(draggingItem)
+                                            val toIndex = currentItems.indexOf(closestItem)
+                                            
+                                            if (fromIndex != -1 && toIndex != -1 && 
+                                                abs(targetPos.x - (itemPositions[closestItem.id]?.x ?: 0f)) < totalItemWidthPx / 2
+                                            ) {
+                                                val newList = currentItems.toMutableList()
+                                                newList.removeAt(fromIndex)
+                                                newList.add(toIndex, draggingItem!!)
+                                                onItemReorder(newList)
+                                                dragOffset = Offset.Zero
+                                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            }
+                                        }
+                                    }
+                                },
+                                onDragEnd = {
+                                    draggingItem = null
+                                    dragOffset = Offset.Zero
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                },
+                                onDragCancel = {
+                                    draggingItem = null
+                                    dragOffset = Offset.Zero
+                                }
+                            )
+                        }
+                        .clickable(
+                            enabled = !isDragging,
+                            onClick = { onItemClick(item) }
+                        )
+                ) {
+                    NavigationItemWithWiggle(
+                        item = item,
+                        isSelected = currentRoute == item.screen.route,
+                        isEditMode = isEditMode,
+                        onItemClick = { onItemClick(item) },
+                        onLongPress = { onItemLongPress(item) },
+                        onRemove = { /* Handled by parent */ }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun animateOffsetAsState(
+    targetValue: Offset,
+    animationSpec: AnimationSpec<Offset>,
+    label: String
+): State<Offset> {
+    val anim = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
+    
+    LaunchedEffect(targetValue) {
+        anim.animateTo(targetValue, animationSpec)
+    }
+    
+    return anim.asState()
+}
+
+@Composable
+private fun NavigationBar(
+    navController: NavController,
+    modifier: Modifier = Modifier,
+    sharedViewModel: SharedViewModel = hiltViewModel()
+) {
+    val haptics = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+    var dragProgress by remember { mutableStateOf(0f) }
+    var isSlideGestureActive by remember { mutableStateOf(false) }
+    var lastPosition by remember { mutableStateOf(0f) }
+    var isEditMode by remember { mutableStateOf(false) }
+    var currentNavItems by remember { mutableStateOf(defaultNavItems) }
+    val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
+    val isBottomSheetVisible by sharedViewModel.isBottomSheetVisible.collectAsState()
+    
+    val velocityTracker = remember { VelocityTracker() }
+    
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+            .navigationBarsPadding()
+    ) {
+        // Enhanced slide-up preview
+        SlideUpPreview(
+            isVisible = isSlideGestureActive,
+            dragProgress = dragProgress,
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
+
+        // Progress indicator
+        SlideUpProgressIndicator(
+            dragProgress = dragProgress,
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
+
+        ScrollableNavigationBar(
+            currentItems = currentNavItems,
+            currentRoute = currentRoute,
+            onItemClick = { item ->
+                if (item.screen == Screen.Search) {
+                    scope.launch {
+                        sharedViewModel.toggleBottomSheet(true)
+                    }
+                } else {
+                    navController.navigate(item.screen.route) {
+                        if (item.screen == Screen.Home) {
+                            popUpTo(navController.graph.startDestinationId)
+                        }
+                        launchSingleTop = true
+                    }
+                }
+            },
+            onItemLongPress = { 
+                if (!isBottomSheetVisible && !it.isLocked) {
+                    isEditMode = true
+                }
+            },
+            onItemReorder = { newItems ->
+                currentNavItems = newItems
+            },
+            isEditMode = isEditMode,
+            modifier = Modifier
+                .fillMaxWidth()
+                .draggable(
+                    orientation = Orientation.Vertical,
+                    state = rememberDraggableState { delta ->
+                        if (!isBottomSheetVisible) {
+                            lastPosition += delta
+                            dragProgress = (-lastPosition / 150f).coerceIn(0f, 1f)
+                            
+                            velocityTracker.addPosition(
+                                System.currentTimeMillis(),
+                                Offset(0f, delta)
+                            )
+                            
+                            if (!isSlideGestureActive && abs(lastPosition) > 5f) {
+                                isSlideGestureActive = true
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            }
+                            
+                            when {
+                                dragProgress > 0.9f -> {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                }
+                                dragProgress > 0.7f -> {
+                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                }
+                                dragProgress > 0.4f -> {
+                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                }
+                                else -> { /* No feedback needed */ }
+                            }
+                            
+                            val velocity = velocityTracker.calculateVelocity()
+                            if (velocity.y < -1000f || dragProgress > 0.7f) {
+                                scope.launch {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    animate(
+                                        initialValue = dragProgress,
+                                        targetValue = 1f,
+                                        animationSpec = spring(
+                                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                                            stiffness = Spring.StiffnessLow
+                                        )
+                                    ) { value, _ ->
+                                        dragProgress = value
+                                    }
+                                    
+                                    sharedViewModel.toggleBottomSheet(true)
+                                    lastPosition = 0f
+                                    isSlideGestureActive = false
+                                    velocityTracker.clear()
+                                }
+                            }
+                        }
+                    },
+                    onDragStarted = {
+                        if (!isBottomSheetVisible) {
+                            isSlideGestureActive = true
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            velocityTracker.clear()
+                        }
+                    },
+                    onDragStopped = {
+                        if (dragProgress < 0.7f) {
+                            scope.launch {
+                                animate(
+                                    initialValue = dragProgress,
+                                    targetValue = 0f,
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                                        stiffness = Spring.StiffnessLow
+                                    )
+                                ) { value, _ ->
+                                    dragProgress = value
+                                }
+                                
+                                lastPosition = 0f
+                                isSlideGestureActive = false
+                                velocityTracker.clear()
+                            }
+                        }
+                    }
+                )
+        )
+    }
+}
+
+// Helper class for tracking velocity
+private class VelocityTracker {
+    private var lastPosition = Offset.Zero
+    private var lastTime = 0L
+    
+    fun addPosition(timeMillis: Long, position: Offset) {
+        lastPosition = position
+        lastTime = timeMillis
+    }
+    
+    fun calculateVelocity(): Offset {
+        val timeDelta = (System.currentTimeMillis() - lastTime).coerceAtLeast(1L)
+        return Offset(
+            lastPosition.x / timeDelta.toFloat(),
+            lastPosition.y / timeDelta.toFloat()
+        )
+    }
+    
+    fun clear() {
+        lastPosition = Offset.Zero
+        lastTime = 0L
     }
 } 
