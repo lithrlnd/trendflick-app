@@ -181,11 +181,11 @@ private val defaultNavItems = listOf(
         id = "home"
     ),
     NavItem(
-        screen = Screen.Messages,
-        label = "Messages",
-        selectedIcon = Icons.Default.Message,
-        unselectedIcon = Icons.Outlined.Message,
-        id = "messages"
+        screen = Screen.WhatsHot,
+        label = "What's Hot",
+        selectedIcon = Icons.Default.TrendingUp,
+        unselectedIcon = Icons.Outlined.TrendingUp,
+        id = "whats_hot"
     ),
     NavItem(
         screen = Screen.Search,
@@ -241,7 +241,7 @@ fun BottomNavigationBar(
     val initialNavItems = remember {
         listOf(
             NavItem(Screen.Home, "Home", Icons.Default.Home, Icons.Outlined.Home, isLocked = true, id = "home"),
-            NavItem(Screen.Messages, "Messages", Icons.Default.Message, Icons.Outlined.Message, id = "messages"),
+            NavItem(Screen.WhatsHot, "What's Hot", Icons.Default.TrendingUp, Icons.Outlined.TrendingUp, id = "whats_hot"),
             NavItem(Screen.Search, "Search", Icons.Default.Search, Icons.Outlined.Search, id = "search"),
             NavItem(Screen.AI, "AI", Icons.Default.SmartToy, Icons.Outlined.SmartToy, id = "ai"),
             NavItem(Screen.Profile, "Profile", Icons.Default.Person, Icons.Outlined.Person, id = "profile")
@@ -303,6 +303,16 @@ fun BottomNavigationBar(
                     label = "Following",
                     type = CategoryType.APP_VIEW,
                     description = "Posts from people you follow",
+                    onClick = { /* Handle click */ }
+                )
+            ),
+            "Communication" to listOf(
+                CustomCategory(
+                    id = "messages",
+                    icon = Icons.Default.Message,
+                    label = "Messages",
+                    type = CategoryType.APP_VIEW,
+                    description = "Direct messages and conversations",
                     onClick = { /* Handle click */ }
                 )
             ),

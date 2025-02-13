@@ -4,6 +4,7 @@ sealed class Screen(val route: String) {
     object Splash : Screen("splash")
     object Login : Screen("login")
     object Home : Screen("home")
+    object WhatsHot : Screen("whats_hot")
     object Messages : Screen("messages")
     object Search : Screen("search")
     object CreatePost : Screen("create_post")
@@ -26,6 +27,7 @@ sealed class Screen(val route: String) {
                 Splash.route -> Splash
                 Login.route -> Login
                 Home.route -> Home
+                WhatsHot.route -> WhatsHot
                 Messages.route -> Messages
                 Search.route -> Search
                 CreatePost.route -> CreatePost

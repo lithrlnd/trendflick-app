@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.trendflick.ui.viewmodels.SharedViewModel
 import com.trendflick.ui.components.CastButton
+import com.trendflick.ui.screens.WhatsHotScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @AndroidEntryPoint
@@ -125,6 +126,16 @@ class MainActivity : ComponentActivity() {
                             }
                             composable(Screen.AI.route) {
                                 AIScreen(navController = navController)
+                            }
+                            composable(Screen.WhatsHot.route) {
+                                Box(modifier = Modifier.padding(bottom = 80.dp)) {
+                                    WhatsHotScreen(
+                                        onNavigateToProfile = { did ->
+                                            navController.navigate("profile/$did")
+                                        },
+                                        navController = navController
+                                    )
+                                }
                             }
                             
                             // Settings Routes
