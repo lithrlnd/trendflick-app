@@ -1475,15 +1475,13 @@ fun VideoFeedSection(
     val showAuthorOnly by viewModel.showAuthorOnly.collectAsState()
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val scope = rememberCoroutineScope()
 
-    LaunchedEffect(videos, isLoading, error) {
-        Log.d("VideoFeedSection", """
-            📱 Video Feed State:
-            Loading: $isLoading
-            Error: $error
-            Videos count: ${videos.size}
-            First video URI: ${videos.firstOrNull()?.uri}
-        """.trimIndent())
+    // Add effect to check repost status for visible videos
+    LaunchedEffect(videos) {
+        videos.forEach { video ->
+            viewModel.checkRepostStatus(video.uri)
+        }
     }
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -1585,6 +1583,14 @@ fun VideoFeedSection(
                 Log.d("VideoFeedSection", "✅ Showing ${videos.size} videos")
                 val pagerState = rememberPagerState(pageCount = { videos.size })
                 
+                // Add effect to check repost status for currently visible video
+                LaunchedEffect(pagerState.currentPage) {
+                    if (pagerState.currentPage >= 0 && pagerState.currentPage < videos.size) {
+                        val currentVideo = videos[pagerState.currentPage]
+                        viewModel.checkRepostStatus(currentVideo.uri)
+                    }
+                }
+
                 if (isLandscape) {
                     // Horizontal pager for landscape
                     HorizontalPager(

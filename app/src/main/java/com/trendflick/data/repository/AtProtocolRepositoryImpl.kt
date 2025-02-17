@@ -514,31 +514,72 @@ class AtProtocolRepositoryImpl @Inject constructor(
 
     override suspend fun repost(uri: String, cid: String) {
         try {
+            Log.d(TAG, """
+                🔄 Starting repost operation:
+                URI: $uri
+                CID: $cid
+            """.trimIndent())
+            
             val did = sessionManager.getDid() ?: throw IllegalStateException("No DID found")
             
-            val record = AtProtocolService.RepostRecord(
-                createdAt = getCurrentTimestamp(),
-                subject = AtProtocolService.PostReference(
-                    uri = uri,
-                    cid = cid
+            // Check current repost status first
+            val currentlyReposted = isPostRepostedByUser(uri)
+            Log.d(TAG, "🔍 Current repost status: $currentlyReposted")
+            
+            if (!currentlyReposted) {
+                val record = AtProtocolService.RepostRecord(
+                    createdAt = getCurrentTimestamp(),
+                    subject = AtProtocolService.PostReference(
+                        uri = uri,
+                        cid = cid
+                    )
                 )
-            )
-            
-            val request = AtProtocolService.CreateRecordRequest(
-                repo = did,
-                collection = "app.bsky.feed.repost",
-                record = record,
-                rkey = generateStableRkey("repost_$cid")
-            )
-            
-            service.createRecord(request)
+                
+                val request = AtProtocolService.CreateRecordRequest(
+                    repo = did,
+                    collection = "app.bsky.feed.repost",
+                    record = record,
+                    rkey = generateStableRkey("repost_$cid")
+                )
+                
+                service.createRecord(request)
+                Log.d(TAG, "✅ Repost created successfully")
+                
+                // Clear cache for this URI to force a fresh check
+                repostStatusCache.remove(uri)
+                
+                // Verify repost status with retries
+                var verified = false
+                var attempts = 0
+                while (!verified && attempts < 3) {
+                    delay(1000L * (attempts + 1)) // Increasing delay between attempts
+                    verified = isPostRepostedByUser(uri)
+                    if (verified) {
+                        Log.d(TAG, "✅ Repost verified on attempt ${attempts + 1}")
+                        break
+                    }
+                    attempts++
+                }
+                
+                if (!verified) {
+                    Log.w(TAG, "⚠️ Repost creation succeeded but verification failed")
+                }
+            } else {
+                Log.d(TAG, "⚠️ Post already reposted")
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to create repost: ${e.message}")
+            Log.e(TAG, """
+                ❌ Failed to create repost:
+                URI: $uri
+                Error: ${e.message}
+                Stack: ${e.stackTraceToString()}
+            """.trimIndent())
             throw e
         }
     }
 
     override suspend fun isPostRepostedByUser(uri: String): Boolean {
+        // Check cache first
         val cached = repostStatusCache[uri]
         if (cached != null) {
             val (status, timestamp) = cached
@@ -550,15 +591,63 @@ class AtProtocolRepositoryImpl @Inject constructor(
 
         return try {
             Log.d(TAG, "🌐 Fetching repost status from AT Protocol for $uri")
-            val did = userDao.getCurrentUserDid() ?: sessionManager.getDid()
-            val response = service.getReposts(uri, limit = 1)
-            val isReposted = response.repostedBy.any { it.did == did }
+            val did = userDao.getCurrentUserDid() ?: sessionManager.getDid() 
+                ?: throw IllegalStateException("No DID found")
+            
+            // Fetch reposts with increased limit and pagination
+            var cursor: String? = null
+            var isReposted = false
+            var totalChecked = 0
+            val maxToCheck = 500 // Increased max to check
+            
+            do {
+                val response = service.getReposts(uri, limit = 100, cursor = cursor)
+                
+                // Enhanced logging for repost checking
+                Log.d(TAG, """
+                    📝 Repost Check Details (Page):
+                    URI: $uri
+                    Reposters in current page: ${response.repostedBy.size}
+                    Total checked so far: $totalChecked
+                    Current User DID: $did
+                    Has Matching DID: ${response.repostedBy.any { it.did == did }}
+                """.trimIndent())
+                
+                if (response.repostedBy.any { it.did == did }) {
+                    isReposted = true
+                    break
+                }
+                
+                totalChecked += response.repostedBy.size
+                cursor = response.cursor
+            } while (cursor != null && totalChecked < maxToCheck && !isReposted)
+            
+            // Update cache with new status
             repostStatusCache[uri] = isReposted to System.currentTimeMillis()
-            Log.d(TAG, "✅ Repost status fetched successfully: $isReposted")
+            
+            Log.d(TAG, """
+                ✅ Repost Status Result:
+                Is Reposted: $isReposted
+                Total Reposters Checked: $totalChecked
+                Cache Updated: ${System.currentTimeMillis()}
+                URI: $uri
+            """.trimIndent())
+            
             isReposted
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Failed to fetch repost status: ${e.message}")
-            Log.e(TAG, "Stack trace: ${e.stackTraceToString()}")
+            Log.e(TAG, """
+                ❌ Failed to fetch repost status:
+                URI: $uri
+                Error: ${e.message}
+                Stack: ${e.stackTraceToString()}
+            """.trimIndent())
+            
+            // If we have a cached value, use it as fallback
+            cached?.let { (status, _) ->
+                Log.d(TAG, "⚠️ Using cached status as fallback: $status")
+                return status
+            }
+            
             false
         }
     }
@@ -1047,150 +1136,155 @@ class AtProtocolRepositoryImpl @Inject constructor(
 
     private fun mapPostToVideo(post: Post): Video? {
         try {
+            // Enhanced oEmbed URL handling
+            fun getOEmbedUrl(url: String, platform: String? = null): String {
+                return when {
+                    url.contains("bsky.app/profile") -> {
+                        val encodedUrl = Uri.encode(url)
+                        "https://embed.bsky.app/oembed?url=$encodedUrl&format=json"
+                    }
+                    platform == "twitter" || url.contains("twitter.com") || url.contains("x.com") -> {
+                        val encodedUrl = Uri.encode(url)
+                        "https://publish.twitter.com/oembed?url=$encodedUrl"
+                    }
+                    platform == "instagram" || url.contains("instagram.com") -> {
+                        val encodedUrl = Uri.encode(url)
+                        "https://api.instagram.com/oembed?url=$encodedUrl"
+                    }
+                    platform == "youtube" || url.contains("youtube.com") || url.contains("youtu.be") -> {
+                        val encodedUrl = Uri.encode(url)
+                        "https://www.youtube.com/oembed?url=$encodedUrl&format=json"
+                    }
+                    platform == "tiktok" || url.contains("tiktok.com") -> {
+                        val encodedUrl = Uri.encode(url)
+                        "https://www.tiktok.com/oembed?url=$encodedUrl"
+                    }
+                    else -> url
+                }
+            }
+
+            // Add detailed embed type logging
             Log.d(TAG, """
-                🎥 Processing post for video/image:
+                🎥 Detailed Embed Analysis:
                 URI: ${post.uri}
-                Has embed: ${post.embed != null}
-                Embed type: ${post.embed?.type}
-                Images count: ${post.embed?.images?.size}
-                Has video: ${post.embed?.video != null}
-                Has external: ${post.embed?.external != null}
-                Author: ${post.author.handle}
-                Text: ${post.record.text.take(50)}...
+                Embed Type: ${post.embed?.type}
+                Record Type: ${post.record.type}
+                Has Video Embed: ${post.embed?.video != null}
+                Is Repost: ${post.record.type == "app.bsky.feed.repost"}
+                Video Details: ${post.embed?.video?.let { video ->
+                    """
+                    |  - Ref Link: ${video.ref?.link}
+                    |  - Aspect Ratio: ${video.aspectRatio?.width}:${video.aspectRatio?.height}
+                    """.trimMargin()
+                } ?: "No video details"}
+                External Details: ${post.embed?.external?.let { external ->
+                    """
+                    |  - URI: ${external.uri}
+                    |  - Title: ${external.title}
+                    |  - Description: ${external.description}
+                    |  - Thumb: ${external.thumb?.link}
+                    |  - Social Info: ${external.getSocialMediaInfo()?.let { "${it.platform} ${it.type}" }}
+                    |  - OEmbed URL: ${external.uri?.let { getOEmbedUrl(it, external.getSocialMediaInfo()?.platform?.lowercase()) }}
+                    """.trimMargin()
+                } ?: "No external details"}
             """.trimIndent())
 
-            // Validate embed structure
+            // Enhanced embed validation
             val embed = post.embed
             if (embed == null) {
                 Log.d(TAG, "⚠️ Skipping post - no embed found")
                 return null
             }
-            
-            // Get valid images using the new validation method
-            val validImages = embed.getValidImages()
-            val isImage = (embed.type?.startsWith("app.bsky.embed.images") == true || 
-                          embed.type?.equals("app.bsky.embed.images#view") == true) && 
-                          embed.images?.isNotEmpty() == true
-            
-            Log.d(TAG, """
-                📊 Media validation:
-                Is image post: $isImage
-                Valid images count: ${validImages.size}
-                Embed type: ${embed.type}
-                Raw images: ${embed.images?.size}
-                First image fullsize: ${embed.images?.firstOrNull()?.fullsize}
-                First image link: ${embed.images?.firstOrNull()?.image?.link}
-            """.trimIndent())
-            
-            // Handle image URLs
-            val imageUrl = when {
-                isImage && embed.images?.firstOrNull()?.fullsize != null -> {
-                    Log.d(TAG, "🖼️ Using fullsize image URL: ${embed.images.first().fullsize}")
-                    embed.images.first().fullsize
-                }
-                isImage && embed.images?.firstOrNull()?.image?.link != null -> {
-                    val link = embed.images.first().image?.link
-                    val url = "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
-                    Log.d(TAG, "🖼️ Generated CDN image URL: $url")
-                    url
-                }
-                else -> {
-                    Log.d(TAG, "⚠️ No valid image URL found")
-                    ""
-                }
-            }
-            
-            // Handle video URLs with improved validation
+
+            // Enhanced video URL handling with oEmbed support
             val videoUrl = when {
+                // Direct Bluesky video
                 embed.video?.ref?.link != null -> {
                     val link = embed.video.ref.link
                     val url = "https://cdn.bsky.app/video/plain/$link"
-                    Log.d(TAG, "🎥 Generated Bluesky CDN video URL: $url")
+                    Log.d(TAG, "🎥 Using Bluesky CDN video URL: $url")
                     url
                 }
+                // External video with oEmbed support
                 embed.external?.uri?.let { uri ->
-                    uri.endsWith(".mp4", ignoreCase = true) ||
-                    uri.contains("video", ignoreCase = true) ||
-                    uri.contains("cdn.bsky.social/video", ignoreCase = true)
-                } == true -> {
+                    val socialInfo = embed.external.getSocialMediaInfo()
+                    val isVideo = uri.endsWith(".mp4", ignoreCase = true) ||
+                        uri.endsWith(".mov", ignoreCase = true) ||
+                        uri.endsWith(".webm", ignoreCase = true) ||
+                        uri.contains("video", ignoreCase = true) ||
+                        uri.contains("cdn.bsky.social/video", ignoreCase = true) ||
+                        socialInfo?.type == "video"
+                    if (isVideo) getOEmbedUrl(uri, socialInfo?.platform?.lowercase()) else null
+                } != null -> {
                     val uri = embed.external.uri
-                    Log.d(TAG, "🎥 Using external video URL: $uri")
-                    uri
+                    val oEmbedUrl = getOEmbedUrl(uri, embed.external.getSocialMediaInfo()?.platform?.lowercase())
+                    Log.d(TAG, "🎥 Using oEmbed video URL: $oEmbedUrl")
+                    oEmbedUrl
                 }
                 else -> {
-                    Log.d(TAG, "⚠️ No valid video URL found")
-                    ""
-                }
-            }
-            
-            // Get thumbnail URL with fallbacks
-            val thumbnailUrl = when {
-                embed.external?.thumb?.link != null -> {
-                    val link = embed.external.thumb.link
-                    val url = "https://cdn.bsky.app/img/feed_thumbnail/plain/$link@jpeg"
-                    Log.d(TAG, "🖼️ Generated thumbnail from external: $url")
-                    url
-                }
-                isImage && embed.images?.firstOrNull()?.thumb != null -> {
-                    val url = embed.images.first().thumb
-                    Log.d(TAG, "🖼️ Using image thumb: $url")
-                    url
-                }
-                isImage && embed.images?.firstOrNull()?.image?.link != null -> {
-                    val link = embed.images.first().image?.link
-                    val url = "https://cdn.bsky.app/img/feed_thumbnail/plain/$link@jpeg"
-                    Log.d(TAG, "🖼️ Generated thumbnail from image: $url")
-                    url
-                }
-                else -> {
-                    Log.d(TAG, "⚠️ No valid thumbnail URL found")
+                    Log.d(TAG, "⚠️ No valid video URL found in embed")
                     ""
                 }
             }
 
-            // Return a Video object if we have either a valid image or video URL
-            if ((isImage && imageUrl?.isNotBlank() == true) || (!isImage && videoUrl?.isNotBlank() == true)) {
-                return Video(
-                    uri = post.uri,
-                    did = post.author.did,
-                    handle = post.author.handle,
-                    videoUrl = videoUrl ?: "",
-                    description = post.record.text,
-                    createdAt = Instant.parse(post.record.createdAt),
-                    indexedAt = Instant.parse(post.indexedAt),
-                    sortAt = Instant.parse(post.indexedAt),
-                    title = embed.external?.title ?: "",
-                    thumbnailUrl = thumbnailUrl ?: "",
-                    likes = post.likeCount ?: 0,
-                    comments = post.replyCount ?: 0,
-                    shares = post.repostCount ?: 0,
-                    username = post.author.displayName ?: post.author.handle,
-                    userId = post.author.did,
-                    isImage = isImage,
-                    imageUrl = imageUrl ?: "",
-                    aspectRatio = embed.video?.aspectRatio?.let { it.width.toFloat() / it.height.toFloat() } ?: 1.0f,
-                    authorAvatar = post.author.avatar ?: ""
-                ).also { video ->
-                    Log.d(TAG, """
-                        ✅ Mapped Media Result:
-                        URI: ${video.uri}
-                        Is Image: ${video.isImage}
-                        Image URL: ${video.imageUrl}
-                        Video URL: ${video.videoUrl}
-                        Has Media: ${video.isImage || video.videoUrl.isNotBlank()}
-                        Thumbnail: ${video.thumbnailUrl}
-                    """.trimIndent())
+            // Enhanced thumbnail handling
+            val thumbnailUrl = when {
+                embed.external?.thumb?.link != null -> {
+                    val link = embed.external.thumb.link
+                    if (link.startsWith("http")) {
+                        link
+                    } else {
+                        "https://cdn.bsky.app/img/feed_thumbnail/plain/$link@jpeg"
+                    }
                 }
+                embed.external?.uri != null -> {
+                    val socialInfo = embed.external.getSocialMediaInfo()
+                    if (socialInfo != null) {
+                        getOEmbedUrl(embed.external.uri, socialInfo.platform.lowercase())
+                    } else {
+                        embed.external.uri
+                    }
+                }
+                else -> ""
             }
-            
-            Log.w(TAG, """
-                ⚠️ Skipping post due to missing media URL:
-                Is Image: $isImage
-                Image URL: $imageUrl
-                Video URL: $videoUrl
-            """.trimIndent())
-            return null
-            
+
+            // Return enhanced Video object
+            return Video(
+                uri = post.uri,
+                did = post.author.did,
+                handle = post.author.handle,
+                videoUrl = videoUrl,
+                description = post.record.text,
+                createdAt = Instant.parse(post.record.createdAt),
+                indexedAt = Instant.parse(post.indexedAt),
+                sortAt = Instant.parse(post.indexedAt),
+                title = embed.external?.title ?: "",
+                thumbnailUrl = thumbnailUrl,
+                likes = post.likeCount ?: 0,
+                comments = post.replyCount ?: 0,
+                shares = post.repostCount ?: 0,
+                username = post.author.displayName ?: post.author.handle,
+                userId = post.author.did,
+                isImage = embed.type?.startsWith("app.bsky.embed.images") == true,
+                imageUrl = if (embed.type?.startsWith("app.bsky.embed.images") == true) {
+                    embed.images?.firstOrNull()?.fullsize ?: ""
+                } else "",
+                aspectRatio = embed.video?.aspectRatio?.let { it.width.toFloat() / it.height.toFloat() } ?: 1.0f,
+                authorAvatar = post.author.avatar ?: "",
+                caption = post.record.text,
+                facets = post.record.facets
+            ).also { video ->
+                Log.d(TAG, """
+                    ✅ Enhanced Media Result:
+                    URI: ${video.uri}
+                    Is Image: ${video.isImage}
+                    Image URL: ${video.imageUrl}
+                    Video URL: ${video.videoUrl}
+                    Has Media: ${video.isImage || video.videoUrl.isNotBlank()}
+                    Thumbnail: ${video.thumbnailUrl}
+                    Social Platform: ${embed.external?.getSocialMediaInfo()?.platform}
+                """.trimIndent())
+            }
         } catch (e: Exception) {
             Log.e(TAG, "❌ Error mapping post to video: ${e.message}")
             Log.e(TAG, "Stack trace: ${e.stackTraceToString()}")
@@ -1212,6 +1306,36 @@ class AtProtocolRepositoryImpl @Inject constructor(
             viewer = post.viewer
         )
     }
+
+    // Add this helper function to get repost information
+    private suspend fun getRepostInfo(uri: String): RepostInfo? {
+        return try {
+            val response = service.getReposts(uri, limit = 1)
+            if (response.repostedBy.isNotEmpty()) {
+                val reposter = response.repostedBy.first()
+                RepostInfo(
+                    repostedBy = AtProfile(
+                        did = reposter.did,
+                        handle = reposter.handle,
+                        displayName = reposter.displayName,
+                        avatar = reposter.avatar,
+                        viewer = reposter.viewer,
+                        description = reposter.description,
+                        indexedAt = reposter.indexedAt
+                    ),
+                    timestamp = response.cursor ?: getCurrentTimestamp()
+                )
+            } else null
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to get repost info: ${e.message}")
+            null
+        }
+    }
+
+    data class RepostInfo(
+        val repostedBy: AtProfile,  // Using AtProfile from the API package
+        val timestamp: String
+    )
 
     companion object {
         private const val TAG = "AtProtocolRepo"

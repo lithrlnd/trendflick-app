@@ -2,6 +2,7 @@ package com.trendflick.data.api
 
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
+import android.net.Uri
 
 /**
  * AT Protocol Models
@@ -201,7 +202,31 @@ data class ExternalEmbed(
     @field:Json(name = "uri") val uri: String,
     @field:Json(name = "title") val title: String? = null,
     @field:Json(name = "description") val description: String? = null,
-    @field:Json(name = "thumb") val thumb: BlobRef? = null
+    @field:Json(name = "thumb") val thumb: BlobRef? = null,
+    @field:Json(name = "oEmbedUrl") val oEmbedUrl: String? = null,
+    @field:Json(name = "siteName") val siteName: String? = null,
+    @field:Json(name = "platform") val platform: String? = null
+) {
+    fun getSocialMediaInfo(): SocialMediaInfo? {
+        val uri = Uri.parse(uri)
+        val host = uri.host ?: return null
+        return when {
+            host.contains("twitter.com") || host.contains("x.com") -> 
+                SocialMediaInfo("X/Twitter", "post")
+            host.contains("instagram.com") -> 
+                SocialMediaInfo("Instagram", if (uri.path?.contains("/p/") == true) "post" else "profile")
+            host.contains("youtube.com") || host.contains("youtu.be") -> 
+                SocialMediaInfo("YouTube", "video")
+            host.contains("tiktok.com") -> 
+                SocialMediaInfo("TikTok", if (uri.path?.contains("/video/") == true) "video" else "post")
+            else -> null
+        }
+    }
+}
+
+data class SocialMediaInfo(
+    val platform: String,
+    val type: String
 )
 
 @JsonClass(generateAdapter = true)
@@ -255,9 +280,19 @@ data class PostRef(
 
 @JsonClass(generateAdapter = true)
 data class ReasonType(
+    @field:Json(name = "\$type") val type: String? = null,
     @field:Json(name = "by") val by: Author? = null,
     @field:Json(name = "indexedAt") val indexedAt: String? = null,
-    @field:Json(name = "type") val type: String? = null
+    @field:Json(name = "repost") val repost: RepostInfo? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class RepostInfo(
+    @field:Json(name = "uri") val uri: String,
+    @field:Json(name = "cid") val cid: String,
+    @field:Json(name = "author") val author: Author,
+    @field:Json(name = "record") val record: PostRecord,
+    @field:Json(name = "indexedAt") val indexedAt: String
 )
 
 @JsonClass(generateAdapter = true)
