@@ -127,10 +127,29 @@ app/
 - Stores credentials securely
 
 ### Feed Management
-- Implements multiple feed types
-- Handles pagination
-- Manages feed caching
-- Implements custom filtering
+- Implements multiple feed types:
+  - **Trends Feed**
+    - Uses "whats-hot" algorithm
+    - Fetches 50 posts per load for comprehensive trending content
+    - Optimized for discovery and engagement
+  
+  - **Following Feed**
+    - Uses "reverse-chronological" algorithm
+    - Fetches 25 posts per load for better reliability
+    - Optimized for timeline consistency
+  
+  - **Implementation Details**
+    - Dynamic feed parameter selection based on feed type
+    - Smart post validation and filtering
+    - Proper timestamp handling per Bluesky specs
+    - Efficient cursor-based pagination
+    - Comprehensive logging for debugging
+
+- Handles pagination with cursor-based loading
+- Manages feed caching with state preservation
+- Implements custom filtering with post validation
+- Supports dynamic algorithm selection
+- Maintains proper timestamp ordering
 
 ### Media Handling
 - Supports video/image uploads

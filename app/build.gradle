@@ -246,6 +246,10 @@ dependencies {
     implementation "androidx.compose.material3:material3:1.1.2"
     implementation "androidx.hilt:hilt-navigation-compose:1.1.0"
     
+    // Compose Foundation Pager
+    implementation "androidx.compose.foundation:foundation:1.5.4"
+    implementation "androidx.compose.foundation:foundation-layout:1.5.4"
+    
     // Coil for image loading
     implementation "io.coil-kt:coil-compose:2.5.0"
 

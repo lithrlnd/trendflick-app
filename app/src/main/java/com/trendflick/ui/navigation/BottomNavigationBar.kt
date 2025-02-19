@@ -174,17 +174,17 @@ enum class PostType {
 private val defaultNavItems = listOf(
     NavItem(
         screen = Screen.Home,
-        label = "Home",
-        selectedIcon = Icons.Default.Home,
-        unselectedIcon = Icons.Outlined.Home,
+        label = "What's Hot",
+        selectedIcon = Icons.Default.TrendingUp,
+        unselectedIcon = Icons.Outlined.TrendingUp,
         isLocked = true,
         id = "home"
     ),
     NavItem(
         screen = Screen.WhatsHot,
-        label = "What's Hot",
-        selectedIcon = Icons.Default.TrendingUp,
-        unselectedIcon = Icons.Outlined.TrendingUp,
+        label = "Following",
+        selectedIcon = Icons.Default.People,
+        unselectedIcon = Icons.Outlined.People,
         id = "whats_hot"
     ),
     NavItem(
@@ -223,6 +223,17 @@ fun BottomNavigationBar(
     val isBottomSheetVisible by sharedViewModel.isBottomSheetVisible.collectAsState()
     val scope = rememberCoroutineScope()
 
+    // Track initial navigation items separately with unique IDs
+    val initialNavItems = remember {
+        listOf(
+            NavItem(Screen.Home, "What's Hot", Icons.Default.TrendingUp, Icons.Outlined.TrendingUp, isLocked = true, id = "home"),
+            NavItem(Screen.WhatsHot, "Following", Icons.Default.People, Icons.Outlined.People, id = "whats_hot"),
+            NavItem(Screen.Search, "Search", Icons.Default.Search, Icons.Outlined.Search, id = "search"),
+            NavItem(Screen.AI, "AI", Icons.Default.SmartToy, Icons.Outlined.SmartToy, id = "ai"),
+            NavItem(Screen.Profile, "Profile", Icons.Default.Person, Icons.Outlined.Person, id = "profile")
+        )
+    }
+
     // State for dragging and editing - now considers bottom sheet visibility
     var isEditMode by remember { mutableStateOf(false) }
     var draggedItem by remember { mutableStateOf<CustomCategory?>(null) }
@@ -235,17 +246,6 @@ fun BottomNavigationBar(
         if (isBottomSheetVisible) {
             isEditMode = false
         }
-    }
-    
-    // Track initial navigation items separately with unique IDs
-    val initialNavItems = remember {
-        listOf(
-            NavItem(Screen.Home, "Home", Icons.Default.Home, Icons.Outlined.Home, isLocked = true, id = "home"),
-            NavItem(Screen.WhatsHot, "What's Hot", Icons.Default.TrendingUp, Icons.Outlined.TrendingUp, id = "whats_hot"),
-            NavItem(Screen.Search, "Search", Icons.Default.Search, Icons.Outlined.Search, id = "search"),
-            NavItem(Screen.AI, "AI", Icons.Default.SmartToy, Icons.Outlined.SmartToy, id = "ai"),
-            NavItem(Screen.Profile, "Profile", Icons.Default.Person, Icons.Outlined.Person, id = "profile")
-        )
     }
     
     // State for current navigation items

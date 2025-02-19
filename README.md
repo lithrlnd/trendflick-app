@@ -21,15 +21,20 @@ A Material 3 Android client for BlueSky that focuses on rich media sharing and s
 - ✅ Automatic session recovery and token refresh
 
 ### Feed Management
-- ✅ Multiple feed types:
-  - Trending ("what's hot")
-  - Following
-  - Category-based feeds
-  - Hashtag-based feeds
-- ✅ Smart feed filtering and aggregation
+- ✅ Multiple feed types with optimized loading:
+  - Trends feed: 50 posts with "whats-hot" algorithm
+  - Following feed: 25 posts with "reverse-chronological" algorithm
+- ✅ Smart feed filtering and aggregation:
+  - Dynamic parameter selection based on feed type
+  - Proper timestamp validation and sorting
+  - Efficient post filtering and validation
+  - Comprehensive error handling
 - ✅ Category system with associated hashtags
 - ✅ Efficient post deduplication
 - ✅ Pull-to-refresh functionality
+- ✅ Cursor-based pagination
+- ✅ State preservation during feed switches
+- ✅ Proper error recovery and logging
 
 ### Social Interactions
 - ✅ Like/Unlike posts with state persistence
@@ -249,10 +254,10 @@ TrendFlick is a BlueSky-compatible social media client that focuses on creating 
    - Immediate UI state updates for social actions
 
 ## Development Priorities
-1. Fix feed loading for Following and Categories
-2. Optimize hashtag-based content filtering
-3. Implement proper Following feed integration
-4. Enhance feed caching and performance
+1. ✅ Optimize feed loading for Following and Categories
+2. Enhance hashtag-based content filtering
+3. ✅ Implement proper Following feed integration
+4. ✅ Enhance feed caching and performance
 5. Core AT Protocol integration
 6. Media handling and uploads
 7. Feed viewing and interaction
