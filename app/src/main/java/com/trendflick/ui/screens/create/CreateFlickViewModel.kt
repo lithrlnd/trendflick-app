@@ -70,18 +70,41 @@ class CreateFlickViewModel @Inject constructor(
                 val originalVideoFile = when {
                     videoUri.scheme == "file" -> File(videoUri.path!!)
                     videoUri.scheme == "content" -> {
-                        val tempFile = File(context.cacheDir, "temp_video_${System.currentTimeMillis()}.mp4")
-                        context.contentResolver.openInputStream(videoUri)?.use { input ->
-                            tempFile.outputStream().use { output ->
-                                input.copyTo(output)
+                        val timestamp = System.currentTimeMillis()
+                        val tempFile = File(context.cacheDir, "TrendFlick_video_$timestamp.mp4")
+                        
+                        try {
+                            context.contentResolver.openInputStream(videoUri)?.use { input ->
+                                tempFile.outputStream().use { output ->
+                                    input.copyTo(output)
+                                }
+                            } ?: throw IllegalStateException("Failed to open video file stream")
+                            
+                            if (!tempFile.exists() || tempFile.length() == 0L) {
+                                throw IllegalStateException("Failed to create temporary video file")
                             }
+                            
+                            Log.d(TAG, """
+                                📁 Temporary file created:
+                                Path: ${tempFile.absolutePath}
+                                Size: ${tempFile.length()} bytes
+                                Exists: ${tempFile.exists()}
+                            """.trimIndent())
+                            
+                            tempFile
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to create temporary file: ${e.message}")
+                            throw IllegalStateException("Failed to process video file: ${e.message}")
                         }
-                        tempFile
                     }
                     else -> throw IllegalStateException("Unsupported URI scheme: ${videoUri.scheme}")
                 }
 
                 try {
+                    if (!originalVideoFile.exists()) {
+                        throw IllegalStateException("Video file does not exist at path: ${originalVideoFile.absolutePath}")
+                    }
+
                     // Check video duration
                     val retriever = android.media.MediaMetadataRetriever()
                     retriever.setDataSource(originalVideoFile.absolutePath)
@@ -97,8 +120,17 @@ class CreateFlickViewModel @Inject constructor(
                         throw IllegalStateException("BlueSky session is invalid. Please log in again.")
                     }
 
-                    // Upload video to BlueSky
-                    val uploadResult = blueskyRepository.uploadVideo(originalVideoFile, description)
+                    // Add TrendFlick signature to description with proper spacing
+                    val signedDescription = buildString {
+                        append(description.trim())
+                        append("\n\n") // Add two newlines for proper spacing
+                        append("Posted from TrendFlick ✨")
+                    }
+
+                    Log.d(TAG, "📝 Post text with signature: $signedDescription")
+
+                    // Upload video to BlueSky with signed description
+                    val uploadResult = blueskyRepository.uploadVideo(originalVideoFile, signedDescription)
                     
                     if (uploadResult.error != null) {
                         throw IllegalStateException(uploadResult.error)
@@ -110,23 +142,26 @@ class CreateFlickViewModel @Inject constructor(
 
                     // Parse facets for mentions and hashtags in description
                     val facets = try {
-                        atProtocolRepository.parseFacets(description)
+                        atProtocolRepository.parseFacets(signedDescription)
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to parse facets: ${e.message}")
                         null
                     }
 
                     // Create BlueSky post with video embed and facets
-                    val record = mutableMapOf(
+                    val record = mutableMapOf<String, Any>(
                         "did" to (atProtocolRepository.getDid() ?: throw IllegalStateException("No DID found")),
                         "\$type" to "app.bsky.feed.post",
-                        "text" to description,
-                        "createdAt" to java.time.Instant.now().toString(),
-                        "embed" to mapOf(
-                            "\$type" to "app.bsky.embed.video",
-                            "video" to uploadResult.blobRef
-                        )
+                        "text" to signedDescription,
+                        "createdAt" to java.time.Instant.now().toString()
                     )
+
+                    // Add video embed
+                    val embed = mutableMapOf<String, Any>(
+                        "\$type" to "app.bsky.embed.video",
+                        "video" to uploadResult.blobRef
+                    )
+                    record["embed"] = embed
                     
                     // Add facets if available
                     if (facets != null) {
@@ -138,7 +173,7 @@ class CreateFlickViewModel @Inject constructor(
                     Log.d(TAG, """
                         ✅ Post created successfully:
                         URI: ${uploadResult.postUri}
-                        Description: $description
+                        Description: $signedDescription
                         Facets: ${facets?.size ?: 0}
                     """.trimIndent())
                     _uiState.value = CreateFlickUiState(isPostSuccessful = true)

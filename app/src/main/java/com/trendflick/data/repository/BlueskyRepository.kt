@@ -72,17 +72,26 @@ class BlueskyRepository @Inject constructor(
         return withContext(Dispatchers.IO) {
             val outputFile = File(context.cacheDir, "compressed_${System.currentTimeMillis()}.mp4")
             
+            var decoder: MediaCodec? = null
+            var encoder: MediaCodec? = null
+            var inputSurface: Surface? = null
+            var outputSurface: Surface? = null
+            var muxer: MediaMuxer? = null
+            var extractor: MediaExtractor? = null
+            var surfaceTexture: SurfaceTexture? = null
+            
             try {
                 // Get video metadata
-                val retriever = MediaMetadataRetriever()
-                retriever.setDataSource(inputFile.absolutePath)
+                val retriever = MediaMetadataRetriever().apply {
+                    setDataSource(inputFile.absolutePath)
+                }
+                
                 val width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toInt() ?: 1920
                 val height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toInt() ?: 1080
-                val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: 0
                 retriever.release()
 
-                // Calculate new dimensions (maintain aspect ratio but much smaller)
-                val maxDimension = 360 // Reduced from 480 for better compression
+                // Calculate new dimensions (maintain aspect ratio)
+                val maxDimension = 480 // Target dimension for compression
                 val ratio = width.toFloat() / height.toFloat()
                 val (newWidth, newHeight) = if (width > height) {
                     maxDimension to (maxDimension / ratio).toInt()
@@ -90,15 +99,16 @@ class BlueskyRepository @Inject constructor(
                     (maxDimension * ratio).toInt() to maxDimension
                 }
 
-                // Create decoder
-                val extractor = MediaExtractor()
+                // Create and configure extractor
+                extractor = MediaExtractor()
                 extractor.setDataSource(inputFile.absolutePath)
                 
                 // Find video track
                 var videoTrackIndex = -1
                 for (i in 0 until extractor.trackCount) {
                     val format = extractor.getTrackFormat(i)
-                    if (format.getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true) {
+                    val mime = format.getString(MediaFormat.KEY_MIME)
+                    if (mime?.startsWith("video/") == true) {
                         videoTrackIndex = i
                         break
                     }
@@ -111,146 +121,190 @@ class BlueskyRepository @Inject constructor(
                 // Select video track and get format
                 extractor.selectTrack(videoTrackIndex)
                 val inputFormat = extractor.getTrackFormat(videoTrackIndex)
-                
-                // Create decoder
-                val decoder = MediaCodec.createDecoderByType(inputFormat.getString(MediaFormat.KEY_MIME) ?: "video/avc")
-                decoder.configure(inputFormat, null, null, 0)
-                decoder.start()
+                val mimeType = inputFormat.getString(MediaFormat.KEY_MIME)
+                    ?: throw IllegalStateException("No mime type in video track")
 
-                // Create encoder format
-                val outputFormat = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, newWidth, newHeight)
-                outputFormat.setInteger(MediaFormat.KEY_BIT_RATE, 250_000) // 250Kbps
-                outputFormat.setInteger(MediaFormat.KEY_FRAME_RATE, 20)
-                outputFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 5)
-                outputFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, CodecCapabilities.COLOR_FormatSurface)
-                outputFormat.setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline)
-                outputFormat.setInteger(MediaFormat.KEY_LEVEL, MediaCodecInfo.CodecProfileLevel.AVCLevel3)
+                // Create output format
+                val outputFormat = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, newWidth, newHeight).apply {
+                    setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+                    setInteger(MediaFormat.KEY_BIT_RATE, 2_000_000) // 2Mbps
+                    setInteger(MediaFormat.KEY_FRAME_RATE, 30)
+                    setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
+                    // Add these optional parameters if available from input
+                    try {
+                        inputFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE)?.let {
+                            setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, it)
+                        }
+                    } catch (_: Exception) {}
+                }
 
-                // Create encoder
-                val encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+                // Create encoder first
+                encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+                inputSurface = encoder.createInputSurface()
                 encoder.configure(outputFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
                 
-                // Create input surface for encoder
-                val encoderSurface = encoder.createInputSurface()
-                
-                // Create output surface for decoder using SurfaceTexture
-                val surfaceTexture = SurfaceTexture(0).apply {
+                // Create decoder
+                decoder = MediaCodec.createDecoderByType(mimeType)
+                surfaceTexture = SurfaceTexture(0).apply {
                     setDefaultBufferSize(newWidth, newHeight)
                 }
-                val decoderSurface = Surface(surfaceTexture)
-                decoder.configure(inputFormat, decoderSurface, null, 0)
+                outputSurface = Surface(surfaceTexture)
+                decoder.configure(inputFormat, outputSurface, null, 0)
 
-                // Start both codecs
+                // Create muxer
+                muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+                
+                // Start codecs in correct order
                 encoder.start()
                 decoder.start()
 
-                // Create muxer
-                val muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+                // Compression loop variables
+                val bufferInfo = MediaCodec.BufferInfo()
                 var muxerStarted = false
                 var muxerTrackIndex = -1
-
-                // Compression loop
-                val bufferInfo = MediaCodec.BufferInfo()
                 var isEOS = false
-                var generatedIndex = 0
 
-                try {
-                    while (!isEOS) {
-                        if (!isEOS) {
-                            val inputBufferId = decoder.dequeueInputBuffer(10000L)
-                            if (inputBufferId >= 0) {
-                                val inputBuffer = decoder.getInputBuffer(inputBufferId)
-                                val sampleSize = extractor.readSampleData(inputBuffer!!, 0)
+                while (!isEOS) {
+                    if (!isEOS) {
+                        val inputBufferId = decoder.dequeueInputBuffer(10000L)
+                        if (inputBufferId >= 0) {
+                            val inputBuffer = decoder.getInputBuffer(inputBufferId)
+                            val sampleSize = extractor.readSampleData(inputBuffer!!, 0)
 
-                                if (sampleSize < 0) {
+                            when {
+                                sampleSize < 0 -> {
                                     decoder.queueInputBuffer(
-                                        inputBufferId,
-                                        0,
-                                        0,
-                                        0,
+                                        inputBufferId, 0, 0, 0,
                                         MediaCodec.BUFFER_FLAG_END_OF_STREAM
                                     )
                                     isEOS = true
-                                } else {
+                                }
+                                else -> {
                                     decoder.queueInputBuffer(
-                                        inputBufferId,
-                                        0,
-                                        sampleSize,
-                                        extractor.sampleTime,
-                                        0
+                                        inputBufferId, 0, sampleSize,
+                                        extractor.sampleTime, 0
                                     )
                                     extractor.advance()
                                 }
                             }
                         }
+                    }
 
-                        // Handle decoder output/encoder input using surface
-                        var decoderOutputAvailable = true
-                        var encoderOutputAvailable = true
-
-                        while (decoderOutputAvailable || encoderOutputAvailable) {
-                            // Drain encoder
-                            val encoderStatus = encoder.dequeueOutputBuffer(bufferInfo, 10000L)
-                            if (encoderStatus >= 0) {
-                                val encodedData = encoder.getOutputBuffer(encoderStatus)
-                                if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) {
-                                    bufferInfo.size = 0
-                                }
-
-                                if (bufferInfo.size > 0) {
+                    // Handle encoder output
+                    var encoderOutputAvailable = true
+                    while (encoderOutputAvailable) {
+                        val encoderStatus = encoder.dequeueOutputBuffer(bufferInfo, 10000L)
+                        when {
+                            encoderStatus >= 0 -> {
+                                val encodedBuffer = encoder.getOutputBuffer(encoderStatus)!!
+                                
+                                if (bufferInfo.size > 0 && (bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0) {
                                     if (!muxerStarted) {
-                                        val format = encoder.getOutputFormat(encoderStatus)
-                                        muxerTrackIndex = muxer.addTrack(format)
+                                        muxerTrackIndex = muxer.addTrack(encoder.getOutputFormat())
                                         muxer.start()
                                         muxerStarted = true
                                     }
 
-                                    encodedData?.position(bufferInfo.offset)
-                                    encodedData?.limit(bufferInfo.offset + bufferInfo.size)
-                                    muxer.writeSampleData(muxerTrackIndex, encodedData!!, bufferInfo)
+                                    encodedBuffer.position(bufferInfo.offset)
+                                    encodedBuffer.limit(bufferInfo.offset + bufferInfo.size)
+                                    muxer.writeSampleData(muxerTrackIndex, encodedBuffer, bufferInfo)
                                 }
 
                                 encoder.releaseOutputBuffer(encoderStatus, false)
-                                if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
+
+                                if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
                                     break
                                 }
-                            } else if (encoderStatus == MediaCodec.INFO_TRY_AGAIN_LATER) {
+                            }
+                            encoderStatus == MediaCodec.INFO_TRY_AGAIN_LATER -> {
                                 encoderOutputAvailable = false
                             }
-
-                            // Drain decoder
-                            val decoderStatus = decoder.dequeueOutputBuffer(bufferInfo, 10000L)
-                            if (decoderStatus >= 0) {
-                                val doRender = bufferInfo.size != 0
-                                decoder.releaseOutputBuffer(decoderStatus, doRender)
-                                if (doRender) {
-                                    surfaceTexture.updateTexImage()
+                            encoderStatus == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                                if (!muxerStarted) {
+                                    muxerTrackIndex = muxer.addTrack(encoder.getOutputFormat())
+                                    muxer.start()
+                                    muxerStarted = true
                                 }
-                            } else if (decoderStatus == MediaCodec.INFO_TRY_AGAIN_LATER) {
-                                decoderOutputAvailable = false
                             }
                         }
                     }
-                } finally {
-                    // Clean up
-                    decoder.stop()
-                    decoder.release()
-                    encoder.stop()
-                    encoder.release()
-                    extractor.release()
-                    decoderSurface.release()
-                    surfaceTexture.release()
-                    if (muxerStarted) {
-                        muxer.stop()
-                        muxer.release()
+
+                    // Handle decoder output
+                    var decoderOutputAvailable = true
+                    while (decoderOutputAvailable) {
+                        val decoderStatus = decoder.dequeueOutputBuffer(bufferInfo, 10000L)
+                        when {
+                            decoderStatus >= 0 -> {
+                                val doRender = bufferInfo.size != 0
+                                decoder.releaseOutputBuffer(decoderStatus, doRender)
+                                if (doRender) {
+                                    surfaceTexture?.updateTexImage()
+                                }
+                            }
+                            decoderStatus == MediaCodec.INFO_TRY_AGAIN_LATER -> {
+                                decoderOutputAvailable = false
+                            }
+                        }
                     }
                 }
 
             } catch (e: Exception) {
                 Log.e(TAG, "Error compressing video: ${e.message}", e)
-                throw e
+                throw IllegalStateException("Failed to compress video: ${e.message}")
+            } finally {
+                // Clean up resources in reverse order
+                try {
+                    muxer?.apply {
+                        try { stop() } catch (e: Exception) { Log.e(TAG, "Muxer stop failed", e) }
+                        try { release() } catch (e: Exception) { Log.e(TAG, "Muxer release failed", e) }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Muxer cleanup failed", e)
+                }
+
+                try {
+                    encoder?.apply {
+                        try { stop() } catch (e: Exception) { Log.e(TAG, "Encoder stop failed", e) }
+                        try { release() } catch (e: Exception) { Log.e(TAG, "Encoder release failed", e) }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Encoder cleanup failed", e)
+                }
+
+                try {
+                    decoder?.apply {
+                        try { stop() } catch (e: Exception) { Log.e(TAG, "Decoder stop failed", e) }
+                        try { release() } catch (e: Exception) { Log.e(TAG, "Decoder release failed", e) }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Decoder cleanup failed", e)
+                }
+
+                try {
+                    inputSurface?.release()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Input surface cleanup failed", e)
+                }
+
+                try {
+                    outputSurface?.release()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Output surface cleanup failed", e)
+                }
+
+                try {
+                    surfaceTexture?.release()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Surface texture cleanup failed", e)
+                }
+
+                try {
+                    extractor?.release()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Extractor cleanup failed", e)
+                }
             }
-            
+
             outputFile
         }
     }

@@ -56,7 +56,7 @@ class FollowingViewModel @Inject constructor(
     private var videoCursor: String? = null
     private var loadingJob: Job? = null
     private var isLoggedOut = false
-    private val _selectedFeed = MutableStateFlow("Trends")
+    private val _selectedFeed = MutableStateFlow("Following")
     val selectedFeed: StateFlow<String> = _selectedFeed.asStateFlow()
 
     // Add ShareEvent Flow
@@ -72,6 +72,9 @@ class FollowingViewModel @Inject constructor(
                 // Reset loading states at initialization
                 _isLoading.value = false
                 _isRefreshing.value = false
+                
+                // Initialize with Following feed type
+                _selectedFeed.value = "Following"
                 
                 // Step 1: Check credentials and create session
                 if (ensureValidSession()) {
@@ -89,23 +92,59 @@ class FollowingViewModel @Inject constructor(
     }
 
     fun updateSelectedFeed(feed: String) {
+        loadingJob?.let { existingJob ->
+            if (existingJob.isActive) {
+                Log.d(TAG, "⚠️ Cancelling existing video feed job")
+                existingJob.cancel()
+                viewModelScope.launch {
+                    try {
+                        existingJob.join()
+                    } catch (e: Exception) {
+                        Log.d(TAG, "⚠️ Job cancellation completed")
+                    }
+                }
+            }
+        }
+
         viewModelScope.launch {
-            if (_isLoading.value) {
-                Log.d(TAG, "⚠️ Feed update requested while loading, cancelling current load")
-                loadingJob?.cancel()
+            try {
+                Log.d(TAG, "🔄 Feed update requested: $feed")
+                
+                // Reset states
                 _isLoading.value = false
                 _isRefreshing.value = false
-            }
-
-            _selectedFeed.value = feed
-            Log.d(TAG, "🔄 Feed updated to: $feed")
-            
-            delay(100) // Brief delay to ensure state updates
-            
-            if (feed == "Flicks") {
-                refreshVideoFeed()
-            } else {
-                loadThreads(refresh = true)
+                _isLoadingVideos.value = false
+                _videoLoadError.value = null
+                
+                // Update selected feed
+                _selectedFeed.value = feed
+                Log.d(TAG, "📱 Selected feed updated to: $feed")
+                
+                // Ensure we have a valid session before proceeding
+                if (!ensureValidSession()) {
+                    Log.e(TAG, "❌ Feed update failed: No valid session")
+                    return@launch
+                }
+                
+                // Clear appropriate list and load new content
+                when (feed) {
+                    "Flicks" -> {
+                        clearVideos()
+                        delay(100)
+                        refreshVideoFeed()
+                    }
+                    else -> {
+                        clearThreads()
+                        delay(100)
+                        loadThreads(refresh = true)
+                    }
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) {
+                    Log.d(TAG, "⚠️ Feed update cancelled")
+                    return@launch
+                }
+                Log.e(TAG, "❌ Feed update failed: ${e.message}")
             }
         }
     }
@@ -125,99 +164,121 @@ class FollowingViewModel @Inject constructor(
     fun refreshVideoFeed() {
         viewModelScope.launch {
             try {
-                Log.d(TAG, "🎥 Refreshing video feed")
+                Log.d(TAG, "🎥 Starting video feed refresh")
                 _isLoadingVideos.value = true
                 _videoLoadError.value = null
                 
-                if (!ensureValidSession()) {
-                    Log.e(TAG, "❌ Session validation failed, aborting video refresh")
-                    _videoLoadError.value = "Session validation failed"
-                    return@launch
-                }
-
+                // Get timeline with reverse-chronological order for following feed
                 val result = atProtocolRepository.getTimeline(
-                    algorithm = when (_selectedFeed.value) {
-                        "Trends" -> "whats-hot"
-                        else -> "reverse-chronological"
-                    },
-                    cursor = null,
-                    limit = 50
+                    algorithm = "reverse-chronological",
+                    limit = 100  // Increased limit to find more media posts
                 )
-
+                
                 result.onSuccess { response ->
-                    Log.d(TAG, """
-                        ✅ Raw feed fetch successful:
-                        • Feed size: ${response.feed.size}
-                        • Algorithm: ${if (_selectedFeed.value == "Trends") "whats-hot" else "reverse-chronological"}
-                    """.trimIndent())
+                    Log.d(TAG, "✅ Timeline fetched, processing ${response.feed.size} posts for media")
+                    
+                    // Filter and transform posts with media content
+                    val mediaResult = response.feed
+                        .filter { feedPost -> 
+                            // Skip posts with replies to avoid reply structure issues
+                            feedPost.reply == null
+                        }
+                        .mapNotNull { feedPost ->
+                            try {
+                                // Basic validation
+                                if (feedPost.post.uri.isEmpty() || feedPost.post.cid.isEmpty()) {
+                                    Log.d(TAG, "⚠️ Skipping post with missing URI/CID: ${feedPost.post.uri}")
+                                    return@mapNotNull null
+                                }
 
-                    val videoList = response.feed
-                        // First filter for valid posts
-                        .filter { feedPost ->
-                            feedPost.post.uri.isNotEmpty() && 
-                            feedPost.post.cid.isNotEmpty()
-                        }
-                        // Then filter for video content
-                        .filter { feedPost ->
-                            feedPost.post.embed?.video != null || 
-                            feedPost.post.embed?.external?.uri?.contains("video", ignoreCase = true) == true
-                        }
-                        .map { feedPost ->
-                            val now = Instant.now()
-                            val createdAt = try {
-                                Instant.parse(feedPost.post.record.createdAt)
+                                // Check for media content
+                                val hasMediaContent = feedPost.post.embed?.let { embed ->
+                                    (embed.video != null) || 
+                                    (embed.images?.isNotEmpty() == true) ||
+                                    (embed.external?.let { ext ->
+                                        (ext.thumb != null) ||
+                                        (ext.uri?.let { uri ->
+                                            uri.contains("video", ignoreCase = true) ||
+                                            uri.contains("youtube.com") ||
+                                            uri.contains("vimeo.com")
+                                        } == true)
+                                    } == true)
+                                } ?: false
+
+                                if (!hasMediaContent) {
+                                    return@mapNotNull null
+                                }
+
+                                // Create Video object
+                                Video(
+                                    uri = feedPost.post.uri,
+                                    did = feedPost.post.author.did,
+                                    handle = feedPost.post.author.handle,
+                                    videoUrl = feedPost.post.embed?.video?.ref?.link?.let { 
+                                        "https://cdn.bsky.app/video/plain/$it" 
+                                    } ?: feedPost.post.embed?.external?.uri ?: "",
+                                    description = feedPost.post.record.text,
+                                    createdAt = Instant.parse(feedPost.post.record.createdAt),
+                                    indexedAt = Instant.parse(feedPost.post.indexedAt),
+                                    sortAt = Instant.parse(feedPost.post.indexedAt),
+                                    title = feedPost.post.record.text,
+                                    thumbnailUrl = feedPost.post.embed?.images?.firstOrNull()?.thumb ?: 
+                                                 feedPost.post.embed?.external?.thumb?.link?.let {
+                                                     "https://cdn.bsky.app/img/feed_thumbnail/plain/$it@jpeg"
+                                                 } ?: "",
+                                    likes = feedPost.post.likeCount ?: 0,
+                                    comments = feedPost.post.replyCount ?: 0,
+                                    shares = feedPost.post.repostCount ?: 0,
+                                    username = feedPost.post.author.displayName ?: feedPost.post.author.handle,
+                                    userId = feedPost.post.author.did,
+                                    isImage = feedPost.post.embed?.video == null,
+                                    imageUrl = feedPost.post.embed?.images?.firstOrNull()?.image?.link?.let { link ->
+                                        "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
+                                    } ?: "",
+                                    aspectRatio = feedPost.post.embed?.video?.aspectRatio?.let { 
+                                        it.width.toFloat() / it.height.toFloat() 
+                                    } ?: 16f/9f,
+                                    authorAvatar = feedPost.post.author.avatar ?: "",
+                                    authorName = feedPost.post.author.displayName ?: feedPost.post.author.handle,
+                                    facets = feedPost.post.record.facets,
+                                    caption = feedPost.post.record.text
+                                )
                             } catch (e: Exception) {
-                                now
+                                Log.e(TAG, "❌ Error processing post for media: ${e.message}")
+                                null
                             }
-                            
-                            Video(
-                                uri = feedPost.post.uri,
-                                did = feedPost.post.author.did,
-                                handle = feedPost.post.author.handle,
-                                videoUrl = feedPost.post.embed?.video?.ref?.link?.let { link ->
-                                    "https://cdn.bsky.app/video/plain/$link"
-                                } ?: feedPost.post.embed?.external?.uri ?: "",
-                                description = feedPost.post.record.text,
-                                createdAt = createdAt,
-                                indexedAt = now,
-                                sortAt = now,
-                                title = feedPost.post.record.text,
-                                thumbnailUrl = feedPost.post.embed?.video?.ref?.link?.let { link ->
-                                    "https://cdn.bsky.app/video/thumb/$link"
-                                } ?: feedPost.post.embed?.external?.thumb?.link ?: "",
-                                likes = feedPost.post.likeCount ?: 0,
-                                comments = feedPost.post.replyCount ?: 0,
-                                shares = feedPost.post.repostCount ?: 0,
-                                username = feedPost.post.author.displayName ?: feedPost.post.author.handle,
-                                userId = feedPost.post.author.did,
-                                isImage = false,
-                                imageUrl = "",
-                                aspectRatio = feedPost.post.embed?.video?.aspectRatio?.let { ratio ->
-                                    ratio.width.toFloat() / ratio.height.toFloat()
-                                } ?: 16f/9f,
-                                authorAvatar = feedPost.post.author.avatar ?: "",
-                                authorName = feedPost.post.author.displayName ?: feedPost.post.author.handle,
-                                caption = feedPost.post.record.text,
-                                facets = feedPost.post.record.facets
-                            )
                         }
 
                     Log.d(TAG, """
-                        ✅ Video feed refresh successful:
-                        • Total videos: ${videoList.size}
-                        • First video URI: ${videoList.firstOrNull()?.uri}
-                        • First video URL: ${videoList.firstOrNull()?.videoUrl}
+                        ✅ Video feed refresh result:
+                        • Total posts processed: ${response.feed.size}
+                        • Posts with replies skipped: ${response.feed.count { it.reply != null }}
+                        • Media posts found: ${mediaResult.size}
+                        • Images: ${mediaResult.count { it.isImage }}
+                        • Videos: ${mediaResult.count { !it.isImage }}
                     """.trimIndent())
-
-                    _videos.value = videoList
+                    
+                    _videos.value = mediaResult
+                    _isLoadingVideos.value = false
+                    
                 }.onFailure { error ->
-                    Log.e(TAG, "❌ Video feed refresh failed: ${error.message}")
-                    _videoLoadError.value = error.message ?: "Failed to load videos"
+                    Log.e(TAG, """
+                        ❌ Failed to refresh video feed:
+                        • Error: ${error.message}
+                        • Type: ${error.javaClass.name}
+                        • Stack: ${error.stackTraceToString()}
+                    """.trimIndent())
+                    _videoLoadError.value = error.message ?: "Failed to load media"
+                    _isLoadingVideos.value = false
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "❌ Video feed refresh failed with exception: ${e.message}")
-                _videoLoadError.value = e.message ?: "An unexpected error occurred"
-            } finally {
+                Log.e(TAG, """
+                    ❌ Error in refreshVideoFeed:
+                    • Message: ${e.message}
+                    • Type: ${e.javaClass.name}
+                    • Stack: ${e.stackTraceToString()}
+                """.trimIndent())
+                _videoLoadError.value = e.message ?: "Failed to load media"
                 _isLoadingVideos.value = false
             }
         }
@@ -225,6 +286,16 @@ class FollowingViewModel @Inject constructor(
 
     private suspend fun ensureValidSession(): Boolean {
         return try {
+            // First check if we're already logged in
+            if (!isLoggedOut) {
+                val existingSession = atProtocolRepository.getCurrentSession()
+                if (existingSession != null) {
+                    Log.d(TAG, "✅ Using existing valid session for handle: ${existingSession.handle}")
+                    return true
+                }
+            }
+
+            // Get credentials
             val handle = credentialsManager.getHandle()
             val password = credentialsManager.getPassword()
             
@@ -233,8 +304,11 @@ class FollowingViewModel @Inject constructor(
                 isLoggedOut = true
                 return false
             }
+
+            // Add delay to avoid race conditions
+            delay(100)
             
-            // Check if we have a valid session
+            // Double-check session again after delay
             val currentSession = atProtocolRepository.getCurrentSession()
             if (currentSession != null) {
                 Log.d(TAG, "✅ Found existing valid session for handle: ${currentSession.handle}")
@@ -242,216 +316,196 @@ class FollowingViewModel @Inject constructor(
                 return true
             }
             
-            // If no valid session, try to create one with proper coroutine context
-            Log.d(TAG, "🔍 No valid session found, attempting to create new session")
+            Log.d(TAG, "🔍 No valid session found, attempting to create new session for handle: $handle")
             
-            try {
-                val result = atProtocolRepository.createSession(handle, password)
-                return result.isSuccess.also { success ->
-                    if (success) {
+            // Try to create session with retries
+            var attempts = 0
+            var lastError: Exception? = null
+            
+            while (attempts < 3) {
+                try {
+                    val result = atProtocolRepository.createSession(handle, password)
+                    if (result.isSuccess) {
                         Log.d(TAG, "✅ Successfully created new session for handle: $handle")
                         isLoggedOut = false
+                        return true
                     } else {
-                        Log.e(TAG, "❌ Failed to create session")
-                        isLoggedOut = true
+                        Log.w(TAG, "⚠️ Session creation attempt ${attempts + 1} failed")
+                        delay(500) // Add delay between retries
                     }
+                } catch (e: Exception) {
+                    Log.e(TAG, "❌ Session creation attempt ${attempts + 1} failed: ${e.message}")
+                    lastError = e
+                    delay(500) // Add delay between retries
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "❌ Session creation failed: ${e.message}")
-                isLoggedOut = true
-                return false
+                attempts++
             }
+
+            // Final check after all retries
+            val finalCheck = atProtocolRepository.getCurrentSession()
+            if (finalCheck != null) {
+                Log.d(TAG, "✅ Found valid session after retries for handle: ${finalCheck.handle}")
+                isLoggedOut = false
+                return true
+            }
+
+            // If we get here, all attempts failed
+            Log.e(TAG, "❌ All session creation attempts failed. Last error: ${lastError?.message}")
+            isLoggedOut = true
+            return false
+            
         } catch (e: Exception) {
             Log.e(TAG, "❌ Session validation failed", e)
+            Log.e(TAG, "Stack trace: ${e.stackTraceToString()}")
             isLoggedOut = true
             return false
         }
     }
 
     private fun loadThreads(refresh: Boolean = false) {
-        // Cancel any existing load job
-        loadingJob?.cancel()
-        
-        loadingJob = viewModelScope.launch {
+        viewModelScope.launch {
             try {
-                if (refresh) {
-                    _isRefreshing.value = true
-                    currentCursor = null
-                    _threads.value = emptyList()
-                }
+                Log.d(TAG, "🔄 Loading threads (refresh: $refresh)")
                 _isLoading.value = true
-
-                Log.d(TAG, """
-                    🚀 Starting timeline load:
-                    • Feed type: ${_selectedFeed.value}
-                    • Algorithm: ${if (_selectedFeed.value == "Trends") "whats-hot" else "reverse-chronological"}
-                    • Refresh mode: $refresh
-                    • Current cursor: ${currentCursor ?: "null"}
-                """.trimIndent())
-
-                // Ensure valid session before proceeding
-                if (!ensureValidSession()) {
-                    Log.e(TAG, "❌ Session validation failed")
+                
+                if (!credentialsManager.hasValidCredentials()) {
+                    Log.e(TAG, "❌ No valid credentials found")
+                    _isLoading.value = false
                     return@launch
                 }
 
-                // Determine feed parameters based on selected feed type
-                val feedParams = when (_selectedFeed.value) {
-                    "Trends" -> Pair("whats-hot", 50)  // Fetch 50 posts for trends
-                    else -> Pair("reverse-chronological", 25)  // Keep 25 for following feed
+                ensureValidSession()
+                
+                if (isLoggedOut) {
+                    Log.e(TAG, "❌ User is logged out")
+                    _isLoading.value = false
+                    return@launch
                 }
-
-                // Get timeline with appropriate parameters
+                
+                if (refresh) {
+                    currentCursor = null
+                    _threads.value = emptyList()
+                }
+                
+                val algorithm = "reverse-chronological"
+                val limit = 30 // Reduced limit to handle data more safely
+                
+                Log.d(TAG, """
+                    📱 Feed Parameters:
+                    • Algorithm: $algorithm (Following feed)
+                    • Limit: $limit
+                    • Cursor: $currentCursor
+                    • Screen: Following
+                """.trimIndent())
+                
                 val result = atProtocolRepository.getTimeline(
-                    algorithm = feedParams.first,
-                    cursor = if (refresh) null else currentCursor,
-                    limit = feedParams.second
+                    algorithm = algorithm,
+                    limit = limit,
+                    cursor = if (refresh) null else currentCursor
                 )
-
+                
                 result.onSuccess { response ->
-                    Log.d(TAG, """
-                        ✅ Timeline fetch successful:
-                        • Feed type: ${_selectedFeed.value}
-                        • Posts fetched: ${response.feed.size}
-                        • Algorithm: ${feedParams.first}
-                        • Requested limit: ${feedParams.second}
-                    """.trimIndent())
+                    Log.d(TAG, "✅ Timeline fetch successful with ${response.feed.size} posts")
 
-                    // Process posts according to Bluesky timestamp spec
+                    // Process posts with safe fallbacks for reply structures
                     val filteredPosts = response.feed.mapNotNull { post ->
                         try {
-                            // Step 1: Validate basic post structure
+                            // Basic validation
                             if (post.post.uri.isEmpty() || post.post.cid.isEmpty()) {
-                                Log.w(TAG, "⚠️ Skipping post with missing URI or CID")
+                                Log.w(TAG, "⚠️ Skipping post with missing URI/CID")
                                 return@mapNotNull null
                             }
 
-                            // Step 2: Validate reply structure if present
-                            post.reply?.let { reply ->
-                                // Check root reference
-                                if (reply.root?.cid == null || reply.root.uri == null) {
-                                    Log.w(TAG, "⚠️ Post ${post.post.uri} has invalid root reference")
-                                    return@mapNotNull null
+                            // Handle reply structures safely
+                            val safePost = if (post.reply != null) {
+                                try {
+                                    // Validate reply structure
+                                    val rootRef = post.reply.root
+                                    val parentRef = post.reply.parent
+                                    
+                                    // Check if we have valid references
+                                    if (rootRef == null || parentRef == null ||
+                                        rootRef.cid.isNullOrEmpty() || rootRef.uri.isNullOrEmpty() ||
+                                        parentRef.cid.isNullOrEmpty() || parentRef.uri.isNullOrEmpty()) {
+                                        
+                                        // Create a new post without the reply structure
+                                        Log.d(TAG, "⚠️ Removing invalid reply structure from post: ${post.post.uri}")
+                                        post.copy(reply = null)
+                                    } else {
+                                        post
+                                    }
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "⚠️ Error processing reply structure: ${e.message}")
+                                    post.copy(reply = null)
                                 }
-                                // Check parent reference
-                                if (reply.parent?.cid == null || reply.parent.uri == null) {
-                                    Log.w(TAG, "⚠️ Post ${post.post.uri} has invalid parent reference")
-                                    return@mapNotNull null
-                                }
+                            } else {
+                                post
                             }
 
-                            // Step 3: Parse and validate timestamps
+                            // Validate timestamps
                             val createdAt = try {
-                                Instant.parse(post.post.record.createdAt)
+                                Instant.parse(safePost.post.record.createdAt)
                             } catch (e: Exception) {
-                                Log.w(TAG, "⚠️ Invalid createdAt for post ${post.post.uri}: ${e.message}")
-                                return@mapNotNull null
-                            }
-
-                            val indexedAt = try {
-                                Instant.parse(post.post.indexedAt)
-                            } catch (e: Exception) {
-                                Log.w(TAG, "⚠️ Invalid indexedAt for post ${post.post.uri}, using current time")
+                                Log.w(TAG, "⚠️ Invalid createdAt, using current time")
                                 Instant.now()
                             }
 
-                            // Step 4: Apply Bluesky's sortAt logic
+                            val indexedAt = try {
+                                Instant.parse(safePost.post.indexedAt)
+                            } catch (e: Exception) {
+                                Log.w(TAG, "⚠️ Invalid indexedAt, using current time")
+                                Instant.now()
+                            }
+
+                            // Apply sortAt logic with safe fallbacks
                             val sortAt = when {
-                                createdAt.isBefore(Instant.EPOCH) -> {
-                                    Log.w(TAG, "⚠️ Post ${post.post.uri} has pre-epoch createdAt")
-                                    null
-                                }
-                                createdAt.isAfter(indexedAt.plusSeconds(300)) -> { // Add 5-minute skew window
-                                    Log.d(TAG, "📅 Post ${post.post.uri} has future createdAt, using indexedAt")
-                                    indexedAt
-                                }
-                                else -> {
-                                    Log.d(TAG, "📅 Post ${post.post.uri} using createdAt for sorting")
-                                    createdAt
-                                }
+                                createdAt.isBefore(Instant.EPOCH) -> indexedAt
+                                createdAt.isAfter(indexedAt.plusSeconds(300)) -> indexedAt
+                                else -> createdAt
                             }
 
-                            // Step 5: Skip posts with null sortAt
-                            if (sortAt == null) {
-                                Log.w(TAG, "⚠️ Skipping post ${post.post.uri} due to null sortAt")
+                            // Skip empty posts
+                            if (safePost.post.record.text.isBlank()) {
+                                Log.w(TAG, "⚠️ Skipping empty post")
                                 return@mapNotNull null
                             }
 
-                            // Step 6: Validate post record
-                            if (post.post.record.text.isBlank()) {
-                                Log.w(TAG, "⚠️ Skipping post ${post.post.uri} with empty content")
-                                return@mapNotNull null
-                            }
-
-                            post
+                            safePost
                         } catch (e: Exception) {
                             Log.e(TAG, "❌ Error processing post: ${e.message}")
                             null
                         }
                     }
 
-                    // Sort posts by sortAt timestamp with proper null handling
-                    val sortedPosts = filteredPosts.sortedByDescending { post ->
-                        try {
-                            val createdAt = Instant.parse(post.post.record.createdAt)
-                            val indexedAt = Instant.parse(post.post.indexedAt)
-                            when {
-                                createdAt.isBefore(Instant.EPOCH) -> Instant.EPOCH
-                                createdAt.isAfter(indexedAt.plusSeconds(300)) -> indexedAt
-                                else -> createdAt
-                            }
-                        } catch (e: Exception) {
-                            Log.e(TAG, "❌ Error sorting post ${post.post.uri}: ${e.message}")
-                            Instant.EPOCH
-                        }
-                    }
-
                     Log.d(TAG, """
-                        🔍 Post processing results:
-                        • Raw feed size: ${response.feed.size}
+                        📊 Feed Processing Results:
+                        • Original posts: ${response.feed.size}
                         • Valid posts: ${filteredPosts.size}
-                        • Filtered out: ${response.feed.size - filteredPosts.size}
-                        • Final sorted size: ${sortedPosts.size}
-                        • First post time: ${sortedPosts.firstOrNull()?.post?.record?.createdAt}
+                        • Posts removed: ${response.feed.size - filteredPosts.size}
+                        • Posts with replies: ${filteredPosts.count { it.reply != null }}
                     """.trimIndent())
 
-                    if (!isActive) {
-                        Log.d(TAG, "⚠️ Coroutine no longer active, skipping update")
-                        return@onSuccess
-                    }
-
-                    if (sortedPosts.isNotEmpty()) {
-                        _threads.value = if (refresh) {
-                            sortedPosts
-                        } else {
-                            _threads.value + sortedPosts
-                        }
-                        currentCursor = response.cursor
-                        loadInitialLikeStates(sortedPosts)
+                    _threads.value = if (refresh) {
+                        filteredPosts
                     } else {
-                        Log.w(TAG, "⚠️ No valid posts after filtering and sorting")
+                        _threads.value + filteredPosts
                     }
+                    
+                    loadInitialLikeStates(filteredPosts)
+                    currentCursor = response.cursor
+                    
                 }.onFailure { error ->
-                    if (!isActive) {
-                        Log.d(TAG, "⚠️ Coroutine no longer active, skipping error handling")
-                        return@onFailure
-                    }
-                    Log.e(TAG, "❌ Timeline load failed: ${error.message}")
-                    error.printStackTrace()
+                    Log.e(TAG, """
+                        ❌ Failed to load threads:
+                        • Error: ${error.message}
+                        • Type: ${error.javaClass.name}
+                        • Stack: ${error.stackTraceToString()}
+                    """.trimIndent())
                 }
-
             } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) {
-                    Log.d(TAG, "⚠️ Timeline load cancelled")
-                    return@launch
-                }
-                Log.e(TAG, "❌ Fatal error in loadThreads: ${e.message}")
-                e.printStackTrace()
+                Log.e(TAG, "❌ Error in loadThreads: ${e.message}")
             } finally {
-                if (isActive) {
-                    _isLoading.value = false
-                    _isRefreshing.value = false
-                }
+                _isLoading.value = false
             }
         }
     }
@@ -548,45 +602,92 @@ class FollowingViewModel @Inject constructor(
     fun getVideoFeed(): List<Video> {
         // Convert feed posts with video/image embeds to Video objects
         return _threads.value
-            .filter { feedPost ->
-                feedPost.post.embed?.let { embed ->
-                    embed.video != null || 
-                    (embed.images?.isNotEmpty() == true) ||
-                    (embed.external?.uri?.let { uri ->
-                        uri.contains("video", ignoreCase = true) ||
-                        uri.contains("youtube.com") ||
-                        uri.contains("youtube") ||
-                        uri.contains("vimeo.com")
-                    } == true)
-                } ?: false
-            }
-            .map { feedPost ->
-                Video(
-                    uri = feedPost.post.uri,
-                    did = feedPost.post.author.did,
-                    handle = feedPost.post.author.handle,
-                    videoUrl = feedPost.post.embed?.video?.ref?.link?.let { 
-                        "https://cdn.bsky.app/video/plain/$it" 
-                    } ?: feedPost.post.embed?.external?.uri ?: "",
-                    description = feedPost.post.record.text,
-                    createdAt = Instant.parse(feedPost.post.record.createdAt),
-                    indexedAt = Instant.now(),
-                    sortAt = Instant.now(),
-                    title = feedPost.post.record.text,
-                    thumbnailUrl = feedPost.post.embed?.images?.firstOrNull()?.thumb ?: "",
-                    likes = feedPost.post.likeCount ?: 0,
-                    comments = feedPost.post.replyCount ?: 0,
-                    shares = feedPost.post.repostCount ?: 0,
-                    username = feedPost.post.author.displayName ?: feedPost.post.author.handle,
-                    userId = feedPost.post.author.did,
-                    isImage = feedPost.post.embed?.video == null,
-                    imageUrl = feedPost.post.embed?.images?.firstOrNull()?.image?.link?.let { link ->
-                        "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
-                    } ?: "",
-                    aspectRatio = 16f/9f,
-                    authorAvatar = feedPost.post.author.avatar ?: "",
-                    authorName = feedPost.post.author.displayName ?: feedPost.post.author.handle
-                )
+            .mapNotNull { feedPost ->
+                try {
+                    // Step 1: Basic validation
+                    if (feedPost.post.uri.isEmpty() || feedPost.post.cid.isEmpty()) {
+                        return@mapNotNull null
+                    }
+
+                    // Step 2: Handle reply structures safely
+                    val safePost = if (feedPost.reply != null) {
+                        try {
+                            // Validate reply structure
+                            val rootRef = feedPost.reply.root
+                            val parentRef = feedPost.reply.parent
+                            
+                            // Check if we have valid references
+                            if (rootRef == null || parentRef == null ||
+                                rootRef.cid.isNullOrEmpty() || rootRef.uri.isNullOrEmpty() ||
+                                parentRef.cid.isNullOrEmpty() || parentRef.uri.isNullOrEmpty()) {
+                                
+                                // Create a new post without the reply structure
+                                feedPost.copy(reply = null)
+                            } else {
+                                feedPost
+                            }
+                        } catch (e: Exception) {
+                            feedPost.copy(reply = null)
+                        }
+                    } else {
+                        feedPost
+                    }
+
+                    // Step 3: Check for media content
+                    val hasMediaContent = safePost.post.embed?.let { embed ->
+                        (embed.video != null) || 
+                        (embed.images?.isNotEmpty() == true) ||
+                        (embed.external?.let { ext ->
+                            (ext.thumb != null) ||
+                            (ext.uri?.let { uri ->
+                                uri.contains("video", ignoreCase = true) ||
+                                uri.contains("youtube.com") ||
+                                uri.contains("vimeo.com")
+                            } == true)
+                        } == true)
+                    } ?: false
+
+                    if (!hasMediaContent) {
+                        return@mapNotNull null
+                    }
+
+                    // Step 4: Create Video object
+                    Video(
+                        uri = safePost.post.uri,
+                        did = safePost.post.author.did,
+                        handle = safePost.post.author.handle,
+                        videoUrl = safePost.post.embed?.video?.ref?.link?.let { 
+                            "https://cdn.bsky.app/video/plain/$it" 
+                        } ?: safePost.post.embed?.external?.uri ?: "",
+                        description = safePost.post.record.text,
+                        createdAt = Instant.parse(safePost.post.record.createdAt),
+                        indexedAt = Instant.now(),
+                        sortAt = Instant.now(),
+                        title = safePost.post.record.text,
+                        thumbnailUrl = safePost.post.embed?.images?.firstOrNull()?.thumb ?: 
+                                     safePost.post.embed?.external?.thumb?.link?.let {
+                                         "https://cdn.bsky.app/img/feed_thumbnail/plain/$it@jpeg"
+                                     } ?: "",
+                        likes = safePost.post.likeCount ?: 0,
+                        comments = safePost.post.replyCount ?: 0,
+                        shares = safePost.post.repostCount ?: 0,
+                        username = safePost.post.author.displayName ?: safePost.post.author.handle,
+                        userId = safePost.post.author.did,
+                        isImage = safePost.post.embed?.video == null,
+                        imageUrl = safePost.post.embed?.images?.firstOrNull()?.image?.link?.let { link ->
+                            "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
+                        } ?: "",
+                        aspectRatio = safePost.post.embed?.video?.aspectRatio?.let { 
+                            it.width.toFloat() / it.height.toFloat() 
+                        } ?: 16f/9f,
+                        authorAvatar = safePost.post.author.avatar ?: "",
+                        authorName = safePost.post.author.displayName ?: safePost.post.author.handle,
+                        facets = safePost.post.record.facets,
+                        caption = safePost.post.record.text
+                    )
+                } catch (e: Exception) {
+                    null
+                }
             }
     }
 
