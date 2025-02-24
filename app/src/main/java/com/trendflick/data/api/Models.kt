@@ -190,7 +190,8 @@ data class Embed(
     @field:Json(name = "\$type") val type: String? = null,
     @field:Json(name = "images") val images: List<ImageEmbed>? = null,
     @field:Json(name = "video") val video: VideoEmbed? = null,
-    @field:Json(name = "external") val external: ExternalEmbed? = null
+    @field:Json(name = "external") val external: ExternalEmbed? = null,
+    @field:Json(name = "record") val record: RecordEmbed? = null
 ) {
     fun getValidImages(): List<ImageEmbed> {
         return images?.filterNotNull()?.filter { it.isValid() } ?: emptyList()
@@ -363,4 +364,10 @@ data class Like(
 data class FollowsResponse(
     @field:Json(name = "follows") val follows: List<AtProfile>,
     @field:Json(name = "cursor") val cursor: String?
+)
+
+@JsonClass(generateAdapter = true)
+data class RecordEmbed(
+    @field:Json(name = "uri") val uri: String,
+    @field:Json(name = "cid") val cid: String
 ) 

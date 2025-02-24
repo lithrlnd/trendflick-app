@@ -21,6 +21,7 @@ interface AtProtocolRepository {
     suspend fun updateProfile(did: String, displayName: String?, description: String?, avatar: String?)
     suspend fun getTimeline(algorithm: String = "reverse-chronological", limit: Int = 50, cursor: String? = null): Result<TimelineResponse>
     suspend fun getPostThread(uri: String): Result<ThreadResponse>
+    suspend fun getPostByUri(uri: String, cid: String): Result<Post>
     suspend fun likePost(uri: String): Boolean
     suspend fun isPostLikedByUser(uri: String): Boolean
     suspend fun repost(uri: String, cid: String)

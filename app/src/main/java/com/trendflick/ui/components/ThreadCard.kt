@@ -51,12 +51,24 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.trendflick.data.api.*
+import com.trendflick.data.repository.AtProtocolRepository
 import com.trendflick.utils.DateUtils
 import kotlinx.coroutines.delay
 import com.trendflick.ui.components.CategoryDrawer
 import androidx.media3.common.util.UnstableApi
 import androidx.compose.foundation.border
+import androidx.compose.foundation.BorderStroke
 import com.trendflick.ui.utils.CommonUtils
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.viewinterop.AndroidView
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+
+// CompositionLocal for providing the AtProtocolRepository
+val LocalAtProtocolRepository = staticCompositionLocalOf<AtProtocolRepository> {
+    error("AtProtocolRepository not provided")
+}
 
 @Composable
 private fun RepostHeader(
@@ -96,10 +108,513 @@ private fun RepostHeader(
 }
 
 @Composable
+private fun RepostEmbed(
+    repostInfo: RepostInfo,
+    onImageClick: (ImageEmbed) -> Unit,
+    onHashtagClick: ((String) -> Unit)?,
+    onLinkClick: ((String) -> Unit)?,
+    onProfileClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    
+    // Debug logging for repost embed
+    LaunchedEffect(repostInfo) {
+        Log.d("RepostEmbed", """
+            📝 Processing repost embed:
+            Author: ${repostInfo.author.displayName ?: repostInfo.author.handle}
+            Text: ${repostInfo.record.text.take(50)}${if (repostInfo.record.text.length > 50) "..." else ""}
+            Has facets: ${repostInfo.record.facets?.isNotEmpty() == true}
+            Facet count: ${repostInfo.record.facets?.size ?: 0}
+            Has embed: ${repostInfo.record.embed != null}
+            Embed type: ${repostInfo.record.embed?.type}
+            ${repostInfo.record.embed?.let { embed ->
+                """
+                Images: ${embed.images?.size ?: 0}
+                Video: ${embed.video != null}
+                External: ${embed.external != null}
+                External URI: ${embed.external?.uri}
+                """
+            } ?: "No embed details"}
+        """.trimIndent())
+    }
+    
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        ),
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp)
+        ) {
+            // Author row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = onProfileClick != null, onClick = { onProfileClick?.invoke() }),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                AsyncImage(
+                    model = repostInfo.author.avatar,
+                    contentDescription = "Profile picture",
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentScale = ContentScale.Crop
+                )
+                
+                Column {
+                    Text(
+                        text = when {
+                            !repostInfo.author.displayName.isNullOrBlank() -> repostInfo.author.displayName
+                            !repostInfo.author.handle.isNullOrBlank() -> repostInfo.author.handle
+                            else -> "Unknown User"
+                        },
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "@${repostInfo.author.handle} · ${DateUtils.formatTimestamp(repostInfo.record.createdAt)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            // Post content
+            RichTextRenderer(
+                text = repostInfo.record.text,
+                facets = repostInfo.record.facets ?: emptyList(),
+                onMentionClick = { did: String -> onProfileClick?.invoke() },
+                onHashtagClick = { tag: String -> onHashtagClick?.invoke(tag) },
+                onLinkClick = { url: String -> 
+                    onLinkClick?.invoke(url) ?: run {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                        context.startActivity(intent)
+                    }
+                }
+            )
+            
+            // Handle embeds in reposted content
+            repostInfo.record.embed?.let { embed ->
+                Spacer(modifier = Modifier.height(8.dp))
+                PostEmbed(
+                    embed = embed,
+                    onImageClick = onImageClick,
+                    onLinkClick = onLinkClick,
+                    onProfileClick = onProfileClick,
+                    onHashtagClick = onHashtagClick
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecordEmbed(
+    uri: String,
+    cid: String,
+    onImageClick: (ImageEmbed) -> Unit,
+    onHashtagClick: ((String) -> Unit)?,
+    onLinkClick: ((String) -> Unit)?,
+    onProfileClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    var isLoading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var quotedPost by remember { mutableStateOf<Post?>(null) }
+    var showInAppBrowser by remember { mutableStateOf(false) }
+    
+    // Get repository instance
+    val atProtocolRepository = LocalAtProtocolRepository.current
+    
+    // Extract handle and post ID from URI for better display
+    val uriParts = uri.split("/")
+    val handle = uriParts.getOrNull(uriParts.size - 3)?.removePrefix("@") ?: ""
+    val postId = uriParts.lastOrNull() ?: ""
+    
+    // Convert AT URI to web URL for better handling
+    val webUrl = if (uri.startsWith("at://")) {
+        val didPart = uri.substringAfter("at://").substringBefore("/")
+        val collection = uri.substringAfter("$didPart/").substringBefore("/")
+        val rkey = uri.substringAfterLast("/")
+        "https://bsky.app/profile/$handle/post/$rkey"
+    } else {
+        uri
+    }
+    
+    // Function to fetch the post
+    val fetchPost = {
+        isLoading = true
+        error = null
+        
+        // Launch in a coroutine
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                // Fetch the quoted post from the repository
+                val postResult = atProtocolRepository.getPostByUri(uri, cid)
+                if (postResult.isSuccess) {
+                    quotedPost = postResult.getOrNull()
+                    Log.d("RecordEmbed", "✅ Successfully fetched quoted post: ${quotedPost?.record?.text?.take(50)}")
+                } else {
+                    Log.e("RecordEmbed", "❌ Failed to fetch quoted post: ${postResult.exceptionOrNull()?.message}")
+                    error = "Failed to load quoted post"
+                }
+            } catch (e: Exception) {
+                Log.e("RecordEmbed", "Error loading quoted post: ${e.message}")
+                error = "Failed to load quoted post"
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+    
+    // Debug logging
+    LaunchedEffect(uri, cid) {
+        Log.d("RecordEmbed", """
+            📄 Processing record embed:
+            URI: $uri
+            CID: $cid
+            Web URL: $webUrl
+            Handle: $handle
+            Post ID: $postId
+        """.trimIndent())
+        
+        // Automatically fetch the post when the component is first displayed
+        fetchPost()
+    }
+    
+    // In-app browser implementation
+    if (showInAppBrowser) {
+        AlertDialog(
+            onDismissRequest = { showInAppBrowser = false },
+            title = { Text("Bluesky Post") },
+            text = {
+                Column {
+                    AndroidView(
+                        factory = { ctx ->
+                            android.webkit.WebView(ctx).apply {
+                                settings.javaScriptEnabled = true
+                                loadUrl(webUrl)
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(400.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showInAppBrowser = false }) {
+                    Text("Close")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { 
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(webUrl))
+                    context.startActivity(intent)
+                    showInAppBrowser = false
+                }) {
+                    Text("Open in Browser")
+                }
+            }
+        )
+    }
+    
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+            .clickable { showInAppBrowser = true },
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+        ),
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+        )
+    ) {
+        if (isLoading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(120.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        } else if (error != null) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "This post is unavailable",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                
+                // Add a retry button
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    onClick = { fetchPost() },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Text("Retry")
+                }
+            }
+        } else if (quotedPost != null) {
+            // Display the quoted post content
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp)
+            ) {
+                // Author row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    AsyncImage(
+                        model = quotedPost?.author?.avatar,
+                        contentDescription = "Profile picture",
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentScale = ContentScale.Crop
+                    )
+                    
+                    Column {
+                        Text(
+                            text = when {
+                                !quotedPost?.author?.displayName.isNullOrBlank() -> quotedPost?.author?.displayName ?: ""
+                                !quotedPost?.author?.handle.isNullOrBlank() -> quotedPost?.author?.handle ?: ""
+                                else -> "Unknown User"
+                            },
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "@${quotedPost?.author?.handle ?: "unknown"} · ${DateUtils.formatTimestamp(quotedPost?.record?.createdAt ?: "")}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                // Post content
+                quotedPost?.record?.text?.let { text ->
+                    RichTextRenderer(
+                        text = text,
+                        facets = quotedPost?.record?.facets ?: emptyList(),
+                        onMentionClick = { did: String -> onProfileClick?.invoke() },
+                        onHashtagClick = { tag: String -> onHashtagClick?.invoke(tag) },
+                        onLinkClick = { url: String -> 
+                            onLinkClick?.invoke(url) ?: run {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                context.startActivity(intent)
+                            }
+                        }
+                    )
+                }
+                
+                // Handle embeds in quoted post
+                quotedPost?.embed?.let { embed ->
+                    Spacer(modifier = Modifier.height(8.dp))
+                    PostEmbed(
+                        embed = embed,
+                        onImageClick = onImageClick,
+                        onLinkClick = onLinkClick
+                    )
+                }
+            }
+        } else {
+            // Enhanced placeholder for quoted post with better thumbnail handling
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+            ) {
+                // Author row placeholder with better styling
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Avatar - try to load actual avatar if handle is available
+                    if (handle.isNotEmpty()) {
+                        AsyncImage(
+                            model = "https://api.dicebear.com/6.x/initials/png?seed=$handle",
+                            contentDescription = "Profile picture",
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        // Fallback avatar
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = handle.firstOrNull()?.uppercase() ?: "?",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    
+                    Column {
+                        if (handle.isNotEmpty()) {
+                            Text(
+                                text = "@$handle",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "Post from Bluesky",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            Text(
+                                text = "Bluesky Post",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+                
+                // Enhanced thumbnail generation with multiple fallbacks
+                val thumbnailUrl = if (handle.isNotEmpty() && postId.isNotEmpty()) {
+                    // Primary option: Use microlink.io for screenshot-based thumbnails
+                    val encodedUrl = Uri.encode(webUrl)
+                    "https://api.microlink.io/?url=$encodedUrl&screenshot=true&meta=false&embed=screenshot.url"
+                } else {
+                    // Fallback: Use a generic Bluesky logo
+                    "https://bsky.app/static/apple-touch-icon.png"
+                }
+
+                Log.d("RecordEmbed", "🖼️ Using thumbnail URL: $thumbnailUrl")
+                
+                if (thumbnailUrl.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(180.dp)
+                            .padding(horizontal = 12.dp)
+                            .padding(bottom = 12.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                    ) {
+                        AsyncImage(
+                            model = thumbnailUrl,
+                            contentDescription = "Post preview",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                            error = painterResource(id = android.R.drawable.ic_menu_gallery)
+                        )
+                        
+                        // Semi-transparent overlay with tap instruction
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.3f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Tap to view post",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.White,
+                                modifier = Modifier
+                                    .background(
+                                        color = Color.Black.copy(alpha = 0.5f),
+                                        shape = RoundedCornerShape(16.dp)
+                                    )
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                            )
+                        }
+                    }
+                } else {
+                    // Fallback content preview
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(120.dp)
+                            .padding(horizontal = 12.dp)
+                            .padding(bottom = 12.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Link,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Text(
+                                text = "Tap to view post",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun PostEmbed(
     embed: Embed,
     onImageClick: (ImageEmbed) -> Unit,
     onLinkClick: ((String) -> Unit)?,
+    onProfileClick: (() -> Unit)? = null,
+    onHashtagClick: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var isPaused by remember { mutableStateOf(false) }
@@ -118,6 +633,39 @@ private fun PostEmbed(
     """.trimIndent())
 
     when {
+        // Handle record embeds (quote posts)
+        embed.type == "app.bsky.embed.record" || embed.record != null -> {
+            // Extract the URI and CID from the record embed
+            val recordUri = embed.record?.uri ?: ""
+            val recordCid = embed.record?.cid ?: ""
+            
+            Log.d("ThreadCard", """
+                🔗 Record embed detected:
+                Type: ${embed.type}
+                URI: $recordUri
+                CID: $recordCid
+            """.trimIndent())
+            
+            if (recordUri.isNotEmpty()) {
+                RecordEmbed(
+                    uri = recordUri,
+                    cid = recordCid,
+                    onImageClick = onImageClick,
+                    onHashtagClick = onHashtagClick,
+                    onLinkClick = onLinkClick,
+                    onProfileClick = onProfileClick,
+                    modifier = modifier
+                )
+            } else {
+                // Fallback for when we can't extract the URI/CID
+                Text(
+                    text = "Unable to display quoted post",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(16.dp)
+                )
+            }
+        }
         // Enhanced video content handling
         embed.video != null || (embed.external?.uri?.let { uri ->
             uri.endsWith(".mp4", ignoreCase = true) ||
@@ -407,6 +955,26 @@ fun ThreadCard(
     val view = LocalView.current
     val context = LocalContext.current
 
+    // Debug logging for repost information
+    LaunchedEffect(feedPost) {
+        if (feedPost.reason?.type == "app.bsky.feed.repost") {
+            Log.d("ThreadCard", """
+                🔄 Repost detected:
+                Type: ${feedPost.reason.type}
+                By: ${feedPost.reason.by?.displayName ?: feedPost.reason.by?.handle ?: "Unknown"}
+                Has repost info: ${feedPost.reason.repost != null}
+                ${feedPost.reason.repost?.let { repost ->
+                    """
+                    Repost author: ${repost.author.displayName ?: repost.author.handle}
+                    Repost text: ${repost.record.text.take(50)}${if (repost.record.text.length > 50) "..." else ""}
+                    Has embed: ${repost.record.embed != null}
+                    Embed type: ${repost.record.embed?.type}
+                    """
+                } ?: "No repost details available"}
+            """.trimIndent())
+        }
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -502,6 +1070,18 @@ fun ThreadCard(
                         }
                     )
 
+                    // Display repost content if available
+                    feedPost.reason?.repost?.let { repostInfo ->
+                        Spacer(modifier = Modifier.height(12.dp))
+                        RepostEmbed(
+                            repostInfo = repostInfo,
+                            onImageClick = onImageClick,
+                            onHashtagClick = onHashtagClick,
+                            onLinkClick = onLinkClick,
+                            onProfileClick = { onProfileClick() }
+                        )
+                    }
+
                     // Handle embeds
                     feedPost.post.embed?.let { embed ->
                         Spacer(modifier = Modifier.height(8.dp))
@@ -511,7 +1091,9 @@ fun ThreadCard(
                                 selectedImageIndex = feedPost.post.embed.images?.indexOf(image)
                                 onImageClick(image)
                             },
-                            onLinkClick = onLinkClick
+                            onLinkClick = onLinkClick,
+                            onProfileClick = onProfileClick,
+                            onHashtagClick = onHashtagClick
                         )
                     }
                 }
@@ -743,6 +1325,8 @@ private fun EmbeddedLink(
         Has thumb: ${thumbnail.thumb != null}
         Thumb link: ${thumbnail.thumb?.link}
         Platform: ${thumbnail.getSocialMediaInfo()?.platform}
+        Site name: ${thumbnail.siteName}
+        oEmbed URL: ${thumbnail.oEmbedUrl}
     """.trimIndent())
 
     Card(
@@ -750,108 +1334,155 @@ private fun EmbeddedLink(
             .fillMaxWidth()
             .padding(vertical = 8.dp)
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+        )
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Enhanced thumbnail handling
-            Box(
-                modifier = Modifier
-                    .size(80.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                // Enhanced thumbnail URL generation with multiple fallbacks
-                val thumbnailUrl = thumbnail.thumb?.link?.let { link ->
-                    if (link.startsWith("http")) {
-                        link
-                    } else {
-                        "https://cdn.bsky.app/img/feed_thumbnail/plain/$link@jpeg"
-                    }
-                } ?: run {
-                    // Fallback mechanisms when thumb link is null
-                    val uri = Uri.parse(url)
-                    val host = uri.host
-                    
-                    when {
-                        // YouTube thumbnails
-                        url.contains("youtube.com") || url.contains("youtu.be") -> {
-                            val videoId = extractYouTubeVideoId(url)
-                            if (videoId.isNotBlank()) {
-                                "https://img.youtube.com/vi/$videoId/mqdefault.jpg"
-                            } else {
-                                ""
-                            }
-                        }
-                        // Twitter/X thumbnails via microlink
-                        url.contains("twitter.com") || url.contains("x.com") -> {
-                            val encodedUrl = Uri.encode(url)
-                            "https://api.microlink.io/?url=$encodedUrl&screenshot=true&meta=false&embed=screenshot.url"
-                        }
-                        // Common domains with known thumbnail patterns
-                        url.contains("instagram.com") || 
-                        url.contains("tiktok.com") ||
-                        url.contains("facebook.com") -> {
-                            val encodedUrl = Uri.encode(url)
-                            "https://api.microlink.io/?url=$encodedUrl&screenshot=true&meta=false&embed=screenshot.url"
-                        }
-                        // Fallback to domain favicon for other sites
-                        !host.isNullOrBlank() -> {
-                            "https://www.google.com/s2/favicons?domain=$host&sz=128"
-                        }
-                        else -> ""
-                    }
+            // Enhanced thumbnail handling - now as a header image for important links
+            val shouldShowLargeThumbnail = url.contains("kingdomsandemo.com") || 
+                                          url.contains("substack.com") ||
+                                          url.contains("medium.com") ||
+                                          url.contains("bsky.app") ||
+                                          (thumbnail.thumb != null && !title.contains("http"))
+            
+            // Enhanced thumbnail URL generation with multiple fallbacks
+            val thumbnailUrl = thumbnail.thumb?.link?.let { link ->
+                if (link.startsWith("http")) {
+                    link
+                } else {
+                    "https://cdn.bsky.app/img/feed_thumbnail/plain/$link@jpeg"
                 }
+            } ?: run {
+                // Fallback mechanisms when thumb link is null
+                val uri = Uri.parse(url)
+                val host = uri.host
+                
+                when {
+                    // YouTube thumbnails
+                    url.contains("youtube.com") || url.contains("youtu.be") -> {
+                        val videoId = extractYouTubeVideoId(url)
+                        if (videoId.isNotBlank()) {
+                            "https://img.youtube.com/vi/$videoId/mqdefault.jpg"
+                        } else {
+                            ""
+                        }
+                    }
+                    // Twitter/X thumbnails via microlink
+                    url.contains("twitter.com") || url.contains("x.com") -> {
+                        val encodedUrl = Uri.encode(url)
+                        "https://api.microlink.io/?url=$encodedUrl&screenshot=true&meta=false&embed=screenshot.url"
+                    }
+                    // Common domains with known thumbnail patterns
+                    url.contains("instagram.com") || 
+                    url.contains("tiktok.com") ||
+                    url.contains("facebook.com") ||
+                    url.contains("kingdomsandemo.com") -> {
+                        val encodedUrl = Uri.encode(url)
+                        "https://api.microlink.io/?url=$encodedUrl&screenshot=true&meta=false&embed=screenshot.url"
+                    }
+                    // Fallback to domain favicon for other sites
+                    !host.isNullOrBlank() -> {
+                        "https://www.google.com/s2/favicons?domain=$host&sz=128"
+                    }
+                    else -> ""
+                }
+            }
 
-                Log.d("ThreadCard", "🖼️ Using thumbnail URL: $thumbnailUrl")
+            Log.d("ThreadCard", "🖼️ Using thumbnail URL: $thumbnailUrl")
 
-                if (thumbnailUrl.isNotEmpty()) {
+            if (shouldShowLargeThumbnail && thumbnailUrl.isNotEmpty()) {
+                // Large header image for important links
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                ) {
                     AsyncImage(
                         model = thumbnailUrl,
                         contentDescription = "Link preview",
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
                     )
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.Link,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier
-                            .size(32.dp)
-                            .align(Alignment.Center)
-                    )
                 }
             }
-
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+            
+            // Content row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                description?.let {
+                // Show small thumbnail only if we're not showing the large one
+                if (!shouldShowLargeThumbnail) {
+                    Box(
+                        modifier = Modifier
+                            .size(80.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        if (thumbnailUrl.isNotEmpty()) {
+                            AsyncImage(
+                                model = thumbnailUrl,
+                                contentDescription = "Link preview",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Link,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .align(Alignment.Center)
+                            )
+                        }
+                    }
+                }
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
                     Text(
-                        text = it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        text = title,
+                        style = MaterialTheme.typography.titleSmall,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
+                    description?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    
+                    // Show domain name
+                    val domain = try {
+                        Uri.parse(url).host ?: url
+                    } catch (e: Exception) {
+                        url
+                    }
+                    
+                    Text(
+                        text = domain,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-                Text(
-                    text = Uri.parse(url).host ?: url,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
     }

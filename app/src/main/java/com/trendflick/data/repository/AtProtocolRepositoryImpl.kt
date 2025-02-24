@@ -407,11 +407,33 @@ class AtProtocolRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getPostThread(uri: String): Result<ThreadResponse> = withContext(Dispatchers.IO) {
-        return@withContext try {
+        try {
             val response = service.getPostThread(uri)
-            Result.success(response)
+            return@withContext Result.success(response)
         } catch (e: Exception) {
-            Result.failure(e)
+            Log.e(TAG, "Error getting post thread: ${e.message}")
+            return@withContext Result.failure(e)
+        }
+    }
+
+    override suspend fun getPostByUri(uri: String, cid: String): Result<Post> = withContext(Dispatchers.IO) {
+        try {
+            // First try to get the post thread which contains the post
+            val threadResult = getPostThread(uri)
+            
+            if (threadResult.isSuccess) {
+                val thread = threadResult.getOrNull()?.thread
+                if (thread != null && thread.post.uri == uri && thread.post.cid == cid) {
+                    return@withContext Result.success(thread.post)
+                }
+            }
+            
+            // If we couldn't find the post in the thread, return a failure
+            Log.e(TAG, "Could not find post with URI: $uri and CID: $cid")
+            return@withContext Result.failure(Exception("Post not found"))
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting post by URI: ${e.message}")
+            return@withContext Result.failure(e)
         }
     }
 

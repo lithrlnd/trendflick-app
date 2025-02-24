@@ -50,6 +50,12 @@ A Material 3 Android client for BlueSky that focuses on rich media sharing and s
 - ✅ Repost functionality
 - ✅ Thread view support
 - ✅ Profile viewing
+- ✅ Enhanced quote post handling:
+  - Proper URI and CID extraction
+  - In-app browser for viewing quoted posts
+  - Graceful error handling for deleted posts
+  - Automatic thumbnail generation for quoted posts
+  - Retry mechanism for temporary network issues
 
 ### Media Handling
 - ✅ Image upload and display
@@ -57,6 +63,12 @@ A Material 3 Android client for BlueSky that focuses on rich media sharing and s
 - ✅ Blob reference management
 - ✅ Media size validation
 - ✅ MIME type handling
+- ✅ Enhanced thumbnail generation:
+  - Multiple fallback mechanisms for different content types
+  - Special handling for social media platforms (YouTube, Twitter/X, Instagram, TikTok)
+  - Domain-specific optimizations for important links
+  - Microlink API integration for screenshot-based thumbnails
+  - Favicon fallback for domains without thumbnails
 
 ### Category System
 - ✅ Predefined categories with curated hashtags
@@ -519,3 +531,31 @@ Please read our contributing guidelines before submitting pull requests.
 ## License
 
 [Your License Here]
+
+## Recent Enhancements
+
+### Quote Post Improvements (February 2025)
+- ✅ Enhanced RecordEmbed component:
+  - Proper URI and CID extraction from embedded posts
+  - Improved placeholder content for unavailable posts
+  - In-app browser implementation using WebView in AlertDialog
+  - Better styling aligned with Bluesky's design
+  - Handle and post ID extraction from URI for better display
+  - Conversion from AT Protocol URIs to web URLs
+  - Microlink API integration for thumbnail generation
+
+### Link Preview Enhancements (February 2025)
+- ✅ Improved EmbeddedLink component:
+  - Support for large header images for important links
+  - Enhanced thumbnail URL generation with multiple fallbacks
+  - Special handling for YouTube, Twitter/X, Instagram, TikTok, and Facebook
+  - Domain name display extracted from URL
+  - Better styling with borders for improved visibility
+  - Improved layout with better spacing and padding
+  - Conditional display based on content type
+
+### Debugging Improvements (February 2025)
+- ✅ Enhanced logging for embed processing
+- ✅ Detailed tracking of thumbnail generation
+- ✅ Better error reporting for failed post fetching
+- ✅ Tracking of record embed processing

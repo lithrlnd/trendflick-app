@@ -6,9 +6,10 @@
 3. [Core Components](#core-components)
 4. [Navigation System](#navigation-system)
 5. [AT Protocol Integration](#at-protocol-integration)
-6. [Development Guidelines](#development-guidelines)
-7. [Security Considerations](#security-considerations)
-8. [Troubleshooting](#troubleshooting)
+6. [Embedded Content Components](#embedded-content-components)
+7. [Development Guidelines](#development-guidelines)
+8. [Security Considerations](#security-considerations)
+9. [Troubleshooting](#troubleshooting)
 
 ## Architecture Overview
 
@@ -193,6 +194,203 @@ app/
     - State management
     - Loading state indicators
     - Error state with retry options
+
+## Embedded Content Components
+
+### RecordEmbed Component
+- **Overview**  
+  The RecordEmbed component displays quoted posts (reposts) within the feed, handling both successful and error states gracefully.
+
+- **Implementation Details**
+  ```kotlin
+  @Composable
+  private fun RecordEmbed(
+      uri: String,
+      cid: String,
+      onImageClick: (ImageEmbed) -> Unit,
+      onHashtagClick: ((String) -> Unit)?,
+      onLinkClick: ((String) -> Unit)?,
+      onProfileClick: (() -> Unit)? = null,
+      modifier: Modifier = Modifier
+  )
+  ```
+
+  **Key Features:**
+  - Fetches and displays quoted posts using AtProtocolRepository
+  - Extracts handle and post ID from URI for better display
+  - Converts AT Protocol URIs to web URLs for improved handling
+  - Implements in-app browser using WebView within AlertDialog
+  - Provides graceful error handling for unavailable posts
+  - Includes retry mechanism for temporary network issues
+  - Generates thumbnails using multiple fallback mechanisms
+  - Supports microlink.io API integration for screenshot-based thumbnails
+
+  **States:**
+  1. **Loading State**: Shows a circular progress indicator
+  2. **Error State**: Displays "This post is unavailable" with retry button
+  3. **Success State**: Renders the quoted post with author info, content, and embeds
+  4. **Placeholder State**: Shows enhanced placeholder with avatar and thumbnail when post is loading
+
+  **URI Handling:**
+  ```kotlin
+  // Convert AT URI to web URL
+  val webUrl = if (uri.startsWith("at://")) {
+      val didPart = uri.substringAfter("at://").substringBefore("/")
+      val collection = uri.substringAfter("$didPart/").substringBefore("/")
+      val rkey = uri.substringAfterLast("/")
+      "https://bsky.app/profile/$handle/post/$rkey"
+  } else {
+      uri
+  }
+  ```
+
+- **Usage Guidelines**
+  ```kotlin
+  // Example usage in PostEmbed component
+  if (embed.type == "app.bsky.embed.record" || embed.record != null) {
+      val recordUri = embed.record?.uri ?: ""
+      val recordCid = embed.record?.cid ?: ""
+      
+      if (recordUri.isNotEmpty()) {
+          RecordEmbed(
+              uri = recordUri,
+              cid = recordCid,
+              onImageClick = onImageClick,
+              onHashtagClick = onHashtagClick,
+              onLinkClick = onLinkClick,
+              onProfileClick = onProfileClick,
+              modifier = modifier
+          )
+      } else {
+          // Fallback for when we can't extract the URI/CID
+          Text(
+              text = "Unable to display quoted post",
+              style = MaterialTheme.typography.bodyMedium,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+              modifier = Modifier.padding(16.dp)
+          )
+      }
+  }
+  ```
+
+- **Best Practices**
+  1. Always validate URI and CID before passing to RecordEmbed
+  2. Handle all states (loading, error, success) appropriately
+  3. Provide proper click handlers for interactive elements
+  4. Use consistent styling with the rest of the application
+  5. Implement proper error logging for debugging
+
+- **Common Issues**
+  - Handle HTTP 400 errors for deleted posts
+  - Manage proper thumbnail generation for various content types
+  - Ensure proper WebView configuration for in-app browser
+  - Handle orientation changes during WebView display
+
+### EmbeddedLink Component
+- **Overview**  
+  The EmbeddedLink component displays rich link previews for external URLs shared in posts.
+
+- **Implementation Details**
+  ```kotlin
+  @Composable
+  private fun EmbeddedLink(
+      title: String,
+      description: String?,
+      thumbnail: ExternalEmbed,
+      url: String,
+      onClick: () -> Unit,
+      modifier: Modifier = Modifier
+  )
+  ```
+
+  **Key Features:**
+  - Displays link previews with title, description, and thumbnail
+  - Supports large header images for important links
+  - Implements multiple thumbnail fallback mechanisms
+  - Special handling for social media platforms (YouTube, Twitter/X, Instagram, TikTok, Facebook)
+  - Extracts and displays domain name from URL
+  - Uses borders for improved visibility
+  - Implements conditional layout based on content type
+  - Integrates with microlink.io API for screenshot-based thumbnails
+
+  **Thumbnail Generation:**
+  ```kotlin
+  // Enhanced thumbnail URL generation with multiple fallbacks
+  val thumbnailUrl = thumbnail.thumb?.link?.let { link ->
+      if (link.startsWith("http")) {
+          link
+      } else {
+          "https://cdn.bsky.app/img/feed_thumbnail/plain/$link@jpeg"
+      }
+  } ?: run {
+      // Fallback mechanisms when thumb link is null
+      val uri = Uri.parse(url)
+      val host = uri.host
+      
+      when {
+          // YouTube thumbnails
+          url.contains("youtube.com") || url.contains("youtu.be") -> {
+              val videoId = extractYouTubeVideoId(url)
+              if (videoId.isNotBlank()) {
+                  "https://img.youtube.com/vi/$videoId/mqdefault.jpg"
+              } else {
+                  ""
+              }
+          }
+          // Twitter/X thumbnails via microlink
+          url.contains("twitter.com") || url.contains("x.com") -> {
+              val encodedUrl = Uri.encode(url)
+              "https://api.microlink.io/?url=$encodedUrl&screenshot=true&meta=false&embed=screenshot.url"
+          }
+          // Common domains with known thumbnail patterns
+          url.contains("instagram.com") || 
+          url.contains("tiktok.com") ||
+          url.contains("facebook.com") ||
+          url.contains("kingdomsandemo.com") -> {
+              val encodedUrl = Uri.encode(url)
+              "https://api.microlink.io/?url=$encodedUrl&screenshot=true&meta=false&embed=screenshot.url"
+          }
+          // Fallback to domain favicon for other sites
+          !host.isNullOrBlank() -> {
+              "https://www.google.com/s2/favicons?domain=$host&sz=128"
+          }
+          else -> ""
+      }
+  }
+  ```
+
+- **Usage Guidelines**
+  ```kotlin
+  // Example usage in PostEmbed component
+  if (embed.external != null) {
+      EmbeddedLink(
+          title = embed.external.title ?: "Untitled",
+          description = embed.external.description,
+          thumbnail = embed.external,
+          url = embed.external.uri,
+          onClick = { 
+              onLinkClick?.invoke(embed.external.uri) ?: run {
+                  val intent = Intent(Intent.ACTION_VIEW, Uri.parse(embed.external.uri))
+                  context.startActivity(intent)
+              }
+          },
+          modifier = modifier
+      )
+  }
+  ```
+
+- **Best Practices**
+  1. Provide proper error handling for thumbnail loading
+  2. Implement consistent styling with the rest of the application
+  3. Handle long titles and descriptions with proper truncation
+  4. Use appropriate content scaling for thumbnails
+  5. Implement proper click handling for the entire card
+
+- **Common Issues**
+  - Handle missing thumbnails gracefully
+  - Ensure proper URL parsing and validation
+  - Manage proper thumbnail aspect ratios
+  - Handle orientation changes during thumbnail loading
 
 ### Video Feed Implementation
 - **Comment System**

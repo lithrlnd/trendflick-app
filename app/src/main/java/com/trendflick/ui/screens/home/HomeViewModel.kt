@@ -378,6 +378,29 @@ class HomeViewModel @Inject constructor(
                         First post: ${response.feed.firstOrNull()?.post?.uri}
                     """.trimIndent())
                     
+                    // Log repost information
+                    val repostCount = response.feed.count { it.reason?.type == "app.bsky.feed.repost" }
+                    Log.d(TAG, "🔄 Found $repostCount reposts in timeline")
+                    
+                    response.feed.forEachIndexed { index, feedPost ->
+                        if (feedPost.reason?.type == "app.bsky.feed.repost") {
+                            Log.d(TAG, """
+                                🔄 Repost #$index:
+                                Post URI: ${feedPost.post.uri}
+                                Repost type: ${feedPost.reason.type}
+                                By: ${feedPost.reason.by?.displayName ?: feedPost.reason.by?.handle ?: "Unknown"}
+                                Has repost info: ${feedPost.reason.repost != null}
+                                ${feedPost.reason.repost?.let { repost ->
+                                    """
+                                    Repost author: ${repost.author.displayName ?: repost.author.handle}
+                                    Repost text: ${repost.record.text.take(50)}${if (repost.record.text.length > 50) "..." else ""}
+                                    Has embed: ${repost.record.embed != null}
+                                    """
+                                } ?: "No repost details available"}
+                            """.trimIndent())
+                        }
+                    }
+                    
                     val filteredPosts = response.feed.filter { post ->
                         post.post.uri.isNotEmpty() && 
                         post.post.cid.isNotEmpty() &&
