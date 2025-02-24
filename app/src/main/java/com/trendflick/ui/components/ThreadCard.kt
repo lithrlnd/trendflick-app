@@ -735,6 +735,16 @@ private fun EmbeddedLink(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Log thumbnail details for debugging
+    Log.d("ThreadCard", """
+        🔗 Processing link embed:
+        URL: $url
+        Title: $title
+        Has thumb: ${thumbnail.thumb != null}
+        Thumb link: ${thumbnail.thumb?.link}
+        Platform: ${thumbnail.getSocialMediaInfo()?.platform}
+    """.trimIndent())
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -755,15 +765,51 @@ private fun EmbeddedLink(
                     .clip(RoundedCornerShape(8.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant)
             ) {
+                // Enhanced thumbnail URL generation with multiple fallbacks
                 val thumbnailUrl = thumbnail.thumb?.link?.let { link ->
                     if (link.startsWith("http")) {
                         link
                     } else {
                         "https://cdn.bsky.app/img/feed_thumbnail/plain/$link@jpeg"
                     }
+                } ?: run {
+                    // Fallback mechanisms when thumb link is null
+                    val uri = Uri.parse(url)
+                    val host = uri.host
+                    
+                    when {
+                        // YouTube thumbnails
+                        url.contains("youtube.com") || url.contains("youtu.be") -> {
+                            val videoId = extractYouTubeVideoId(url)
+                            if (videoId.isNotBlank()) {
+                                "https://img.youtube.com/vi/$videoId/mqdefault.jpg"
+                            } else {
+                                ""
+                            }
+                        }
+                        // Twitter/X thumbnails via microlink
+                        url.contains("twitter.com") || url.contains("x.com") -> {
+                            val encodedUrl = Uri.encode(url)
+                            "https://api.microlink.io/?url=$encodedUrl&screenshot=true&meta=false&embed=screenshot.url"
+                        }
+                        // Common domains with known thumbnail patterns
+                        url.contains("instagram.com") || 
+                        url.contains("tiktok.com") ||
+                        url.contains("facebook.com") -> {
+                            val encodedUrl = Uri.encode(url)
+                            "https://api.microlink.io/?url=$encodedUrl&screenshot=true&meta=false&embed=screenshot.url"
+                        }
+                        // Fallback to domain favicon for other sites
+                        !host.isNullOrBlank() -> {
+                            "https://www.google.com/s2/favicons?domain=$host&sz=128"
+                        }
+                        else -> ""
+                    }
                 }
 
-                if (thumbnailUrl != null) {
+                Log.d("ThreadCard", "🖼️ Using thumbnail URL: $thumbnailUrl")
+
+                if (thumbnailUrl.isNotEmpty()) {
                     AsyncImage(
                         model = thumbnailUrl,
                         contentDescription = "Link preview",

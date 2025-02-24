@@ -1229,24 +1229,66 @@ class AtProtocolRepositoryImpl @Inject constructor(
 
             // Enhanced thumbnail handling
             val thumbnailUrl = when {
+                // Case 1: Direct thumb link from external embed
                 embed.external?.thumb?.link != null -> {
                     val link = embed.external.thumb.link
+                    Log.d(TAG, "📸 Using external embed thumb link: $link")
                     if (link.startsWith("http")) {
                         link
                     } else {
                         "https://cdn.bsky.app/img/feed_thumbnail/plain/$link@jpeg"
                     }
                 }
+                // Case 2: Image embed thumbnails
+                embed.images?.isNotEmpty() == true -> {
+                    val image = embed.images.first()
+                    val imageUrl = image.thumb ?: image.image?.link?.let { link ->
+                        "https://cdn.bsky.app/img/feed_thumbnail/plain/$link@jpeg"
+                    }
+                    Log.d(TAG, "📸 Using image embed thumbnail: $imageUrl")
+                    imageUrl ?: "" // Ensure non-null string
+                }
+                // Case 3: Try to generate thumbnail from social media URL
                 embed.external?.uri != null -> {
+                    val uri = embed.external.uri
                     val socialInfo = embed.external.getSocialMediaInfo()
-                    if (socialInfo != null) {
-                        getOEmbedUrl(embed.external.uri, socialInfo.platform.lowercase())
-                    } else {
-                        embed.external.uri
+                    
+                    when {
+                        // YouTube thumbnails
+                        uri.contains("youtube.com") || uri.contains("youtu.be") -> {
+                            val videoId = extractYouTubeVideoId(uri)
+                            if (videoId.isNotBlank()) {
+                                "https://img.youtube.com/vi/$videoId/mqdefault.jpg"
+                            } else {
+                                "" // Return empty string instead of null
+                            }
+                        }
+                        // Twitter/X thumbnails via microlink
+                        uri.contains("twitter.com") || uri.contains("x.com") -> {
+                            val encodedUrl = Uri.encode(uri)
+                            "https://api.microlink.io/?url=$encodedUrl&screenshot=true&meta=false&embed=screenshot.url"
+                        }
+                        // Generic social media
+                        socialInfo != null -> {
+                            val encodedUrl = Uri.encode(uri)
+                            "https://api.microlink.io/?url=$encodedUrl&screenshot=true&meta=false&embed=screenshot.url"
+                        }
+                        // Fallback to domain favicon
+                        else -> {
+                            val domain = Uri.parse(uri).host
+                            if (!domain.isNullOrBlank()) {
+                                "https://www.google.com/s2/favicons?domain=$domain&sz=128"
+                            } else {
+                                uri
+                            }
+                        }
                     }
                 }
                 else -> ""
             }
+            
+            // Log the thumbnail URL for debugging
+            Log.d(TAG, "🖼️ Final thumbnail URL: $thumbnailUrl")
 
             // Return enhanced Video object
             return Video(
@@ -1336,6 +1378,13 @@ class AtProtocolRepositoryImpl @Inject constructor(
         val repostedBy: AtProfile,  // Using AtProfile from the API package
         val timestamp: String
     )
+
+    // Helper function to extract YouTube video ID from URL
+    private fun extractYouTubeVideoId(url: String): String {
+        val pattern = """(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})"""
+        val regex = Regex(pattern)
+        return regex.find(url)?.groupValues?.get(1) ?: ""
+    }
 
     companion object {
         private const val TAG = "AtProtocolRepo"
