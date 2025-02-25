@@ -760,6 +760,13 @@ NavigationBar {
   - Reference resolution
   - Rich text parsing
   - Character validation
+- Follow System:
+  - User follow/unfollow functionality
+  - Follow status tracking and caching
+  - Automatic follow status loading for visible posts
+  - Visual follow button state management
+  - Loading state indicators for follow actions
+  - Error handling for follow operations
 
 ### Hashtag System Architecture
 
@@ -770,6 +777,7 @@ NavigationBar {
   - Related hashtags horizontal scroll
   - Follow/unfollow functionality
   - ThreadCard integration for posts
+  - Follow button for post authors
 
 - **State Management**
   - HashtagViewModel for data handling
@@ -777,6 +785,7 @@ NavigationBar {
   - Error handling and recovery
   - Empty state management
   - Follow status tracking
+  - Author follow status management
 
 - **UI Components**
   - HashtagTopBar with navigation
@@ -784,6 +793,7 @@ NavigationBar {
   - Related hashtags suggestions
   - Adaptive layout for different screen sizes
   - Loading and error state indicators
+  - Follow buttons with loading state indicators
 
 #### Future Expansion Support
 - **Infrastructure Ready for AT Protocol Updates**

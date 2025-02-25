@@ -56,6 +56,13 @@ A Material 3 Android client for BlueSky that focuses on rich media sharing and s
   - Graceful error handling for deleted posts
   - Automatic thumbnail generation for quoted posts
   - Retry mechanism for temporary network issues
+- ✅ Follow/Unfollow functionality:
+  - Follow button in ThreadCard component
+  - Visual loading state indicators
+  - Automatic follow status loading for visible posts
+  - Proper state management and caching
+  - Error handling for follow operations
+  - Consistent UI across all screens (Home, Following, Hashtag)
 
 ### Media Handling
 - ✅ Image upload and display
@@ -559,3 +566,15 @@ Please read our contributing guidelines before submitting pull requests.
 - ✅ Detailed tracking of thumbnail generation
 - ✅ Better error reporting for failed post fetching
 - ✅ Tracking of record embed processing
+
+### Follow System Implementation (March 2025)
+- ✅ Comprehensive follow button functionality:
+  - Follow/unfollow capability across all screens
+  - Visual loading state indicators during API operations
+  - Automatic follow status loading for visible posts
+  - Proper state management with MutableStateFlow
+  - Error handling with appropriate user feedback
+  - Consistent UI implementation across Home, Following, and Hashtag screens
+  - Optimized follow status caching for better performance
+  - Fixed compilation issues with proper state handling
+  - Improved LaunchedEffect implementation for follow status loading

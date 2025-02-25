@@ -115,7 +115,9 @@ interface AtProtocolService {
 
     @GET("xrpc/app.bsky.feed.getHashtagFeed")
     suspend fun getPostsByHashtag(
-        @Query("hashtag") hashtag: String
+        @Query("hashtag") hashtag: String,
+        @Query("limit") limit: Int = 50,
+        @Query("cursor") cursor: String? = null
     ): TimelineResponse
 
     @GET("xrpc/app.bsky.graph.getHashtagFollowStatus")
@@ -131,6 +133,18 @@ interface AtProtocolService {
     @POST("xrpc/app.bsky.graph.unfollowHashtag")
     suspend fun unfollowHashtag(
         @Query("hashtag") hashtag: String
+    )
+
+    @POST("xrpc/app.bsky.graph.follow")
+    suspend fun followUser(
+        @Body request: FollowUserRequest
+    ): CreateRecordResponse
+
+    @DELETE("xrpc/com.atproto.repo.deleteRecord")
+    suspend fun unfollowUser(
+        @Query("repo") repo: String,
+        @Query("collection") collection: String = "app.bsky.graph.follow",
+        @Query("rkey") rkey: String
     )
 
     // Base record type for all AT Protocol records
@@ -250,5 +264,17 @@ interface AtProtocolService {
     data class HashtagResult(
         val tag: String,
         val count: Int
+    )
+
+    data class FollowUserRequest(
+        val repo: String,
+        val collection: String = "app.bsky.graph.follow",
+        val record: FollowRecord
+    )
+
+    data class FollowRecord(
+        @Json(name = "\$type") val type: String = "app.bsky.graph.follow",
+        val subject: String,
+        val createdAt: String
     )
 } 

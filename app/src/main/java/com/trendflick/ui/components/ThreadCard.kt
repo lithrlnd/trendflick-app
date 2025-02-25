@@ -30,6 +30,9 @@ import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Reply
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -240,6 +243,7 @@ private fun RecordEmbed(
     var error by remember { mutableStateOf<String?>(null) }
     var quotedPost by remember { mutableStateOf<Post?>(null) }
     var showInAppBrowser by remember { mutableStateOf(false) }
+    var webViewHeight by remember { mutableStateOf(400.dp) }
     
     // Get repository instance
     val atProtocolRepository = LocalAtProtocolRepository.current
@@ -257,6 +261,13 @@ private fun RecordEmbed(
         "https://bsky.app/profile/$handle/post/$rkey"
     } else {
         uri
+    }
+    
+    // Generate oEmbed URL if possible
+    val oEmbedUrl = if (webUrl.startsWith("https://bsky.app/profile/") && webUrl.contains("/post/")) {
+        "https://embed.bsky.app/oembed?url=${Uri.encode(webUrl)}"
+    } else {
+        null
     }
     
     // Function to fetch the post
@@ -292,6 +303,7 @@ private fun RecordEmbed(
             URI: $uri
             CID: $cid
             Web URL: $webUrl
+            oEmbed URL: $oEmbedUrl
             Handle: $handle
             Post ID: $postId
         """.trimIndent())
@@ -304,19 +316,60 @@ private fun RecordEmbed(
     if (showInAppBrowser) {
         AlertDialog(
             onDismissRequest = { showInAppBrowser = false },
-            title = { Text("Bluesky Post") },
+            title = { 
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Bluesky Post")
+                    IconButton(onClick = { showInAppBrowser = false }) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close"
+                        )
+                    }
+                }
+            },
             text = {
-                Column {
+                Column(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    // Use WebView to display the post
                     AndroidView(
                         factory = { ctx ->
                             android.webkit.WebView(ctx).apply {
                                 settings.javaScriptEnabled = true
-                                loadUrl(webUrl)
+                                settings.domStorageEnabled = true
+                                settings.mediaPlaybackRequiresUserGesture = false
+                                
+                                webViewClient = object : android.webkit.WebViewClient() {
+                                    override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
+                                        super.onPageFinished(view, url)
+                                        // Inject JavaScript to get the height of the content
+                                        evaluateJavascript(
+                                            "(function() { return document.body.scrollHeight; })();"
+                                        ) { height ->
+                                            try {
+                                                val contentHeight = height.toFloat()
+                                                if (contentHeight > 0) {
+                                                    // Limit the height to a reasonable value
+                                                    webViewHeight = (contentHeight.coerceAtMost(800f)).dp
+                                                }
+                                            } catch (e: Exception) {
+                                                Log.e("RecordEmbed", "Error parsing height: $e")
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                // Try to use oEmbed URL if available, otherwise use the web URL
+                                loadUrl(oEmbedUrl ?: webUrl)
                             }
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(400.dp)
+                            .height(webViewHeight)
                     )
                 }
             },
@@ -386,6 +439,17 @@ private fun RecordEmbed(
                 ) {
                     Text("Retry")
                 }
+                
+                // Add a "View in Browser" button
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { showInAppBrowser = true },
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Text("View in Browser")
+                }
             }
         } else if (quotedPost != null) {
             // Display the quoted post content
@@ -454,7 +518,9 @@ private fun RecordEmbed(
                     PostEmbed(
                         embed = embed,
                         onImageClick = onImageClick,
-                        onLinkClick = onLinkClick
+                        onLinkClick = onLinkClick,
+                        onProfileClick = onProfileClick,
+                        onHashtagClick = onHashtagClick
                     )
                 }
             }
@@ -526,9 +592,16 @@ private fun RecordEmbed(
                 
                 // Enhanced thumbnail generation with multiple fallbacks
                 val thumbnailUrl = if (handle.isNotEmpty() && postId.isNotEmpty()) {
-                    // Primary option: Use microlink.io for screenshot-based thumbnails
-                    val encodedUrl = Uri.encode(webUrl)
-                    "https://api.microlink.io/?url=$encodedUrl&screenshot=true&meta=false&embed=screenshot.url"
+                    // Try oEmbed thumbnail first
+                    if (oEmbedUrl != null) {
+                        // Use the oEmbed URL as a screenshot source
+                        val encodedOEmbedUrl = Uri.encode(oEmbedUrl)
+                        "https://api.microlink.io/?url=$encodedOEmbedUrl&screenshot=true&meta=false&embed=screenshot.url"
+                    } else {
+                        // Primary option: Use microlink.io for screenshot-based thumbnails
+                        val encodedUrl = Uri.encode(webUrl)
+                        "https://api.microlink.io/?url=$encodedUrl&screenshot=true&meta=false&embed=screenshot.url"
+                    }
                 } else {
                     // Fallback: Use a generic Bluesky logo
                     "https://bsky.app/static/apple-touch-icon.png"
@@ -630,6 +703,7 @@ private fun PostEmbed(
         Has external: ${embed.external != null}
         External URI: ${embed.external?.uri}
         Thumbnail: ${embed.external?.thumb?.link}
+        oEmbedUrl: ${embed.external?.oEmbedUrl}
     """.trimIndent())
 
     when {
@@ -666,6 +740,29 @@ private fun PostEmbed(
                 )
             }
         }
+        // Handle oEmbed content first
+        embed.external?.oEmbedUrl != null -> {
+            Log.d("ThreadCard", "🎬 oEmbed URL detected: ${embed.external.oEmbedUrl}")
+            
+            Box(
+                modifier = modifier
+                    .fillMaxWidth()
+                    .aspectRatio(16f/9f)
+            ) {
+                VideoPlayer(
+                    videoUrl = embed.external.oEmbedUrl!!,
+                    isVisible = true,
+                    onProgressChanged = { progress = it },
+                    isPaused = isPaused,
+                    modifier = Modifier.fillMaxSize(),
+                    onError = { loadError = it },
+                    thumbnailUrl = embed.external.thumb?.link?.let { link ->
+                        if (link.startsWith("http")) link else "https://cdn.bsky.app/img/feed_thumbnail/plain/$link@jpeg"
+                    },
+                    isOEmbedVideo = true
+                )
+            }
+        }
         // Enhanced video content handling
         embed.video != null || (embed.external?.uri?.let { uri ->
             uri.endsWith(".mp4", ignoreCase = true) ||
@@ -674,97 +771,160 @@ private fun PostEmbed(
             uri.contains("video", ignoreCase = true) ||
             uri.contains("youtube.com") ||
             uri.contains("youtu.be") ||
-            uri.contains("vimeo.com")
+            uri.contains("vimeo.com") ||
+            uri.contains("tiktok.com") && uri.contains("/video/")
         } == true) -> {
             Box(
                 modifier = modifier
                     .fillMaxWidth()
                     .aspectRatio(16f/9f)
             ) {
+                // Determine the video URL based on the embed type
                 val videoUrl = when {
+                    // Direct Bluesky video
                     embed.video?.ref?.link != null -> {
                         "https://cdn.bsky.app/video/plain/${embed.video.ref.link}"
                     }
+                    // External video with special handling for platforms
                     embed.external?.uri != null -> {
                         when {
+                            // YouTube videos
                             embed.external.uri.contains("youtube.com") || 
                             embed.external.uri.contains("youtu.be") -> {
                                 val videoId = extractYouTubeVideoId(embed.external.uri)
-                                "https://www.youtube.com/embed/$videoId"
+                                if (videoId.isNotBlank()) {
+                                    "https://www.youtube.com/embed/$videoId"
+                                } else {
+                                    embed.external.uri
+                                }
                             }
+                            // Vimeo videos
                             embed.external.uri.contains("vimeo.com") -> {
                                 val videoId = extractVimeoVideoId(embed.external.uri)
-                                "https://player.vimeo.com/video/$videoId"
+                                if (videoId.isNotBlank()) {
+                                    "https://player.vimeo.com/video/$videoId"
+                                } else {
+                                    embed.external.uri
+                                }
                             }
+                            // TikTok videos
+                            embed.external.uri.contains("tiktok.com") && embed.external.uri.contains("/video/") -> {
+                                val videoId = extractTikTokVideoId(embed.external.uri)
+                                if (videoId.isNotBlank()) {
+                                    "https://www.tiktok.com/embed/v2/$videoId"
+                                } else {
+                                    embed.external.uri
+                                }
+                            }
+                            // Twitter/X videos
+                            (embed.external.uri.contains("twitter.com") || embed.external.uri.contains("x.com")) && 
+                            embed.external.uri.contains("/status/") -> {
+                                "https://publish.twitter.com/oembed?url=${Uri.encode(embed.external.uri)}&omit_script=true"
+                            }
+                            // Instagram videos/posts
+                            embed.external.uri.contains("instagram.com/p/") -> {
+                                "https://www.instagram.com/embed.js?url=${Uri.encode(embed.external.uri)}"
+                            }
+                            // Default: use the URI as is
                             else -> embed.external.uri
                         }
                     }
                     else -> ""
                 }
 
+                // Get thumbnail URL for video
+                val thumbnailUrl = when {
+                    embed.video?.ref?.link != null -> {
+                        // Try to generate a thumbnail URL for Bluesky videos
+                        "https://cdn.bsky.app/img/feed_thumbnail/plain/${embed.video.ref.link}@jpeg"
+                    }
+                    embed.external?.thumb?.link != null -> {
+                        val link = embed.external.thumb.link
+                        if (link.startsWith("http")) link else "https://cdn.bsky.app/img/feed_thumbnail/plain/$link@jpeg"
+                    }
+                    embed.external?.uri?.contains("youtube.com") == true || 
+                    embed.external?.uri?.contains("youtu.be") == true -> {
+                        val videoId = extractYouTubeVideoId(embed.external.uri!!)
+                        if (videoId.isNotBlank()) {
+                            "https://img.youtube.com/vi/$videoId/hqdefault.jpg"
+                        } else null
+                    }
+                    embed.external?.uri?.contains("vimeo.com") == true -> {
+                        val videoId = extractVimeoVideoId(embed.external.uri!!)
+                        if (videoId.isNotBlank()) {
+                            "https://vumbnail.com/$videoId.jpg"
+                        } else null
+                    }
+                    embed.external?.uri?.contains("tiktok.com") == true -> {
+                        // Use microlink for TikTok thumbnails
+                        val encodedUrl = Uri.encode(embed.external.uri!!)
+                        "https://api.microlink.io/?url=$encodedUrl&screenshot=true&meta=false&embed=screenshot.url"
+                    }
+                    embed.external?.uri?.contains("twitter.com") == true || 
+                    embed.external?.uri?.contains("x.com") == true -> {
+                        // Use microlink for Twitter/X thumbnails
+                        val encodedUrl = Uri.encode(embed.external.uri!!)
+                        "https://api.microlink.io/?url=$encodedUrl&screenshot=true&meta=false&embed=screenshot.url"
+                    }
+                    embed.external?.uri?.contains("instagram.com") == true -> {
+                        // Use microlink for Instagram thumbnails
+                        val encodedUrl = Uri.encode(embed.external.uri!!)
+                        "https://api.microlink.io/?url=$encodedUrl&screenshot=true&meta=false&embed=screenshot.url"
+                    }
+                    else -> null
+                }
+
+                Log.d("ThreadCard", """
+                    🎥 Video details:
+                    URL: $videoUrl
+                    Thumbnail: $thumbnailUrl
+                """.trimIndent())
+
                 if (videoUrl.isNotEmpty()) {
+                    // Determine if this is an embedded player that should use WebView
+                    val isEmbeddedPlayer = videoUrl.contains("youtube.com/embed/") || 
+                                          videoUrl.contains("player.vimeo.com/") ||
+                                          videoUrl.contains("tiktok.com/embed") ||
+                                          videoUrl.contains("publish.twitter.com/oembed") ||
+                                          videoUrl.contains("instagram.com/embed")
+                    
                     VideoPlayer(
                         videoUrl = videoUrl,
                         isVisible = true,
                         onProgressChanged = { progress = it },
                         isPaused = isPaused,
                         modifier = Modifier.fillMaxSize(),
-                        onError = { loadError = it }
+                        onError = { loadError = it },
+                        thumbnailUrl = thumbnailUrl,
+                        isOEmbedVideo = isEmbeddedPlayer
                     )
 
-                    // Video controls overlay
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .pointerInput(Unit) {
-                                detectTapGestures(
-                                    onTap = { isPaused = !isPaused }
-                                )
-                            }
-                    )
-
-                    // Progress bar
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .height(2.dp)
-                            .background(Color.Black.copy(alpha = 0.3f))
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(progress)
-                                .fillMaxHeight()
-                                .background(MaterialTheme.colorScheme.primary)
-                        )
-                    }
-
-                    // Error state
-                    loadError?.let { error ->
+                    // Video controls overlay for non-embedded videos
+                    if (!isEmbeddedPlayer) {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .background(Color.Black.copy(alpha = 0.7f)),
-                            contentAlignment = Alignment.Center
+                                .pointerInput(Unit) {
+                                    detectTapGestures(
+                                        onTap = { isPaused = !isPaused }
+                                    )
+                                }
+                        )
+                        
+                        // Progress bar for non-embedded videos
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .height(2.dp)
+                                .background(Color.Black.copy(alpha = 0.3f))
                         ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Error,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(48.dp)
-                                )
-                                Text(
-                                    text = error,
-                                    color = Color.White,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier.padding(horizontal = 16.dp)
-                                )
-                            }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(progress)
+                                    .fillMaxHeight()
+                                    .background(MaterialTheme.colorScheme.primary)
+                            )
                         }
                     }
                 }
@@ -936,6 +1096,8 @@ fun ThreadCard(
     feedPost: FeedPost,
     isLiked: Boolean,
     isReposted: Boolean,
+    isFollowing: Boolean = false,
+    isFollowingLoading: Boolean = false,
     onLikeClick: () -> Unit,
     onRepostClick: () -> Unit,
     onShareClick: () -> Unit,
@@ -943,6 +1105,7 @@ fun ThreadCard(
     onThreadClick: () -> Unit,
     onCommentClick: () -> Unit,
     onCreatePost: () -> Unit,
+    onFollowClick: () -> Unit,
     onImageClick: (ImageEmbed) -> Unit,
     onHashtagClick: ((String) -> Unit)? = null,
     onLinkClick: ((String) -> Unit)? = null,
@@ -1031,7 +1194,9 @@ fun ThreadCard(
                         contentScale = ContentScale.Crop
                     )
                     
-                    Column {
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
                         Text(
                             text = when {
                                 !feedPost.post.author?.displayName.isNullOrBlank() -> feedPost.post.author?.displayName ?: ""
@@ -1047,6 +1212,35 @@ fun ThreadCard(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+                    
+                    // Follow button
+                    OutlinedButton(
+                        onClick = onFollowClick,
+                        enabled = !isFollowingLoading,
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = if (isFollowing) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.primary,
+                            contentColor = if (isFollowing) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onPrimary
+                        ),
+                        border = BorderStroke(
+                            width = 1.dp,
+                            color = if (isFollowing) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f) else MaterialTheme.colorScheme.primary
+                        ),
+                        modifier = Modifier.height(32.dp)
+                    ) {
+                        if (isFollowingLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        } else {
+                            Text(
+                                text = if (isFollowing) "Following" else "Follow",
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
                     }
                 }
 
@@ -1327,7 +1521,95 @@ private fun EmbeddedLink(
         Platform: ${thumbnail.getSocialMediaInfo()?.platform}
         Site name: ${thumbnail.siteName}
         oEmbed URL: ${thumbnail.oEmbedUrl}
+        Embed type: ${thumbnail.getEmbedType()}
     """.trimIndent())
+
+    // Detect if this is a social media post that should be embedded
+    val socialMediaInfo = thumbnail.getSocialMediaInfo()
+    val isEmbeddableMedia = socialMediaInfo != null || 
+                           thumbnail.oEmbedUrl != null ||
+                           url.contains("bsky.app/profile") && url.contains("/post/")
+    
+    // Generate oEmbed URL if possible and not already provided
+    val oEmbedUrl = thumbnail.generateOEmbedUrl()
+    
+    // Define these variables at the function level so they're available throughout the scope
+    val shouldShowLargeThumbnail = url.contains("kingdomsandemo.com") || 
+                                  url.contains("substack.com") ||
+                                  url.contains("medium.com") ||
+                                  url.contains("bsky.app") ||
+                                  url.contains("youtube.com") ||
+                                  url.contains("youtu.be") ||
+                                  url.contains("vimeo.com") ||
+                                  (thumbnail.thumb != null && !title.contains("http"))
+    
+    // Enhanced thumbnail URL generation with multiple fallbacks
+    val thumbnailUrl = thumbnail.thumb?.link?.let { link ->
+        if (link.startsWith("http")) {
+            link
+        } else {
+            "https://cdn.bsky.app/img/feed_thumbnail/plain/$link@jpeg"
+        }
+    } ?: run {
+        // Fallback mechanisms when thumb link is null
+        val uri = Uri.parse(url)
+        val host = uri.host
+        
+        when {
+            // YouTube thumbnails
+            url.contains("youtube.com") || url.contains("youtu.be") -> {
+                val videoId = extractYouTubeVideoId(url)
+                if (videoId.isNotBlank()) {
+                    "https://img.youtube.com/vi/$videoId/hqdefault.jpg"
+                } else {
+                    ""
+                }
+            }
+            // Vimeo thumbnails
+            url.contains("vimeo.com") -> {
+                val videoId = extractVimeoVideoId(url)
+                if (videoId.isNotBlank()) {
+                    "https://vumbnail.com/$videoId.jpg"
+                } else {
+                    ""
+                }
+            }
+            // Twitter/X thumbnails via microlink
+            url.contains("twitter.com") || url.contains("x.com") -> {
+                val encodedUrl = Uri.encode(url)
+                "https://api.microlink.io/?url=$encodedUrl&screenshot=true&meta=false&embed=screenshot.url"
+            }
+            // Common domains with known thumbnail patterns
+            url.contains("instagram.com") || 
+            url.contains("tiktok.com") ||
+            url.contains("facebook.com") ||
+            url.contains("kingdomsandemo.com") -> {
+                val encodedUrl = Uri.encode(url)
+                "https://api.microlink.io/?url=$encodedUrl&screenshot=true&meta=false&embed=screenshot.url"
+            }
+            // Bluesky posts
+            url.contains("bsky.app/profile") && url.contains("/post/") -> {
+                val encodedUrl = Uri.encode(url)
+                "https://api.microlink.io/?url=$encodedUrl&screenshot=true&meta=false&embed=screenshot.url"
+            }
+            // Fallback to domain favicon for other sites
+            !host.isNullOrBlank() -> {
+                "https://www.google.com/s2/favicons?domain=$host&sz=128"
+            }
+            else -> ""
+        }
+    }
+    
+    Log.d("ThreadCard", "🔄 Generated oEmbed URL: $oEmbedUrl")
+    Log.d("ThreadCard", "🖼️ Using thumbnail URL: $thumbnailUrl")
+
+    // Check if this is a video link that should be embedded
+    val isVideoLink = url.endsWith(".mp4", ignoreCase = true) ||
+                     url.endsWith(".mov", ignoreCase = true) ||
+                     url.endsWith(".webm", ignoreCase = true) ||
+                     url.contains("youtube.com/watch") ||
+                     url.contains("youtu.be/") ||
+                     url.contains("vimeo.com/")
 
     Card(
         modifier = modifier
@@ -1347,71 +1629,75 @@ private fun EmbeddedLink(
             modifier = Modifier
                 .fillMaxWidth()
         ) {
-            // Enhanced thumbnail handling - now as a header image for important links
-            val shouldShowLargeThumbnail = url.contains("kingdomsandemo.com") || 
-                                          url.contains("substack.com") ||
-                                          url.contains("medium.com") ||
-                                          url.contains("bsky.app") ||
-                                          (thumbnail.thumb != null && !title.contains("http"))
-            
-            // Enhanced thumbnail URL generation with multiple fallbacks
-            val thumbnailUrl = thumbnail.thumb?.link?.let { link ->
-                if (link.startsWith("http")) {
-                    link
-                } else {
-                    "https://cdn.bsky.app/img/feed_thumbnail/plain/$link@jpeg"
-                }
-            } ?: run {
-                // Fallback mechanisms when thumb link is null
-                val uri = Uri.parse(url)
-                val host = uri.host
-                
-                when {
-                    // YouTube thumbnails
-                    url.contains("youtube.com") || url.contains("youtu.be") -> {
-                        val videoId = extractYouTubeVideoId(url)
-                        if (videoId.isNotBlank()) {
-                            "https://img.youtube.com/vi/$videoId/mqdefault.jpg"
-                        } else {
-                            ""
-                        }
-                    }
-                    // Twitter/X thumbnails via microlink
-                    url.contains("twitter.com") || url.contains("x.com") -> {
-                        val encodedUrl = Uri.encode(url)
-                        "https://api.microlink.io/?url=$encodedUrl&screenshot=true&meta=false&embed=screenshot.url"
-                    }
-                    // Common domains with known thumbnail patterns
-                    url.contains("instagram.com") || 
-                    url.contains("tiktok.com") ||
-                    url.contains("facebook.com") ||
-                    url.contains("kingdomsandemo.com") -> {
-                        val encodedUrl = Uri.encode(url)
-                        "https://api.microlink.io/?url=$encodedUrl&screenshot=true&meta=false&embed=screenshot.url"
-                    }
-                    // Fallback to domain favicon for other sites
-                    !host.isNullOrBlank() -> {
-                        "https://www.google.com/s2/favicons?domain=$host&sz=128"
-                    }
-                    else -> ""
-                }
-            }
-
-            Log.d("ThreadCard", "🖼️ Using thumbnail URL: $thumbnailUrl")
-
-            if (shouldShowLargeThumbnail && thumbnailUrl.isNotEmpty()) {
-                // Large header image for important links
+            // Handle oEmbed content if available
+            if (oEmbedUrl != null) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(180.dp)
+                        .height(250.dp)
                 ) {
-                    AsyncImage(
-                        model = thumbnailUrl,
-                        contentDescription = "Link preview",
+                    VideoPlayer(
+                        videoUrl = oEmbedUrl,
+                        isVisible = true,
                         modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
+                        onError = { Log.e("EmbeddedLink", "Error loading oEmbed: $it") },
+                        isOEmbedVideo = true,
+                        thumbnailUrl = thumbnail.thumb?.link?.let { link ->
+                            if (link.startsWith("http")) link else "https://cdn.bsky.app/img/feed_thumbnail/plain/$link@jpeg"
+                        }
                     )
+                }
+            }
+            // Enhanced thumbnail handling - now as a header image for important links
+            else {
+                // Handle video links
+                if (isVideoLink && shouldShowLargeThumbnail) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp)
+                            .clickable(onClick = onClick)
+                    ) {
+                        if (thumbnailUrl.isNotEmpty()) {
+                            AsyncImage(
+                                model = thumbnailUrl,
+                                contentDescription = "Video thumbnail",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        }
+                        
+                        // Play button overlay
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.3f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PlayCircle,
+                                contentDescription = "Play video",
+                                tint = Color.White,
+                                modifier = Modifier.size(64.dp)
+                            )
+                        }
+                    }
+                }
+                // Regular image thumbnail
+                else if (shouldShowLargeThumbnail && thumbnailUrl.isNotEmpty()) {
+                    // Large header image for important links
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(180.dp)
+                    ) {
+                        AsyncImage(
+                            model = thumbnailUrl,
+                            contentDescription = "Link preview",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
                 }
             }
             
@@ -1422,8 +1708,8 @@ private fun EmbeddedLink(
                     .padding(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Show small thumbnail only if we're not showing the large one
-                if (!shouldShowLargeThumbnail) {
+                // Show small thumbnail only if we're not showing the large one and no oEmbed
+                if (!shouldShowLargeThumbnail && oEmbedUrl == null) {
                     Box(
                         modifier = Modifier
                             .size(80.dp)
@@ -1470,20 +1756,49 @@ private fun EmbeddedLink(
                         )
                     }
                     
-                    // Show domain name
-                    val domain = try {
-                        Uri.parse(url).host ?: url
-                    } catch (e: Exception) {
-                        url
+                    // Show domain name and platform info if available
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        // Show domain name
+                        val domain = try {
+                            Uri.parse(url).host ?: url
+                        } catch (e: Exception) {
+                            url
+                        }
+                        
+                        Text(
+                            text = domain,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        
+                        // Show platform badge if it's a social media link
+                        socialMediaInfo?.let {
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                                modifier = Modifier.padding(start = 4.dp)
+                            ) {
+                                Text(
+                                    text = it.platform,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
                     }
-                    
-                    Text(
-                        text = domain,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             }
         }
     }
+}
+
+// Helper function for TikTok video ID extraction
+private fun extractTikTokVideoId(url: String): String {
+    val pattern = """tiktok\.com\/.*\/video\/([0-9]+)"""
+    val regex = Regex(pattern)
+    return regex.find(url)?.groupValues?.get(1) ?: ""
 }

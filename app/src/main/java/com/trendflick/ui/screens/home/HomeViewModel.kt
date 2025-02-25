@@ -127,6 +127,17 @@ class HomeViewModel @Inject constructor(
     private val _customNavItems = MutableStateFlow<List<NavItem>>(emptyList())
     val customNavItems: StateFlow<List<NavItem>> = _customNavItems.asStateFlow()
 
+    // Add this near the other state variables
+    private val _hashtagMessage = MutableStateFlow<String?>(null)
+    val hashtagMessage: StateFlow<String?> = _hashtagMessage
+
+    // Add these properties to the class
+    private val _followedUsers = MutableStateFlow<Set<String>>(emptySet())
+    val followedUsers: StateFlow<Set<String>> = _followedUsers.asStateFlow()
+    
+    private val _isFollowingLoading = MutableStateFlow<Set<String>>(emptySet())
+    val isFollowingLoading: StateFlow<Set<String>> = _isFollowingLoading.asStateFlow()
+
     companion object {
         private const val MAX_COMMENT_LENGTH = 300
     }
@@ -1130,18 +1141,51 @@ class HomeViewModel @Inject constructor(
                 _currentHashtag.value = hashtag
                 currentCursor = null
                 _threads.value = emptyList()
+                _hashtagMessage.value = null
+                
+                Log.d(TAG, "🏷️ Selected hashtag: $hashtag")
                 
                 atProtocolRepository.getPostsByHashtag(hashtag)
                     .onSuccess { response ->
                         val filteredPosts = response.feed.filter { post ->
                             post.post.uri.isNotEmpty() && post.post.cid.isNotEmpty()
                         }
+                        
+                        Log.d(TAG, "📊 Received ${response.feed.size} posts for hashtag $hashtag, filtered to ${filteredPosts.size} valid posts")
+                        
+                        if (filteredPosts.isEmpty()) {
+                            Log.w(TAG, "⚠️ No valid posts found for hashtag: $hashtag")
+                            _hashtagMessage.value = "No posts found for #$hashtag. Try another hashtag or check back later."
+                        } else {
+                            _hashtagMessage.value = null
+                        }
+                        
                         _threads.value = filteredPosts
                         loadInitialLikeStates(filteredPosts)
                         currentCursor = response.cursor
                     }
+                    .onFailure { error ->
+                        Log.e(TAG, "❌ Error fetching hashtag posts: ${error.message}", error)
+                        _hashtagMessage.value = "Error loading posts for #$hashtag. Please try again."
+                        
+                        // Check for specific error types
+                        when (error) {
+                            is retrofit2.HttpException -> {
+                                val code = error.code()
+                                if (code == 404) {
+                                    _hashtagMessage.value = "Hashtag #$hashtag not found."
+                                } else if (code == 429) {
+                                    _hashtagMessage.value = "Rate limited. Please try again later."
+                                }
+                            }
+                            is java.net.UnknownHostException -> {
+                                _hashtagMessage.value = "Network error. Please check your connection."
+                            }
+                        }
+                    }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to load hashtag posts: ${e.message}")
+                Log.e(TAG, "❌ Failed to load hashtag posts: ${e.message}", e)
+                _hashtagMessage.value = "Error loading posts for #$hashtag. Please try again."
             } finally {
                 _isLoading.value = false
             }
@@ -1225,6 +1269,81 @@ class HomeViewModel @Inject constructor(
     fun reorderCustomNavItems(items: List<NavItem>) {
         viewModelScope.launch {
             _customNavItems.value = items
+        }
+    }
+
+    fun toggleFollow(did: String) {
+        viewModelScope.launch {
+            try {
+                // Add to loading set
+                _isFollowingLoading.update { it + did }
+                
+                val isCurrentlyFollowing = _followedUsers.value.contains(did)
+                
+                val result = if (isCurrentlyFollowing) {
+                    atProtocolRepository.unfollowUser(did)
+                } else {
+                    atProtocolRepository.followUser(did)
+                }
+                
+                if (result.isSuccess) {
+                    // Update the followed users set
+                    if (isCurrentlyFollowing) {
+                        _followedUsers.update { it - did }
+                    } else {
+                        _followedUsers.update { it + did }
+                    }
+                    Log.d(TAG, "✅ Successfully ${if (isCurrentlyFollowing) "unfollowed" else "followed"} user: $did")
+                } else {
+                    Log.e(TAG, "❌ Failed to ${if (isCurrentlyFollowing) "unfollow" else "follow"} user: ${result.exceptionOrNull()?.message}")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error toggling follow: ${e.message}")
+            } finally {
+                // Remove from loading set
+                _isFollowingLoading.update { it - did }
+            }
+        }
+    }
+    
+    fun checkFollowStatus(did: String) {
+        viewModelScope.launch {
+            try {
+                val result = atProtocolRepository.isFollowingUser(did)
+                
+                if (result.isSuccess) {
+                    val isFollowing = result.getOrNull() ?: false
+                    
+                    if (isFollowing) {
+                        _followedUsers.update { it + did }
+                    } else {
+                        _followedUsers.update { it - did }
+                    }
+                    
+                    Log.d(TAG, "✅ Follow status check complete: ${if (isFollowing) "Following" else "Not following"} $did")
+                } else {
+                    Log.e(TAG, "❌ Failed to check follow status: ${result.exceptionOrNull()?.message}")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error checking follow status: ${e.message}")
+            }
+        }
+    }
+    
+    fun loadFollowStatusForVisiblePosts() {
+        viewModelScope.launch {
+            try {
+                val visiblePosts = _threads.value
+                
+                for (post in visiblePosts) {
+                    val authorDid = post.post.author.did
+                    checkFollowStatus(authorDid)
+                }
+                
+                Log.d(TAG, "✅ Loaded follow status for ${visiblePosts.size} visible posts")
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error loading follow status for visible posts: ${e.message}")
+            }
         }
     }
 }

@@ -1,0 +1,11 @@
+﻿                        checkedThumbColor = ComposeColor(0xFF6B4EFF),
+                        checkedTrackColor = ComposeColor(0xFF6B4EFF).copy(alpha = 0.5f),
+                        uncheckedThumbColor = ComposeColor.White,
+                        uncheckedTrackColor = ComposeColor.White.copy(alpha = 0.3f)
+                    )
+                )
+            }
+        }
+
+        IconButton(onClick = onRefreshClick) {
+            Icon(

@@ -32,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import kotlinx.coroutines.delay
+import com.trendflick.ui.components.RichTextPostOverlay
 
 @UnstableApi
 @Composable
@@ -158,7 +159,22 @@ private fun VideoItem(
     var progress by remember { mutableStateOf(0f) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var showHeartAnimation by remember { mutableStateOf(false) }
+    var retryCount by remember { mutableStateOf(0) }
+    var showRichText by remember { mutableStateOf(false) }
     val view = LocalView.current
+
+    // Check if the video URL is an oEmbed URL
+    val isOEmbedVideo = video.videoUrl.contains("embed.bsky.app/oembed") || 
+                        video.videoUrl.contains("youtube.com/embed") ||
+                        video.videoUrl.contains("player.vimeo.com")
+                        
+    // Auto-retry logic for videos
+    LaunchedEffect(video.videoUrl, retryCount) {
+        if (loadError != null && retryCount > 0 && retryCount <= 3) {
+            delay(1000) // Wait a second before retrying
+            loadError = null // Clear the error to trigger a reload
+        }
+    }
 
     Box(
         modifier = modifier
@@ -170,32 +186,184 @@ private fun VideoItem(
                         view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                         onLikeClick()
                     },
-                    onTap = { if (video.videoUrl.isNotBlank()) isPaused = !isPaused }
+                    onTap = { if (video.videoUrl.isNotBlank() && !isOEmbedVideo) isPaused = !isPaused },
+                    onLongPress = {
+                        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                        showRichText = true
+                    }
                 )
             }
     ) {
         if (video.videoUrl.isNotBlank()) {
-            Log.d("VideoFeedSection", "🎥 Playing video: ${video.videoUrl}")
+            Log.d("VideoFeedSection", """
+                🎥 Playing video: 
+                URL: ${video.videoUrl}
+                Is oEmbed: $isOEmbedVideo
+                Thumbnail: ${video.thumbnailUrl}
+                Retry Count: $retryCount
+            """.trimIndent())
+            
+            // Get thumbnail URL if needed
+            val thumbnailUrl = when {
+                video.thumbnailUrl.isNotBlank() -> video.thumbnailUrl
+                video.videoUrl.contains("youtube.com") || video.videoUrl.contains("youtu.be") -> {
+                    val videoId = extractYouTubeVideoId(video.videoUrl)
+                    if (videoId.isNotBlank()) {
+                        "https://img.youtube.com/vi/$videoId/hqdefault.jpg"
+                    } else null
+                }
+                video.videoUrl.contains("vimeo.com") -> {
+                    val videoId = extractVimeoVideoId(video.videoUrl)
+                    if (videoId.isNotBlank()) {
+                        "https://vumbnail.com/$videoId.jpg"
+                    } else null
+                }
+                else -> null
+            }
+            
+            // Try to fix common URL issues
+            val fixedVideoUrl = when {
+                // Ensure HTTPS for all URLs
+                video.videoUrl.startsWith("http://") -> 
+                    video.videoUrl.replace("http://", "https://")
+                // Add proper protocol if missing
+                !video.videoUrl.startsWith("http") && !video.videoUrl.startsWith("content://") ->
+                    "https://${video.videoUrl}"
+                else -> video.videoUrl
+            }
+            
             VideoPlayer(
-                videoUrl = video.videoUrl,
+                videoUrl = fixedVideoUrl,
                 isVisible = isVisible,
                 onProgressChanged = { newProgress -> progress = newProgress },
                 isPaused = isPaused,
                 modifier = Modifier.fillMaxSize(),
                 onError = { error -> 
                     Log.e("VideoFeedSection", "❌ Video playback error: $error")
-                    loadError = error 
-                }
+                    loadError = error
+                    // Auto-retry once for common errors
+                    if (retryCount == 0 && (error.contains("Source error") || error.contains("Failed to load"))) {
+                        retryCount++
+                    }
+                },
+                thumbnailUrl = thumbnailUrl,
+                isOEmbedVideo = isOEmbedVideo
             )
         } else {
             Log.w("VideoFeedSection", "⚠️ No video URL available for: ${video.title}")
-            Text(
-                text = video.title,
-                color = Color.White,
+            
+            // Fallback content display
+            Box(
                 modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(16.dp)
-            )
+                    .fillMaxSize()
+                    .background(Color.Black),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.padding(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayCircle,
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.7f),
+                        modifier = Modifier.size(64.dp)
+                    )
+                    
+                    Text(
+                        text = video.title.ifBlank { "Media content unavailable" },
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White,
+                        textAlign = TextAlign.Center
+                    )
+                    
+                    Text(
+                        text = "Long press to view post details",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.7f),
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        }
+
+        // Error state
+        loadError?.let { error ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.7f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Error,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Text(
+                        text = error,
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                    
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(top = 16.dp)
+                    ) {
+                        // Add a retry button
+                        Button(
+                            onClick = { 
+                                loadError = null
+                                retryCount++
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Text("Retry")
+                        }
+                        
+                        // Add a "View Post Text" button
+                        Button(
+                            onClick = { showRichText = true },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.secondary,
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Text("View Post Text")
+                        }
+                    }
+                }
+            }
+        }
+
+        // Progress indicator (only for non-oEmbed videos)
+        if (!isOEmbedVideo) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(2.dp)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progress)
+                        .fillMaxHeight()
+                        .background(MaterialTheme.colorScheme.primary)
+                )
+            }
         }
 
         // Author info overlay
@@ -267,51 +435,6 @@ private fun VideoItem(
             )
         }
 
-        // Error state
-        loadError?.let { error ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Error,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(48.dp)
-                    )
-                    Text(
-                        text = error,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        style = MaterialTheme.typography.bodyMedium,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-                }
-            }
-        }
-
-        // Progress indicator
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(2.dp)
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(progress)
-                    .fillMaxHeight()
-                    .background(MaterialTheme.colorScheme.primary)
-            )
-        }
-
         // Heart animation on double-tap
         if (showHeartAnimation) {
             Icon(
@@ -332,6 +455,16 @@ private fun VideoItem(
                 delay(800)
                 showHeartAnimation = false
             }
+        }
+        
+        // Rich text overlay
+        if (showRichText) {
+            RichTextPostOverlay(
+                visible = true,
+                text = video.caption.ifBlank { video.description },
+                facets = video.facets ?: emptyList(),
+                onDismiss = { showRichText = false }
+            )
         }
     }
 }
@@ -371,4 +504,17 @@ private fun formatCount(count: Int): String = when {
     count < 1000 -> count.toString()
     count < 1000000 -> String.format("%.1fK", count / 1000f)
     else -> String.format("%.1fM", count / 1000000f)
+}
+
+// Helper functions for video ID extraction
+private fun extractYouTubeVideoId(url: String): String {
+    val pattern = """(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})"""
+    val regex = Regex(pattern)
+    return regex.find(url)?.groupValues?.get(1) ?: ""
+}
+
+private fun extractVimeoVideoId(url: String): String {
+    val pattern = """vimeo\.com\/(?:.*#|.*/videos/)?([0-9]+)"""
+    val regex = Regex(pattern)
+    return regex.find(url)?.groupValues?.get(1) ?: ""
 } 

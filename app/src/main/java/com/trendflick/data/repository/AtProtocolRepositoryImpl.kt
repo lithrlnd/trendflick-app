@@ -877,17 +877,31 @@ class AtProtocolRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun getPostsByHashtag(hashtag: String): Result<TimelineResponse> {
-        return getPostsByHashtag(hashtag, 50, null)
-    }
-
     override suspend fun getPostsByHashtag(hashtag: String, limit: Int, cursor: String?): Result<TimelineResponse> {
         return try {
-            val response = service.getPostsByHashtag(hashtag)
+            // Clean the hashtag by removing the # prefix if present
+            val cleanedHashtag = hashtag.removePrefix("#")
+            
+            Log.d(TAG, "🏷️ Fetching posts for hashtag: '$cleanedHashtag' with limit: $limit, cursor: $cursor")
+            
+            val response = service.getPostsByHashtag(cleanedHashtag, limit, cursor)
+            
+            // Log the response details
+            Log.d(TAG, "✅ Hashtag feed response: ${response.feed.size} posts, cursor: ${response.cursor}")
+            
+            if (response.feed.isEmpty()) {
+                Log.w(TAG, "⚠️ API returned empty feed for hashtag: '$cleanedHashtag'")
+            }
+            
             Result.success(response)
         } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to fetch posts by hashtag: '$hashtag' - Error: ${e.message}", e)
             Result.failure(e)
         }
+    }
+
+    override suspend fun getPostsByHashtag(hashtag: String): Result<TimelineResponse> {
+        return getPostsByHashtag(hashtag, 50, null)
     }
 
     override suspend fun checkHashtagFollowStatus(hashtag: String): Boolean = withContext(Dispatchers.IO) {
@@ -1406,6 +1420,110 @@ class AtProtocolRepositoryImpl @Inject constructor(
         val pattern = """(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})"""
         val regex = Regex(pattern)
         return regex.find(url)?.groupValues?.get(1) ?: ""
+    }
+
+    override suspend fun followUser(did: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            if (!ensureValidSession()) {
+                Log.e(TAG, "❌ No valid session available for follow user request")
+                return@withContext Result.failure(IllegalStateException("No active session"))
+            }
+
+            val currentDid = sessionManager.getDid() ?: throw IllegalStateException("No active session")
+            
+            Log.d(TAG, """
+                🌐 Follow User Request:
+                • Current User DID: $currentDid
+                • Target User DID: $did
+            """.trimIndent())
+            
+            val timestamp = Instant.now().toString()
+            
+            val followRecord = AtProtocolService.FollowRecord(
+                subject = did,
+                createdAt = timestamp
+            )
+            
+            val request = AtProtocolService.FollowUserRequest(
+                repo = currentDid,
+                record = followRecord
+            )
+            
+            val response = service.followUser(request)
+            Log.d(TAG, "✅ Successfully followed user: $did")
+            
+            Result.success(true)
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to follow user: ${e.message}")
+            Result.failure(e)
+        }
+    }
+    
+    override suspend fun unfollowUser(did: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            if (!ensureValidSession()) {
+                Log.e(TAG, "❌ No valid session available for unfollow user request")
+                return@withContext Result.failure(IllegalStateException("No active session"))
+            }
+            
+            val currentDid = sessionManager.getDid() ?: throw IllegalStateException("No active session")
+            
+            Log.d(TAG, """
+                🌐 Unfollow User Request:
+                • Current User DID: $currentDid
+                • Target User DID: $did
+            """.trimIndent())
+            
+            // The rkey for a follow record is the DID of the followed user
+            val rkey = did
+            
+            service.unfollowUser(
+                repo = currentDid,
+                rkey = rkey
+            )
+            
+            Log.d(TAG, "✅ Successfully unfollowed user: $did")
+            
+            Result.success(true)
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to unfollow user: ${e.message}")
+            Result.failure(e)
+        }
+    }
+    
+    override suspend fun isFollowingUser(did: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            if (!ensureValidSession()) {
+                Log.e(TAG, "❌ No valid session available for check following status")
+                return@withContext Result.failure(IllegalStateException("No active session"))
+            }
+            
+            val currentDid = sessionManager.getDid() ?: throw IllegalStateException("No active session")
+            
+            Log.d(TAG, """
+                🔍 Checking Follow Status:
+                • Current User DID: $currentDid
+                • Target User DID: $did
+            """.trimIndent())
+            
+            // Get the user's follows
+            val followsResult = getFollows(currentDid)
+            
+            if (followsResult.isSuccess) {
+                val follows = followsResult.getOrNull()?.follows ?: emptyList()
+                val isFollowing = follows.any { it.did == did }
+                
+                Log.d(TAG, "✅ Follow status check complete: ${if (isFollowing) "Following" else "Not following"} $did")
+                
+                Result.success(isFollowing)
+            } else {
+                Log.e(TAG, "❌ Failed to check follow status: ${followsResult.exceptionOrNull()?.message}")
+                Result.failure(followsResult.exceptionOrNull() ?: Exception("Unknown error"))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to check follow status: ${e.message}")
+            Result.failure(e)
+        }
     }
 
     companion object {

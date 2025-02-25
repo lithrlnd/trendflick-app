@@ -63,6 +63,13 @@ class FollowingViewModel @Inject constructor(
     private val _shareEvent = MutableSharedFlow<android.content.Intent>()
     val shareEvent = _shareEvent.asSharedFlow()
 
+    // Add these properties to the class
+    private val _followedUsers = MutableStateFlow<Set<String>>(emptySet())
+    val followedUsers: StateFlow<Set<String>> = _followedUsers.asStateFlow()
+    
+    private val _isFollowingLoading = MutableStateFlow<Set<String>>(emptySet())
+    val isFollowingLoading: StateFlow<Set<String>> = _isFollowingLoading.asStateFlow()
+
     init {
         Log.d(TAG, "🚀 ViewModel initialized")
         viewModelScope.launch {
@@ -725,6 +732,81 @@ class FollowingViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Failed to share post: ${e.message}")
+            }
+        }
+    }
+
+    fun toggleFollow(did: String) {
+        viewModelScope.launch {
+            try {
+                // Add to loading set
+                _isFollowingLoading.value = _isFollowingLoading.value + did
+                
+                val isCurrentlyFollowing = _followedUsers.value.contains(did)
+                
+                val result = if (isCurrentlyFollowing) {
+                    atProtocolRepository.unfollowUser(did)
+                } else {
+                    atProtocolRepository.followUser(did)
+                }
+                
+                if (result.isSuccess) {
+                    // Update the followed users set
+                    if (isCurrentlyFollowing) {
+                        _followedUsers.value = _followedUsers.value - did
+                    } else {
+                        _followedUsers.value = _followedUsers.value + did
+                    }
+                    Log.d(TAG, "✅ Successfully ${if (isCurrentlyFollowing) "unfollowed" else "followed"} user: $did")
+                } else {
+                    Log.e(TAG, "❌ Failed to ${if (isCurrentlyFollowing) "unfollow" else "follow"} user: ${result.exceptionOrNull()?.message}")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error toggling follow: ${e.message}")
+            } finally {
+                // Remove from loading set
+                _isFollowingLoading.value = _isFollowingLoading.value - did
+            }
+        }
+    }
+    
+    fun checkFollowStatus(did: String) {
+        viewModelScope.launch {
+            try {
+                val result = atProtocolRepository.isFollowingUser(did)
+                
+                if (result.isSuccess) {
+                    val isFollowing = result.getOrNull() ?: false
+                    
+                    if (isFollowing) {
+                        _followedUsers.value = _followedUsers.value + did
+                    } else {
+                        _followedUsers.value = _followedUsers.value - did
+                    }
+                    
+                    Log.d(TAG, "✅ Follow status check complete: ${if (isFollowing) "Following" else "Not following"} $did")
+                } else {
+                    Log.e(TAG, "❌ Failed to check follow status: ${result.exceptionOrNull()?.message}")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error checking follow status: ${e.message}")
+            }
+        }
+    }
+    
+    fun loadFollowStatusForVisiblePosts() {
+        viewModelScope.launch {
+            try {
+                val visiblePosts = _threads.value
+                
+                for (post in visiblePosts) {
+                    val authorDid = post.post.author.did
+                    checkFollowStatus(authorDid)
+                }
+                
+                Log.d(TAG, "✅ Loaded follow status for ${visiblePosts.size} visible posts")
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error loading follow status for visible posts: ${e.message}")
             }
         }
     }

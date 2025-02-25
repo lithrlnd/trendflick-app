@@ -53,6 +53,9 @@ interface AtProtocolRepository {
     suspend fun checkHashtagFollowStatus(hashtag: String): Boolean
     suspend fun followHashtag(hashtag: String)
     suspend fun unfollowHashtag(hashtag: String)
+    suspend fun followUser(did: String): Result<Boolean>
+    suspend fun unfollowUser(did: String): Result<Boolean>
+    suspend fun isFollowingUser(did: String): Result<Boolean>
 }
 
 // Data classes used by the interface

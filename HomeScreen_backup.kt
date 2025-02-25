@@ -180,13 +180,6 @@ fun HomeScreen(
         viewModel.loadMoreThreads()
     }
 
-    // Load follow status for visible posts
-    LaunchedEffect(threads) {
-        if (threads.isNotEmpty()) {
-            viewModel.loadFollowStatusForVisiblePosts()
-        }
-    }
-
     Box(modifier = Modifier.fillMaxSize()) {
         val pullRefreshState = rememberPullRefreshState(
             refreshing = isRefreshing,
@@ -318,8 +311,6 @@ fun HomeScreen(
                                             feedPost = thread,
                                             isLiked = likedPosts.contains(thread.post.uri),
                                             isReposted = repostedPosts.contains(thread.post.uri),
-                                            isFollowing = viewModel.followedUsers.collectAsState().value.contains(thread.post.author.did),
-                                            isFollowingLoading = viewModel.isFollowingLoading.collectAsState().value.contains(thread.post.author.did),
                                             onLikeClick = { viewModel.toggleLike(thread.post.uri) },
                                             onRepostClick = { viewModel.repost(thread.post.uri) },
                                             onShareClick = { viewModel.sharePost(thread.post.uri) },
@@ -330,7 +321,6 @@ fun HomeScreen(
                                                 viewModel.toggleComments(true)
                                             },
                                             onCreatePost = { navController.navigate(Screen.CreatePost.route) },
-                                            onFollowClick = { viewModel.toggleFollow(thread.post.author.did) },
                                             onImageClick = { image ->
                                                 // Handle image click by opening in full screen or in a viewer
                                                 val imageUrl = image.fullsize ?: image.image?.link?.let { link ->
@@ -371,8 +361,6 @@ fun HomeScreen(
                                                 feedPost = thread,
                                                 isLiked = likedPosts.contains(thread.post.uri),
                                                 isReposted = repostedPosts.contains(thread.post.uri),
-                                                isFollowing = viewModel.followedUsers.collectAsState().value.contains(thread.post.author.did),
-                                                isFollowingLoading = viewModel.isFollowingLoading.collectAsState().value.contains(thread.post.author.did),
                                                 onLikeClick = { viewModel.toggleLike(thread.post.uri) },
                                                 onRepostClick = { viewModel.repost(thread.post.uri) },
                                                 onShareClick = { viewModel.sharePost(thread.post.uri) },
@@ -383,7 +371,6 @@ fun HomeScreen(
                                                     viewModel.toggleComments(true)
                                                 },
                                                 onCreatePost = { navController.navigate(Screen.CreatePost.route) },
-                                                onFollowClick = { viewModel.toggleFollow(thread.post.author.did) },
                                                 onImageClick = { image -> /* Handle image click */ },
                                                 onHashtagClick = { tag -> viewModel.onHashtagSelected(tag) },
                                                 onLinkClick = { url -> currentBrowserUrl = url },
@@ -961,7 +948,7 @@ fun VideoItem(
         // Rich text overlay
         RichTextPostOverlay(
             visible = showRichText,
-            text = if (video.caption.isBlank()) video.description else video.caption,
+            text = video.caption.ifBlank { video.description },
             facets = video.facets ?: emptyList(),
             onDismiss = { 
                 showRichText = false
@@ -1914,7 +1901,7 @@ private fun CommentsHeader(
                         checkedThumbColor = ComposeColor(0xFF6B4EFF),
                         checkedTrackColor = ComposeColor(0xFF6B4EFF).copy(alpha = 0.5f),
                         uncheckedThumbColor = ComposeColor.White,
-                        uncheckedTrackColor = ComposeColor.White.copy(alpha = 0.3f)
+                        uncheckedTrackColor = ComposeColor.White.copy(alpha = 0.3f))
                     )
                 )
             }

@@ -141,6 +141,7 @@ fun HashtagScreen(
                                 onThreadClick = { /* Handle thread click */ },
                                 onCommentClick = { /* Handle comment */ },
                                 onCreatePost = { /* Handle create post */ },
+                                onFollowClick = { viewModel.toggleFollow(post.post.author.did) },
                                 onImageClick = { /* Handle image click */ },
                                 modifier = Modifier.fillMaxWidth()
                             )

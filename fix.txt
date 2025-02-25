@@ -1,0 +1,6 @@
+@Composable  
+private fun CommentsList(  
+    thread: ThreadPost,  
+    showAuthorOnly: Boolean,  
+    onProfileClick: (String) -> Unit  
+) {  

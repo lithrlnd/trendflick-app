@@ -136,6 +136,13 @@ fun FollowingScreen(
         }
     }
 
+    // Load follow status for visible posts
+    LaunchedEffect(threads) {
+        if (threads.isNotEmpty()) {
+            viewModel.loadFollowStatusForVisiblePosts()
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             // Feed selector
@@ -280,6 +287,8 @@ fun FollowingScreen(
                                                         feedPost = thread,
                                                         isLiked = likedPosts.contains(thread.post.uri),
                                                         isReposted = repostedPosts.contains(thread.post.uri),
+                                                        isFollowing = viewModel.followedUsers.collectAsState().value.contains(thread.post.author.did),
+                                                        isFollowingLoading = viewModel.isFollowingLoading.collectAsState().value.contains(thread.post.author.did),
                                                         onLikeClick = { viewModel.toggleLike(thread.post.uri) },
                                                         onRepostClick = { viewModel.repost(thread.post.uri) },
                                                         onShareClick = { viewModel.sharePost(thread.post.uri) },
@@ -287,6 +296,7 @@ fun FollowingScreen(
                                                         onThreadClick = { /* TODO: Implement thread click */ },
                                                         onCommentClick = { /* TODO: Implement comments */ },
                                                         onCreatePost = onCreatePost,
+                                                        onFollowClick = { viewModel.toggleFollow(thread.post.author.did) },
                                                         onImageClick = { image ->
                                                             val imageUrl = image.fullsize ?: image.image?.link?.let { link ->
                                                                 "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
@@ -328,6 +338,8 @@ fun FollowingScreen(
                                                         feedPost = thread,
                                                         isLiked = likedPosts.contains(thread.post.uri),
                                                         isReposted = repostedPosts.contains(thread.post.uri),
+                                                        isFollowing = viewModel.followedUsers.collectAsState().value.contains(thread.post.author.did),
+                                                        isFollowingLoading = viewModel.isFollowingLoading.collectAsState().value.contains(thread.post.author.did),
                                                         onLikeClick = { viewModel.toggleLike(thread.post.uri) },
                                                         onRepostClick = { viewModel.repost(thread.post.uri) },
                                                         onShareClick = { viewModel.sharePost(thread.post.uri) },
@@ -335,6 +347,7 @@ fun FollowingScreen(
                                                         onThreadClick = { /* TODO: Implement thread click */ },
                                                         onCommentClick = { /* TODO: Implement comments */ },
                                                         onCreatePost = onCreatePost,
+                                                        onFollowClick = { viewModel.toggleFollow(thread.post.author.did) },
                                                         onImageClick = { image ->
                                                             val imageUrl = image.fullsize ?: image.image?.link?.let { link ->
                                                                 "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"

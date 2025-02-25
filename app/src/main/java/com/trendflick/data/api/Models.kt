@@ -213,15 +213,98 @@ data class ExternalEmbed(
         val host = uri.host ?: return null
         return when {
             host.contains("twitter.com") || host.contains("x.com") -> 
-                SocialMediaInfo("X/Twitter", "post")
+                SocialMediaInfo("X/Twitter", if (uri.path?.contains("/status/") == true) "post" else "profile")
             host.contains("instagram.com") -> 
                 SocialMediaInfo("Instagram", if (uri.path?.contains("/p/") == true) "post" else "profile")
             host.contains("youtube.com") || host.contains("youtu.be") -> 
                 SocialMediaInfo("YouTube", "video")
             host.contains("tiktok.com") -> 
                 SocialMediaInfo("TikTok", if (uri.path?.contains("/video/") == true) "video" else "post")
+            host.contains("vimeo.com") ->
+                SocialMediaInfo("Vimeo", "video")
+            host.contains("facebook.com") || host.contains("fb.com") ->
+                SocialMediaInfo("Facebook", if (uri.path?.contains("/posts/") == true || uri.path?.contains("/videos/") == true) "post" else "profile")
+            host.contains("linkedin.com") ->
+                SocialMediaInfo("LinkedIn", if (uri.path?.contains("/posts/") == true) "post" else "profile")
+            host.contains("pinterest.com") ->
+                SocialMediaInfo("Pinterest", if (uri.path?.contains("/pin/") == true) "pin" else "profile")
+            host.contains("reddit.com") ->
+                SocialMediaInfo("Reddit", if (uri.path?.contains("/comments/") == true) "post" else "subreddit")
+            host.contains("threads.net") ->
+                SocialMediaInfo("Threads", "post")
+            host.contains("bsky.app") ->
+                SocialMediaInfo("Bluesky", if (uri.path?.contains("/post/") == true) "post" else "profile")
+            host.contains("medium.com") || host.contains("substack.com") ->
+                SocialMediaInfo("Blog", "article")
             else -> null
         }
+    }
+    
+    fun getEmbedType(): String {
+        return when {
+            oEmbedUrl != null -> "oembed"
+            uri.endsWith(".mp4", ignoreCase = true) || 
+            uri.endsWith(".mov", ignoreCase = true) || 
+            uri.endsWith(".webm", ignoreCase = true) -> "video"
+            uri.contains("youtube.com") || uri.contains("youtu.be") -> "youtube"
+            uri.contains("vimeo.com") -> "vimeo"
+            uri.contains("twitter.com") || uri.contains("x.com") -> "twitter"
+            uri.contains("instagram.com") -> "instagram"
+            uri.contains("tiktok.com") -> "tiktok"
+            uri.contains("facebook.com") || uri.contains("fb.com") -> "facebook"
+            uri.contains("bsky.app") -> "bluesky"
+            else -> "link"
+        }
+    }
+    
+    fun generateOEmbedUrl(): String? {
+        if (oEmbedUrl != null) return oEmbedUrl
+        
+        return when {
+            // Bluesky posts
+            uri.contains("bsky.app/profile") && uri.contains("/post/") -> 
+                "https://embed.bsky.app/oembed?url=${Uri.encode(uri)}"
+            // YouTube videos
+            uri.contains("youtube.com/watch") || uri.contains("youtu.be/") -> {
+                val videoId = extractYouTubeVideoId(uri)
+                if (videoId.isNotBlank()) "https://www.youtube.com/embed/$videoId" else null
+            }
+            // Vimeo videos
+            uri.contains("vimeo.com") && !uri.contains("player.vimeo.com") -> {
+                val videoId = extractVimeoVideoId(uri)
+                if (videoId.isNotBlank()) "https://player.vimeo.com/video/$videoId" else null
+            }
+            // Twitter/X posts
+            (uri.contains("twitter.com") || uri.contains("x.com")) && !uri.contains("publish.twitter.com") -> 
+                "https://publish.twitter.com/oembed?url=${Uri.encode(uri)}&omit_script=true"
+            // TikTok videos
+            uri.contains("tiktok.com") && uri.contains("/video/") -> {
+                val videoId = extractTikTokVideoId(uri)
+                if (videoId.isNotBlank()) "https://www.tiktok.com/embed/v2/$videoId" else null
+            }
+            // Instagram posts
+            uri.contains("instagram.com/p/") -> 
+                "https://www.instagram.com/embed.js?url=${Uri.encode(uri)}"
+            else -> null
+        }
+    }
+    
+    private fun extractYouTubeVideoId(url: String): String {
+        val pattern = """(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})"""
+        val regex = Regex(pattern)
+        return regex.find(url)?.groupValues?.get(1) ?: ""
+    }
+    
+    private fun extractVimeoVideoId(url: String): String {
+        val pattern = """vimeo\.com\/(?:.*#|.*/videos/)?([0-9]+)"""
+        val regex = Regex(pattern)
+        return regex.find(url)?.groupValues?.get(1) ?: ""
+    }
+    
+    private fun extractTikTokVideoId(url: String): String {
+        val pattern = """tiktok\.com\/.*\/video\/([0-9]+)"""
+        val regex = Regex(pattern)
+        return regex.find(url)?.groupValues?.get(1) ?: ""
     }
 }
 
