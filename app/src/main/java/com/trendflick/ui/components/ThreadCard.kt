@@ -1059,27 +1059,42 @@ private fun EngagementAction(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        IconButton(
-            onClick = {
-                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                scale = 0.8f
-                onClick()
-                scale = 1f
-            },
+        Box(
             modifier = Modifier
                 .size(40.dp)
                 .graphicsLayer {
                     scaleX = animatedScale
                     scaleY = animatedScale
                 }
+                .background(
+                    color = if (isActive) 
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) 
+                    else 
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.3f),
+                    shape = CircleShape
+                ),
+            contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = if (isActive) MaterialTheme.colorScheme.primary else tint,
-                modifier = Modifier.size(24.dp)
-            )
+            IconButton(
+                onClick = {
+                    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    scale = 0.8f
+                    onClick()
+                    scale = 1f
+                },
+                modifier = Modifier.fillMaxSize()
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = if (isActive) 
+                        MaterialTheme.colorScheme.primary 
+                    else 
+                        tint,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
         }
         if (count > 0) {
             Text(

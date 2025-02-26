@@ -477,20 +477,53 @@ private fun EngagementAction(
     tint: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
     onClick: () -> Unit
 ) {
+    val view = LocalView.current
+    var scale by remember { mutableStateOf(1f) }
+    val animatedScale by animateFloatAsState(
+        targetValue = scale,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "scale"
+    )
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        IconButton(
-            onClick = onClick,
-            modifier = Modifier.size(48.dp)
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .graphicsLayer {
+                    scaleX = animatedScale
+                    scaleY = animatedScale
+                }
+                .background(
+                    color = if (isActive) 
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) 
+                    else 
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.3f),
+                    shape = CircleShape
+                ),
+            contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = if (isActive) MaterialTheme.colorScheme.primary else tint,
-                modifier = Modifier.size(28.dp)
-            )
+            IconButton(
+                onClick = {
+                    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                    scale = 0.8f
+                    onClick()
+                    scale = 1f
+                },
+                modifier = Modifier.fillMaxSize()
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = if (isActive) MaterialTheme.colorScheme.primary else tint,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
         }
         Text(
             text = formatCount(count),

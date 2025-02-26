@@ -314,33 +314,75 @@ fun HomeScreen(
                                 ) { page ->
                                     val thread = threads.getOrNull(page)
                                     if (thread != null) {
-                                        ThreadCard(
-                                            feedPost = thread,
-                                            isLiked = likedPosts.contains(thread.post.uri),
-                                            isReposted = repostedPosts.contains(thread.post.uri),
-                                            isFollowing = viewModel.followedUsers.collectAsState().value.contains(thread.post.author.did),
-                                            isFollowingLoading = viewModel.isFollowingLoading.collectAsState().value.contains(thread.post.author.did),
-                                            onLikeClick = { viewModel.toggleLike(thread.post.uri) },
-                                            onRepostClick = { viewModel.repost(thread.post.uri) },
-                                            onShareClick = { viewModel.sharePost(thread.post.uri) },
-                                            onProfileClick = { onNavigateToProfile(thread.post.author.did) },
-                                            onThreadClick = { /* Handle thread click */ },
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(ComposeColor.Black)
+                                                .padding(end = 52.dp) // Make space for fixed engagement column
+                                        ) {
+                                            // Content without engagement column
+                                            ThreadCard(
+                                                feedPost = thread,
+                                                isLiked = likedPosts.contains(thread.post.uri),
+                                                isReposted = repostedPosts.contains(thread.post.uri),
+                                                isFollowing = viewModel.followedUsers.collectAsState().value.contains(thread.post.author.did),
+                                                isFollowingLoading = viewModel.isFollowingLoading.collectAsState().value.contains(thread.post.author.did),
+                                                onLikeClick = { viewModel.toggleLike(thread.post.uri) },
+                                                onRepostClick = { viewModel.repost(thread.post.uri) },
+                                                onShareClick = { viewModel.sharePost(thread.post.uri) },
+                                                onProfileClick = { onNavigateToProfile(thread.post.author.did) },
+                                                onThreadClick = { /* Handle thread click */ },
+                                                onCommentClick = {
+                                                    viewModel.loadComments(thread.post.uri)
+                                                    viewModel.toggleComments(true)
+                                                },
+                                                onCreatePost = { navController.navigate(Screen.CreatePost.route) },
+                                                onFollowClick = { viewModel.toggleFollow(thread.post.author.did) },
+                                                onImageClick = { image ->
+                                                    // Handle image click by opening in full screen or in a viewer
+                                                    val imageUrl = image.fullsize ?: image.image?.link?.let { link ->
+                                                        "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
+                                                    } ?: ""
+                                                    // You can implement your image viewing logic here
+                                                },
+                                                onHashtagClick = { tag -> viewModel.onHashtagSelected(tag) },
+                                                onLinkClick = { url -> currentBrowserUrl = url },
+                                                modifier = Modifier.fillMaxWidth(),
+                                                showEngagementColumn = false // Hide the built-in engagement column
+                                            )
+                                        }
+                                    }
+                                }
+                                
+                                // Fixed engagement column for landscape mode
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.CenterEnd)
+                                        .width(52.dp)
+                                        .fillMaxHeight()
+                                        .zIndex(1f) // Ensure it stays on top
+                                ) {
+                                    val currentThread = threads.getOrNull(pagerState.currentPage)
+                                    if (currentThread != null) {
+                                        EngagementColumn(
+                                            isLiked = likedPosts.contains(currentThread.post.uri),
+                                            isReposted = repostedPosts.contains(currentThread.post.uri),
+                                            likeCount = currentThread.post.likeCount ?: 0,
+                                            replyCount = currentThread.post.replyCount ?: 0,
+                                            repostCount = currentThread.post.repostCount ?: 0,
+                                            onLikeClick = {
+                                                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                                viewModel.toggleLike(currentThread.post.uri)
+                                            },
                                             onCommentClick = {
-                                                viewModel.loadComments(thread.post.uri)
+                                                viewModel.loadComments(currentThread.post.uri)
                                                 viewModel.toggleComments(true)
                                             },
-                                            onCreatePost = { navController.navigate(Screen.CreatePost.route) },
-                                            onFollowClick = { viewModel.toggleFollow(thread.post.author.did) },
-                                            onImageClick = { image ->
-                                                // Handle image click by opening in full screen or in a viewer
-                                                val imageUrl = image.fullsize ?: image.image?.link?.let { link ->
-                                                    "https://cdn.bsky.app/img/feed_fullsize/plain/$link@jpeg"
-                                                } ?: ""
-                                                // You can implement your image viewing logic here
+                                            onRepostClick = {
+                                                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                                viewModel.repost(currentThread.post.uri)
                                             },
-                                            onHashtagClick = { tag -> viewModel.onHashtagSelected(tag) },
-                                            onLinkClick = { url -> currentBrowserUrl = url },
-                                            modifier = Modifier.fillMaxWidth()
+                                            onShareClick = { viewModel.sharePost(currentThread.post.uri) }
                                         )
                                     }
                                 }
@@ -366,7 +408,9 @@ fun HomeScreen(
                                             modifier = Modifier
                                                 .fillMaxSize()
                                                 .background(ComposeColor.Black)
+                                                .padding(end = 52.dp) // Make space for fixed engagement column
                                         ) {
+                                            // Content without engagement column
                                             ThreadCard(
                                                 feedPost = thread,
                                                 isLiked = likedPosts.contains(thread.post.uri),
@@ -387,22 +431,46 @@ fun HomeScreen(
                                                 onImageClick = { image -> /* Handle image click */ },
                                                 onHashtagClick = { tag -> viewModel.onHashtagSelected(tag) },
                                                 onLinkClick = { url -> currentBrowserUrl = url },
-                                                modifier = Modifier.fillMaxSize()
+                                                modifier = Modifier.fillMaxSize(),
+                                                showEngagementColumn = false // Hide the built-in engagement column
                                             )
                                         }
                                     }
                                 }
+                                
+                                // Fixed engagement column for portrait mode
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.CenterEnd)
+                                        .width(52.dp)
+                                        .fillMaxHeight()
+                                        .zIndex(1f) // Ensure it stays on top
+                                ) {
+                                    val currentThread = threads.getOrNull(pagerState.currentPage)
+                                    if (currentThread != null) {
+                                        EngagementColumn(
+                                            isLiked = likedPosts.contains(currentThread.post.uri),
+                                            isReposted = repostedPosts.contains(currentThread.post.uri),
+                                            likeCount = currentThread.post.likeCount ?: 0,
+                                            replyCount = currentThread.post.replyCount ?: 0,
+                                            repostCount = currentThread.post.repostCount ?: 0,
+                                            onLikeClick = {
+                                                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                                viewModel.toggleLike(currentThread.post.uri)
+                                            },
+                                            onCommentClick = {
+                                                viewModel.loadComments(currentThread.post.uri)
+                                                viewModel.toggleComments(true)
+                                            },
+                                            onRepostClick = {
+                                                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                                viewModel.repost(currentThread.post.uri)
+                                            },
+                                            onShareClick = { viewModel.sharePost(currentThread.post.uri) }
+                                        )
+                                    }
+                                }
                             }
-                        }
-
-                        // Show loading indicator when loading more threads
-                        if (isLoading && threads.isNotEmpty()) {
-                            CircularProgressIndicator(
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(16.dp),
-                                color = MaterialTheme.colorScheme.primary
-                            )
                         }
                     } else {
                         VideoFeedSection(
@@ -1829,63 +1897,44 @@ fun VideoFeedSection(
                         }
                     }
                 }
-
-                // Comments overlay
-                if (showComments) {
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .fillMaxHeight(0.92f)
-                            .align(Alignment.BottomCenter)
-                            .imePadding(),
-                        color = ComposeColor(0xFF1A1A1A),
-                        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = 16.dp)
-                        ) {
-                            CommentsHeader(
-                                showAuthorOnly = showAuthorOnly,
-                                onBackClick = { viewModel.toggleComments(false) },
-                                onAuthorOnlyChange = { viewModel.toggleAuthorOnly() },
-                                onRefreshClick = { 
-                                    currentThread?.post?.uri?.let { uri ->
-                                        viewModel.loadComments(uri)
-                                    }
-                                }
-                            )
-
-                            currentThread?.let { thread ->
-                                CommentsList(
-                                    thread = thread,
-                                    showAuthorOnly = showAuthorOnly,
-                                    onProfileClick = { did -> /* Handle profile navigation */ }
-                                )
-                            }
-                        }
-                    }
-                }
             }
         }
 
-        // Only show FAB in portrait mode
-        if (!isLandscape) {
-            FloatingActionButton(
-                onClick = onCreateVideo,
+        // Comments overlay
+        if (showComments) {
+            Surface(
                 modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(16.dp)
-                    .navigationBarsPadding(),
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.92f)
+                    .align(Alignment.BottomCenter)
+                    .imePadding(),
+                color = ComposeColor(0xFF1A1A1A),
+                shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = "Create new video",
-                    modifier = Modifier.size(24.dp)
-                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp)
+                ) {
+                    CommentsHeader(
+                        showAuthorOnly = showAuthorOnly,
+                        onBackClick = { viewModel.toggleComments(false) },
+                        onAuthorOnlyChange = { viewModel.toggleAuthorOnly() },
+                        onRefreshClick = { 
+                            currentThread?.post?.uri?.let { uri ->
+                                viewModel.loadComments(uri)
+                            }
+                        }
+                    )
+
+                    currentThread?.let { thread ->
+                        CommentsList(
+                            thread = thread,
+                            showAuthorOnly = showAuthorOnly,
+                            onProfileClick = { did -> /* Handle profile navigation */ }
+                        )
+                    }
+                }
             }
         }
     }
