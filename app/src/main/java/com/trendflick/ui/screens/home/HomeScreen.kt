@@ -127,6 +127,7 @@ fun HomeScreen(
     val selectedCategory = remember { mutableStateOf("Trends") }
     var currentBrowserUrl by remember { mutableStateOf<String?>(null) }
     var isTransitioning by remember { mutableStateOf(false) }
+    val followingUsers by viewModel.followingUsers.collectAsState()
 
     // Collect share events
     LaunchedEffect(Unit) {
@@ -311,6 +312,7 @@ fun HomeScreen(
                                             feedPost = thread,
                                             isLiked = likedPosts.contains(thread.post.uri),
                                             isReposted = repostedPosts.contains(thread.post.uri),
+                                            isFollowing = followingUsers.contains(thread.post.author.did),
                                             onLikeClick = { viewModel.toggleLike(thread.post.uri) },
                                             onRepostClick = { viewModel.repost(thread.post.uri) },
                                             onShareClick = { viewModel.sharePost(thread.post.uri) },
@@ -320,6 +322,7 @@ fun HomeScreen(
                                                 viewModel.loadComments(thread.post.uri)
                                                 viewModel.toggleComments(true)
                                             },
+                                            onFollowClick = { viewModel.toggleFollow(thread.post.author.did) },
                                             onCreatePost = { navController.navigate(Screen.CreatePost.route) },
                                             onImageClick = { image ->
                                                 // Handle image click by opening in full screen or in a viewer
@@ -361,6 +364,7 @@ fun HomeScreen(
                                                 feedPost = thread,
                                                 isLiked = likedPosts.contains(thread.post.uri),
                                                 isReposted = repostedPosts.contains(thread.post.uri),
+                                                isFollowing = followingUsers.contains(thread.post.author.did),
                                                 onLikeClick = { viewModel.toggleLike(thread.post.uri) },
                                                 onRepostClick = { viewModel.repost(thread.post.uri) },
                                                 onShareClick = { viewModel.sharePost(thread.post.uri) },
@@ -370,6 +374,7 @@ fun HomeScreen(
                                                     viewModel.loadComments(thread.post.uri)
                                                     viewModel.toggleComments(true)
                                                 },
+                                                onFollowClick = { viewModel.toggleFollow(thread.post.author.did) },
                                                 onCreatePost = { navController.navigate(Screen.CreatePost.route) },
                                                 onImageClick = { image -> /* Handle image click */ },
                                                 onHashtagClick = { tag -> viewModel.onHashtagSelected(tag) },
@@ -397,7 +402,11 @@ fun HomeScreen(
                             isLoading = isLoadingVideos,
                             error = videoLoadError,
                             onRefresh = { viewModel.refreshVideoFeed() },
-                            onCreateVideo = { navController.navigate(Screen.CreateFlick.route) }
+                            onCreateVideo = { navController.navigate(Screen.CreateFlick.route) },
+                            onFollowClick = { userId -> viewModel.toggleFollow(userId) },
+                            onProfileClick = onNavigateToProfile,
+                            followingUsers = followingUsers.toSet(),
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
 
@@ -1465,6 +1474,9 @@ fun VideoFeedSection(
     error: String?,
     onRefresh: () -> Unit,
     onCreateVideo: () -> Unit,
+    onFollowClick: (String) -> Unit,
+    onProfileClick: (String) -> Unit,
+    followingUsers: Set<String>,
     modifier: Modifier = Modifier
 ) {
     val viewModel: HomeViewModel = hiltViewModel()
@@ -1623,7 +1635,7 @@ fun VideoFeedSection(
                                     viewModel.toggleComments(true)
                                 },
                                 onShareClick = { viewModel.sharePost(video.uri) },
-                                onProfileClick = { /* TODO: Implement profile navigation */ },
+                                onProfileClick = { onProfileClick(video.uri) },
                                 isVisible = page == pagerState.currentPage,
                                 onLongPress = { /* TODO: Implement long press action */ }
                             )
@@ -1661,7 +1673,7 @@ fun VideoFeedSection(
                                     viewModel.toggleComments(true)
                                 },
                                 onShareClick = { viewModel.sharePost(video.uri) },
-                                onProfileClick = { /* TODO: Implement profile navigation */ },
+                                onProfileClick = { onProfileClick(video.uri) },
                                 isVisible = page == pagerState.currentPage,
                                 onLongPress = { /* TODO: Implement long press action */ }
                             )

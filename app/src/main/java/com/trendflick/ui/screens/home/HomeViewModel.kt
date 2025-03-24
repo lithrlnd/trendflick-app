@@ -47,6 +47,7 @@ import kotlinx.coroutines.awaitAll
 import java.time.Duration
 import kotlinx.coroutines.flow.update
 import com.trendflick.ui.navigation.NavItem
+import com.trendflick.data.api.FollowsResponse
 
 @OptIn(kotlin.experimental.ExperimentalTypeInference::class)
 @HiltViewModel
@@ -126,6 +127,9 @@ class HomeViewModel @Inject constructor(
     // Add new state for custom navigation
     private val _customNavItems = MutableStateFlow<List<NavItem>>(emptyList())
     val customNavItems: StateFlow<List<NavItem>> = _customNavItems.asStateFlow()
+
+    private val _followingUsers = MutableStateFlow<Set<String>>(emptySet())
+    val followingUsers: StateFlow<Set<String>> = _followingUsers.asStateFlow()
 
     companion object {
         private const val MAX_COMMENT_LENGTH = 300
@@ -236,6 +240,8 @@ class HomeViewModel @Inject constructor(
                     Log.e(TAG, "❌ Failed to load trending hashtags: ${e.message}")
                 }
             }
+
+            loadFollowingUsers()
         } catch (e: Exception) {
             Log.e(TAG, """
                 ❌ Fatal initialization error:
@@ -1007,12 +1013,31 @@ class HomeViewModel @Inject constructor(
                 _isLoadingVideos.value = true
                 _videoLoadError.value = null
                 
+                // First, ensure we have the latest following list
+                val userId = credentialsManager.getDid()
+                if (userId != null) {
+                    val followsResult = atProtocolRepository.getFollows(userId)
+                    followsResult.onSuccess { response ->
+                        val followingDids = response.follows.map { profile -> profile.did }.toSet()
+                        _followingUsers.value = followingDids
+                        Log.d(TAG, """
+                            ✅ Following status loaded:
+                            Total following: ${followingDids.size}
+                            Sample DIDs: ${followingDids.take(3)}
+                        """.trimIndent())
+                    }.onFailure { error ->
+                        Log.e(TAG, "❌ Failed to load following status: ${error.message}")
+                    }
+                }
+
                 val mediaResult = atProtocolRepository.getMediaPosts()
                 Log.d("HomeViewModel", """
                     ✅ Video feed refresh result:
                     Videos fetched: ${mediaResult.size}
                     Images: ${mediaResult.count { it.isImage }}
                     Videos: ${mediaResult.count { !it.isImage }}
+                    Following status loaded: ${_followingUsers.value.size} users
+                    Sample video authors: ${mediaResult.take(3).map { it.authorId }}
                 """.trimIndent())
                 
                 _videos.value = mediaResult
@@ -1225,6 +1250,62 @@ class HomeViewModel @Inject constructor(
     fun reorderCustomNavItems(items: List<NavItem>) {
         viewModelScope.launch {
             _customNavItems.value = items
+        }
+    }
+
+    private fun loadFollowingUsers() {
+        viewModelScope.launch {
+            try {
+                val userId = credentialsManager.getDid() ?: return@launch
+                val followsResult = atProtocolRepository.getFollows(userId)
+                followsResult.onSuccess { response ->
+                    // Extract DIDs from the response
+                    val followingDids = response.follows.map { profile -> profile.did }.toSet()
+                    _followingUsers.value = followingDids
+                    Log.d(TAG, "✅ Successfully loaded following users. Count: ${followingDids.size}")
+                }.onFailure { error ->
+                    Log.e(TAG, "❌ Failed to load following users: ${error.message}")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error in loadFollowingUsers: ${e.message}")
+                Log.e(TAG, "Stack trace: ${e.stackTraceToString()}")
+            }
+        }
+    }
+
+    fun toggleFollow(userId: String) {
+        viewModelScope.launch {
+            try {
+                Log.d(TAG, "🔄 Toggling follow for user: $userId")
+                val currentFollowing = _followingUsers.value
+                val isCurrentlyFollowing = currentFollowing.contains(userId)
+
+                Log.d(TAG, "Current following state - isFollowing: $isCurrentlyFollowing")
+
+                runCatching {
+                    if (isCurrentlyFollowing) {
+                        Log.d(TAG, "Attempting to unfollow user")
+                        atProtocolRepository.unfollowUser(userId)
+                    } else {
+                        Log.d(TAG, "Attempting to follow user")
+                        atProtocolRepository.followUser(userId)
+                    }
+                }.onSuccess { success ->
+                    Log.d(TAG, "Follow/unfollow operation successful")
+                    _followingUsers.value = if (isCurrentlyFollowing) {
+                        currentFollowing - userId
+                    } else {
+                        currentFollowing + userId
+                    }
+                    Log.d(TAG, "Updated following state. Total following: ${_followingUsers.value.size}")
+                }.onFailure { error ->
+                    Log.e(TAG, "Failed to toggle follow: ${error.message}")
+                    throw error
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error in toggleFollow: ${e.message}")
+                Log.e(TAG, "Stack trace: ${e.stackTraceToString()}")
+            }
         }
     }
 }

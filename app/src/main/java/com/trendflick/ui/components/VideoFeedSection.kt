@@ -31,6 +31,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.BorderStroke
 import kotlinx.coroutines.delay
 
 @UnstableApi
@@ -41,6 +42,9 @@ fun VideoFeedSection(
     error: String?,
     onRefresh: () -> Unit,
     onCreateVideo: () -> Unit,
+    onFollowClick: (String) -> Unit = {},
+    onProfileClick: (String) -> Unit = {},
+    followingUsers: Set<String> = emptySet(),
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
@@ -128,10 +132,11 @@ fun VideoFeedSection(
                         VideoItem(
                             video = video,
                             isVisible = isVisible.value,
+                            isFollowing = followingUsers.contains(video.authorId),
+                            onFollowClick = { onFollowClick(video.authorId) },
                             onLikeClick = { /* TODO: Implement like action */ },
                             onCommentClick = { /* TODO: Implement comment action */ },
                             onShareClick = { /* TODO: Implement share action */ },
-                            onProfileClick = { /* TODO: Implement profile navigation */ },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .aspectRatio(9f/16f)
@@ -148,98 +153,26 @@ fun VideoFeedSection(
 private fun VideoItem(
     video: Video,
     isVisible: Boolean,
+    isFollowing: Boolean,
+    onFollowClick: () -> Unit,
     onLikeClick: () -> Unit,
     onCommentClick: () -> Unit,
     onShareClick: () -> Unit,
-    onProfileClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var isPaused by remember { mutableStateOf(false) }
-    var progress by remember { mutableStateOf(0f) }
-    var loadError by remember { mutableStateOf<String?>(null) }
-    var showHeartAnimation by remember { mutableStateOf(false) }
-    val view = LocalView.current
-
     Box(
         modifier = modifier
-            .background(MaterialTheme.colorScheme.surface)
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onDoubleTap = { 
-                        showHeartAnimation = true
-                        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                        onLikeClick()
-                    },
-                    onTap = { if (video.videoUrl.isNotBlank()) isPaused = !isPaused }
-                )
-            }
+            .fillMaxSize()
+            .background(Color.Black)
     ) {
-        if (video.videoUrl.isNotBlank()) {
-            Log.d("VideoFeedSection", "🎥 Playing video: ${video.videoUrl}")
-            VideoPlayer(
-                videoUrl = video.videoUrl,
-                isVisible = isVisible,
-                onProgressChanged = { newProgress -> progress = newProgress },
-                isPaused = isPaused,
-                modifier = Modifier.fillMaxSize(),
-                onError = { error -> 
-                    Log.e("VideoFeedSection", "❌ Video playback error: $error")
-                    loadError = error 
-                }
-            )
-        } else {
-            Log.w("VideoFeedSection", "⚠️ No video URL available for: ${video.title}")
-            Text(
-                text = video.title,
-                color = Color.White,
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(16.dp)
-            )
-        }
+        // Video player
+        VideoPlayer(
+            videoUrl = video.videoUrl,
+            isVisible = isVisible,
+            modifier = Modifier.fillMaxSize()
+        )
 
-        // Author info overlay
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.3f))
-                .padding(16.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onProfileClick() },
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                AsyncImage(
-                    model = video.authorAvatar,
-                    contentDescription = "Author avatar",
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                    contentScale = ContentScale.Crop
-                )
-                
-                Column {
-                    Text(
-                        text = video.authorName,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "@${video.username}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                    )
-                }
-            }
-        }
-
-        // Engagement actions
+        // Right side actions column
         Column(
             modifier = Modifier
                 .align(Alignment.CenterEnd)
@@ -247,90 +180,105 @@ private fun VideoItem(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            EngagementAction(
-                icon = Icons.Default.Favorite,
-                count = video.likes,
-                isActive = video.likes > 0,
-                onClick = onLikeClick
-            )
-            EngagementAction(
-                icon = Icons.Default.ChatBubble,
-                count = video.comments,
-                isActive = video.comments > 0,
-                onClick = onCommentClick
-            )
-            EngagementAction(
-                icon = Icons.Default.Share,
-                count = video.shares,
-                isActive = video.shares > 0,
-                onClick = onShareClick
-            )
-        }
-
-        // Error state
-        loadError?.let { error ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)),
-                contentAlignment = Alignment.Center
+            // Profile picture and follow button stacked
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                // Profile picture with follow button
+                Box(
+                    modifier = Modifier.wrapContentSize()
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Error,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(48.dp)
+                    AsyncImage(
+                        model = video.authorAvatar,
+                        contentDescription = "Author avatar",
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentScale = ContentScale.Crop
                     )
-                    Text(
-                        text = error,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        style = MaterialTheme.typography.bodyMedium,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
+                    
+                    // Follow button positioned at the bottom
+                    FloatingActionButton(
+                        onClick = onFollowClick,
+                        modifier = Modifier
+                            .size(24.dp)
+                            .align(Alignment.BottomCenter)
+                            .offset(y = 12.dp),
+                        containerColor = if (isFollowing) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.surface,
+                        contentColor = if (isFollowing) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.primary
+                    ) {
+                        Icon(
+                            imageVector = if (isFollowing) Icons.Default.Check else Icons.Default.Add,
+                            contentDescription = if (isFollowing) "Following" else "Follow",
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
+            }
+
+            // Like button
+            IconButton(
+                onClick = onLikeClick,
+                modifier = Modifier.size(48.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.FavoriteBorder,
+                    contentDescription = "Like",
+                    tint = Color.White,
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+
+            // Comment button
+            IconButton(
+                onClick = onCommentClick,
+                modifier = Modifier.size(48.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ChatBubbleOutline,
+                    contentDescription = "Comment",
+                    tint = Color.White,
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+
+            // Share button
+            IconButton(
+                onClick = onShareClick,
+                modifier = Modifier.size(48.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Share,
+                    contentDescription = "Share",
+                    tint = Color.White,
+                    modifier = Modifier.size(32.dp)
+                )
             }
         }
 
-        // Progress indicator
+        // Bottom overlay with author info
         Box(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
+                .align(Alignment.BottomStart)
                 .fillMaxWidth()
-                .height(2.dp)
-                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .background(Color.Black.copy(alpha = 0.3f))
+                .padding(16.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(progress)
-                    .fillMaxHeight()
-                    .background(MaterialTheme.colorScheme.primary)
-            )
-        }
-
-        // Heart animation on double-tap
-        if (showHeartAnimation) {
-            Icon(
-                imageVector = Icons.Default.Favorite,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .size(100.dp)
-                    .graphicsLayer {
-                        scaleX = 1.2f
-                        scaleY = 1.2f
-                        alpha = 0.8f
-                    }
-            )
-
-            LaunchedEffect(showHeartAnimation) {
-                delay(800)
-                showHeartAnimation = false
+            Column {
+                Text(
+                    text = video.authorName,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White
+                )
+                Text(
+                    text = video.description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White.copy(alpha = 0.7f)
+                )
             }
         }
     }

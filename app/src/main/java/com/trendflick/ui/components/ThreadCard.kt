@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -936,16 +937,18 @@ fun ThreadCard(
     feedPost: FeedPost,
     isLiked: Boolean,
     isReposted: Boolean,
+    isFollowing: Boolean = false,
     onLikeClick: () -> Unit,
     onRepostClick: () -> Unit,
     onShareClick: () -> Unit,
-    onProfileClick: () -> Unit,
+    onProfileClick: (String) -> Unit,
     onThreadClick: () -> Unit,
     onCommentClick: () -> Unit,
     onCreatePost: () -> Unit,
     onImageClick: (ImageEmbed) -> Unit,
     onHashtagClick: ((String) -> Unit)? = null,
     onLinkClick: ((String) -> Unit)? = null,
+    onFollowClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val configuration = LocalConfiguration.current
@@ -1013,39 +1016,59 @@ fun ThreadCard(
                     )
                 }
 
-                // Author row
+                // Author row with follow button
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onProfileClick() },
+                        .clickable { onProfileClick(feedPost.post.author.did) },
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    AsyncImage(
-                        model = feedPost.post.author?.avatar,
-                        contentDescription = "Profile picture",
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surfaceVariant),
-                        contentScale = ContentScale.Crop
-                    )
-                    
-                    Column {
-                        Text(
-                            text = when {
-                                !feedPost.post.author?.displayName.isNullOrBlank() -> feedPost.post.author?.displayName ?: ""
-                                !feedPost.post.author?.handle.isNullOrBlank() -> feedPost.post.author?.handle ?: ""
-                                else -> "Unknown User"
-                            },
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        AsyncImage(
+                            model = feedPost.post.author.avatar,
+                            contentDescription = "Profile picture",
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                            contentScale = ContentScale.Crop
                         )
-                        Text(
-                            text = "@${feedPost.post.author?.handle ?: "unknown"} · ${DateUtils.formatTimestamp(feedPost.post.record.createdAt)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        
+                        Column {
+                            Text(
+                                text = feedPost.post.author.displayName ?: feedPost.post.author.handle,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "@${feedPost.post.author.handle} · ${DateUtils.formatTimestamp(feedPost.post.record.createdAt)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+
+                    // Follow Button
+                    IconButton(
+                        onClick = onFollowClick,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (isFollowing) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.surfaceVariant
+                            )
+                    ) {
+                        Icon(
+                            imageVector = if (isFollowing) Icons.Default.Check else Icons.Default.Add,
+                            contentDescription = if (isFollowing) "Unfollow" else "Follow",
+                            tint = if (isFollowing) MaterialTheme.colorScheme.onPrimary
+                                  else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
@@ -1060,7 +1083,7 @@ fun ThreadCard(
                     RichTextRenderer(
                         text = feedPost.post.record.text,
                         facets = feedPost.post.record.facets ?: emptyList(),
-                        onMentionClick = { did: String -> onProfileClick() },
+                        onMentionClick = { did: String -> onProfileClick(feedPost.post.author.did) },
                         onHashtagClick = { tag: String -> onHashtagClick?.invoke(tag) },
                         onLinkClick = { url: String -> 
                             onLinkClick?.invoke(url) ?: run {
@@ -1078,7 +1101,7 @@ fun ThreadCard(
                             onImageClick = onImageClick,
                             onHashtagClick = onHashtagClick,
                             onLinkClick = onLinkClick,
-                            onProfileClick = { onProfileClick() }
+                            onProfileClick = { onProfileClick(feedPost.post.author.did) }
                         )
                     }
 
@@ -1092,7 +1115,7 @@ fun ThreadCard(
                                 onImageClick(image)
                             },
                             onLinkClick = onLinkClick,
-                            onProfileClick = onProfileClick,
+                            onProfileClick = { onProfileClick(feedPost.post.author.did) },
                             onHashtagClick = onHashtagClick
                         )
                     }

@@ -133,6 +133,23 @@ interface AtProtocolService {
         @Query("hashtag") hashtag: String
     )
 
+    @POST("xrpc/app.bsky.graph.follow")
+    suspend fun follow(
+        @Body request: FollowRequest
+    ): CreateRecordResponse
+
+    @POST("xrpc/app.bsky.graph.deleteFollow")
+    suspend fun unfollow(
+        @Query("repo") repo: String,
+        @Query("rkey") rkey: String
+    )
+
+    @GET("xrpc/app.bsky.graph.getFollow")
+    suspend fun getFollow(
+        @Query("repo") repo: String,
+        @Query("rkey") rkey: String
+    ): GetFollowResponse
+
     // Base record type for all AT Protocol records
     sealed class Record {
         abstract val type: String
@@ -250,5 +267,27 @@ interface AtProtocolService {
     data class HashtagResult(
         val tag: String,
         val count: Int
+    )
+
+    @JsonClass(generateAdapter = true)
+    data class FollowRequest(
+        @Json(name = "repo") val repo: String,
+        @Json(name = "collection") val collection: String = "app.bsky.graph.follow",
+        @Json(name = "record") val record: FollowRecord,
+        @Json(name = "rkey") val rkey: String? = null
+    )
+
+    @JsonClass(generateAdapter = true)
+    data class FollowRecord(
+        @Json(name = "\$type") val type: String = "app.bsky.graph.follow",
+        @Json(name = "subject") val subject: String,
+        @Json(name = "createdAt") val createdAt: String
+    )
+
+    @JsonClass(generateAdapter = true)
+    data class GetFollowResponse(
+        @Json(name = "uri") val uri: String,
+        @Json(name = "cid") val cid: String,
+        @Json(name = "value") val value: FollowRecord
     )
 } 
