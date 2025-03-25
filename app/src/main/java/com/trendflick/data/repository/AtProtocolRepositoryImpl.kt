@@ -909,64 +909,72 @@ class AtProtocolRepositoryImpl @Inject constructor(
 
     override suspend fun followUser(did: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            // Ensure valid session before making request
-            if (!ensureValidSession()) {
-                Log.e(TAG, "❌ No valid session available for follow request")
-                return@withContext false
-            }
-
-            val currentDid = sessionManager.getDid() ?: throw IllegalStateException("No DID found")
-            val timestamp = getCurrentTimestamp()
-            val rkey = "follow_${did.hashCode()}"
-
-            Log.d(TAG, """
-                🌐 Follow Request:
-                Actor: $currentDid
-                Subject: $did
-                Rkey: $rkey
-            """.trimIndent())
-
-            val request = AtProtocolService.FollowRequest(
-                repo = currentDid,
-                record = AtProtocolService.FollowRecord(
-                    subject = did,
-                    createdAt = timestamp
-                ),
-                rkey = rkey
+            ensureValidSession()
+            val currentUserDid = sessionManager.getDid() ?: throw IllegalStateException("No user DID found")
+            
+            // Generate a stable rkey that will be the same when we need to unfollow
+            // Following Bluesky API format: shortened did without the prefix
+            val shortDid = did.replace("did:plc:", "")
+            val rkey = shortDid
+            
+            Log.d(TAG, "Generated stable rkey for follow: $rkey")
+            
+            val followRecord = AtProtocolService.FollowRecord(
+                subject = did,
+                createdAt = Instant.now().toString()
+            )
+            
+            val followRequest = AtProtocolService.FollowRequest(
+                repo = currentUserDid,
+                record = followRecord,
+                rkey = rkey  // Include the rkey in the request
             )
 
-            service.follow(request)
-            Log.d(TAG, "✅ Follow successful")
+            Log.d(TAG, "Following user: $did with rkey: $rkey")
+            service.follow(followRequest)
+            Log.d(TAG, "Follow successful")
+            
             true
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Failed to follow user: ${e.message}")
+            // Special handling for 409 error (already following)
+            if (e is retrofit2.HttpException && e.code() == 409) {
+                Log.d(TAG, "Already following user (409), considering as success")
+                return@withContext true
+            }
+            
+            Log.e(TAG, "Error following user: ${e.message}", e)
             false
         }
     }
 
     override suspend fun unfollowUser(did: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            // Ensure valid session before making request
-            if (!ensureValidSession()) {
-                Log.e(TAG, "❌ No valid session available for unfollow request")
-                return@withContext false
+            ensureValidSession()
+            val currentUserDid = sessionManager.getDid() ?: throw IllegalStateException("No user DID found")
+            
+            // Use the same shortened DID format for the rkey that we used when following
+            val shortDid = did.replace("did:plc:", "")
+            val rkey = shortDid
+            
+            Log.d(TAG, "Unfollowing user: $did with rkey: $rkey")
+            
+            try {
+                service.unfollow(
+                    repo = currentUserDid,
+                    rkey = rkey
+                )
+                Log.d(TAG, "Unfollow successful")
+                true
+            } catch (e: Exception) {
+                // Handle 404 (not found) specifically, as it might mean the user wasn't followed
+                if (e is retrofit2.HttpException && e.code() == 404) {
+                    Log.d(TAG, "User not followed (404) or already unfollowed")
+                    return@withContext true // Consider as a success since the end state is correct
+                }
+                throw e
             }
-
-            val currentDid = sessionManager.getDid() ?: throw IllegalStateException("No DID found")
-            val rkey = "follow_${did.hashCode()}"
-
-            Log.d(TAG, """
-                🌐 Unfollow Request:
-                Actor: $currentDid
-                Subject: $did
-                Rkey: $rkey
-            """.trimIndent())
-
-            service.unfollow(currentDid, rkey)
-            Log.d(TAG, "✅ Unfollow successful")
-            true
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Failed to unfollow user: ${e.message}")
+            Log.e(TAG, "Error unfollowing user: ${e.message}", e)
             false
         }
     }

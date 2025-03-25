@@ -59,6 +59,7 @@ fun FollowingScreen(
     val isLoadingVideos by viewModel.isLoadingVideos.collectAsState()
     val videoLoadError by viewModel.videoLoadError.collectAsState()
     val selectedFeed by sharedViewModel.selectedFeed.collectAsState()
+    val followingUsers by sharedViewModel.followingUsers.collectAsState()
     val swipeRefreshState = rememberSwipeRefreshState(isRefreshing)
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
@@ -280,6 +281,7 @@ fun FollowingScreen(
                                                         feedPost = thread,
                                                         isLiked = likedPosts.contains(thread.post.uri),
                                                         isReposted = repostedPosts.contains(thread.post.uri),
+                                                        isFollowing = followingUsers.contains(thread.post.author.did),
                                                         onLikeClick = { viewModel.toggleLike(thread.post.uri) },
                                                         onRepostClick = { viewModel.repost(thread.post.uri) },
                                                         onShareClick = { viewModel.sharePost(thread.post.uri) },
@@ -295,6 +297,7 @@ fun FollowingScreen(
                                                         },
                                                         onHashtagClick = { /* TODO: Implement hashtag click */ },
                                                         onLinkClick = { url -> currentBrowserUrl = url },
+                                                        onFollowClick = { sharedViewModel.toggleFollow(thread.post.author.did) },
                                                         modifier = Modifier.fillMaxSize()
                                                     )
                                                 }
@@ -328,6 +331,7 @@ fun FollowingScreen(
                                                         feedPost = thread,
                                                         isLiked = likedPosts.contains(thread.post.uri),
                                                         isReposted = repostedPosts.contains(thread.post.uri),
+                                                        isFollowing = followingUsers.contains(thread.post.author.did),
                                                         onLikeClick = { viewModel.toggleLike(thread.post.uri) },
                                                         onRepostClick = { viewModel.repost(thread.post.uri) },
                                                         onShareClick = { viewModel.sharePost(thread.post.uri) },
@@ -343,6 +347,7 @@ fun FollowingScreen(
                                                         },
                                                         onHashtagClick = { /* TODO: Implement hashtag click */ },
                                                         onLinkClick = { url -> currentBrowserUrl = url },
+                                                        onFollowClick = { sharedViewModel.toggleFollow(thread.post.author.did) },
                                                         modifier = Modifier.fillMaxSize()
                                                     )
                                                 }
@@ -360,6 +365,9 @@ fun FollowingScreen(
                             error = videoLoadError,
                             onRefresh = { viewModel.refreshVideoFeed() },
                             onCreateVideo = onCreatePost,
+                            onFollowClick = { userId -> sharedViewModel.toggleFollow(userId) },
+                            onProfileClick = onNavigateToProfile,
+                            followingUsers = followingUsers,
                             modifier = Modifier.fillMaxSize()
                         )
                     }

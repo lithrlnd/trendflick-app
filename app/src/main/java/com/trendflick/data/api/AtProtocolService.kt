@@ -133,14 +133,15 @@ interface AtProtocolService {
         @Query("hashtag") hashtag: String
     )
 
-    @POST("xrpc/app.bsky.graph.follow")
+    @POST("xrpc/com.atproto.repo.createRecord")
     suspend fun follow(
         @Body request: FollowRequest
     ): CreateRecordResponse
 
-    @POST("xrpc/app.bsky.graph.deleteFollow")
+    @DELETE("xrpc/com.atproto.repo.deleteRecord")
     suspend fun unfollow(
         @Query("repo") repo: String,
+        @Query("collection") collection: String = "app.bsky.graph.follow",
         @Query("rkey") rkey: String
     )
 

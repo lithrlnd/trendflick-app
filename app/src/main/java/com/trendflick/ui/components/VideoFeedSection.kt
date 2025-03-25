@@ -187,7 +187,9 @@ private fun VideoItem(
             ) {
                 // Profile picture with follow button
                 Box(
-                    modifier = Modifier.wrapContentSize()
+                    modifier = Modifier
+                        .wrapContentSize()
+                        .background(Color.Black.copy(alpha = 0.3f), CircleShape)
                 ) {
                     AsyncImage(
                         model = video.authorAvatar,
@@ -207,9 +209,9 @@ private fun VideoItem(
                             .align(Alignment.BottomCenter)
                             .offset(y = 12.dp),
                         containerColor = if (isFollowing) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.surface,
+                            else MaterialTheme.colorScheme.surfaceVariant,
                         contentColor = if (isFollowing) MaterialTheme.colorScheme.onPrimary
-                        else MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.primary
                     ) {
                         Icon(
                             imageVector = if (isFollowing) Icons.Default.Check else Icons.Default.Add,
