@@ -15,7 +15,6 @@ import com.google.firebase.crashlytics.ktx.crashlytics
 import com.google.firebase.ktx.Firebase
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
-import com.trendflick.ui.theme.ThemeManager
 import dagger.hilt.android.HiltAndroidApp
 import java.io.File
 
@@ -31,10 +30,6 @@ class TrendFlickApplication : Application() {
             - Process: ${android.os.Process.myPid()}
             - Thread: ${Thread.currentThread().name}
         """.trimIndent())
-        
-        // Initialize ThemeManager
-        ThemeManager.init(this)
-        
         initializeFirebase()
     }
 

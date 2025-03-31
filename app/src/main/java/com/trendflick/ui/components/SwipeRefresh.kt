@@ -11,7 +11,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.material3.MaterialTheme
 
 @OptIn(ExperimentalMaterialApi::class)
 @Composable
@@ -32,6 +31,7 @@ fun SwipeRefresh(
             .pullRefresh(state)
     ) {
         content()
+        
         PullRefreshIndicator(
             refreshing = refreshing,
             state = state,
@@ -45,8 +45,8 @@ fun SwipeRefresh(
 @OptIn(ExperimentalMaterialApi::class)
 @Composable
 fun rememberSwipeRefreshState(
-    isRefreshing: Boolean
+    isRefreshing: Boolean,
 ): PullRefreshState = rememberPullRefreshState(
     refreshing = isRefreshing,
-    onRefresh = { /* Will be handled by parent */ }
+    onRefresh = { /* State handled by parent */ }
 ) 

@@ -25,7 +25,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.trendflick.data.model.Video
-import com.trendflick.ui.utils.CommonUtils
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -176,7 +175,7 @@ fun VideoControls(
             ) {
                 Column {
                     Text(
-                        text = "@${video.handle}",
+                        text = "@${video.userId}",
                         style = MaterialTheme.typography.labelLarge,
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
@@ -207,7 +206,7 @@ fun VideoControls(
                     Spacer(modifier = Modifier.height(4.dp))
 
                     Text(
-                        text = CommonUtils.formatCount(video.comments),
+                        text = "${video.comments}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -275,7 +274,7 @@ fun VideoControls(
                     )
                 }
                 Text(
-                    text = CommonUtils.formatCount(video.likes),
+                    text = formatCount(video.likes),
                     style = MaterialTheme.typography.labelMedium,
                     color = Color.White,
                     fontWeight = FontWeight.Bold
@@ -298,7 +297,7 @@ fun VideoControls(
                     )
                 }
                 Text(
-                    text = CommonUtils.formatCount(video.comments),
+                    text = formatCount(video.comments),
                     style = MaterialTheme.typography.labelMedium,
                     color = Color.White,
                     fontWeight = FontWeight.Bold
@@ -321,7 +320,7 @@ fun VideoControls(
                     )
                 }
                 Text(
-                    text = CommonUtils.formatCount(video.shares),
+                    text = formatCount(video.shares),
                     style = MaterialTheme.typography.labelMedium,
                     color = Color.White,
                     fontWeight = FontWeight.Bold
@@ -351,5 +350,13 @@ fun VideoControls(
                 )
             }
         }
+    }
+}
+
+private fun formatCount(count: Int): String {
+    return when {
+        count >= 1_000_000 -> String.format("%.1fM", count / 1_000_000f)
+        count >= 1_000 -> String.format("%.1fK", count / 1_000f)
+        else -> count.toString()
     }
 } 

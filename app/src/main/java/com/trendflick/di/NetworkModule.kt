@@ -7,7 +7,6 @@ import com.trendflick.data.api.*
 import com.trendflick.data.local.UserDao
 import com.trendflick.data.repository.AtProtocolRepository
 import com.trendflick.data.repository.AtProtocolRepositoryImpl
-import com.trendflick.data.auth.BlueskyCredentialsManager
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -26,11 +25,10 @@ import com.squareup.moshi.ToJson
 import com.squareup.moshi.JsonReader
 import com.squareup.moshi.JsonWriter
 import com.squareup.moshi.JsonDataException
-import android.util.Log
-import android.content.SharedPreferences
+import com.trendflick.data.api.SessionManager
+import java.net.InetAddress
 import java.util.concurrent.TimeUnit
-import com.trendflick.data.api.BlueskyApi
-import retrofit2.converter.gson.GsonConverterFactory
+import android.util.Log
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -43,61 +41,57 @@ object NetworkModule {
         @FromJson
         fun fromJson(reader: JsonReader): Facet? {
             try {
-                var index: FacetIndex? = null
+                var index: TextRange? = null
                 var features: MutableList<FacetFeature> = mutableListOf()
                 
                 reader.beginObject()
                 while (reader.hasNext()) {
                     when (reader.nextName()) {
                         "index" -> {
-                            reader.beginObject()
-                            var start: Int? = null
-                            var end: Int? = null
-                            while (reader.hasNext()) {
-                                when (reader.nextName()) {
-                                    "start", "byteStart" -> start = reader.nextInt()
-                                    "end", "byteEnd" -> end = reader.nextInt()
-                                    else -> reader.skipValue()
-                                }
-                            }
-                            reader.endObject()
-                            if (start != null && end != null) {
-                                index = FacetIndex(start, end)
-                            }
-                        }
-                        "features" -> {
-                            reader.beginArray()
-                            while (reader.hasNext()) {
+                            try {
                                 reader.beginObject()
-                                var type: String? = null
-                                var uri: String? = null
-                                var did: String? = null
-                                var tag: String? = null
-                                
+                                var start: Int? = null
+                                var end: Int? = null
                                 while (reader.hasNext()) {
                                     when (reader.nextName()) {
-                                        "\$type" -> type = reader.nextString()
-                                        "uri" -> uri = reader.nextString()
-                                        "did" -> did = reader.nextString()
-                                        "tag" -> tag = reader.nextString()
+                                        "start", "byteStart" -> start = reader.nextInt()
+                                        "end", "byteEnd" -> end = reader.nextInt()
                                         else -> reader.skipValue()
                                     }
                                 }
                                 reader.endObject()
-                                
-                                when {
-                                    type?.contains("mention") == true && did != null -> {
-                                        features.add(MentionFeature(did = did))
-                                    }
-                                    type?.contains("link") == true && uri != null -> {
-                                        features.add(LinkFeature(uri = uri))
-                                    }
-                                    type?.contains("tag") == true && tag != null -> {
-                                        features.add(TagFeature(tag = tag))
-                                    }
+                                if (start != null && end != null) {
+                                    index = TextRange(start, end)
                                 }
+                            } catch (e: Exception) {
+                                reader.skipValue()
                             }
-                            reader.endArray()
+                        }
+                        "features" -> {
+                            try {
+                                reader.beginArray()
+                                while (reader.hasNext()) {
+                                    reader.beginObject()
+                                    var uri: String? = null
+                                    var did: String? = null
+                                    var tag: String? = null
+                                    var type: String? = null
+                                    while (reader.hasNext()) {
+                                        when (reader.nextName()) {
+                                            "\$type" -> type = reader.nextString()
+                                            "uri" -> uri = reader.nextString()
+                                            "did" -> did = reader.nextString()
+                                            "tag" -> tag = reader.nextString()
+                                            else -> reader.skipValue()
+                                        }
+                                    }
+                                    reader.endObject()
+                                    features.add(FacetFeature(type, uri, did, tag))
+                                }
+                                reader.endArray()
+                            } catch (e: Exception) {
+                                reader.skipValue()
+                            }
                         }
                         else -> reader.skipValue()
                     }
@@ -127,17 +121,14 @@ object NetworkModule {
             writer.name("start").value(value.index.start)
             writer.name("end").value(value.index.end)
             writer.endObject()
-            
             writer.name("features")
             writer.beginArray()
             value.features.forEach { feature ->
                 writer.beginObject()
-                writer.name("\$type").value(feature.type)
-                when (feature) {
-                    is MentionFeature -> writer.name("did").value(feature.did)
-                    is LinkFeature -> writer.name("uri").value(feature.uri)
-                    is TagFeature -> writer.name("tag").value(feature.tag)
-                }
+                feature.type?.let { writer.name("\$type").value(it) }
+                feature.uri?.let { writer.name("uri").value(it) }
+                feature.did?.let { writer.name("did").value(it) }
+                feature.tag?.let { writer.name("tag").value(it) }
                 writer.endObject()
             }
             writer.endArray()
@@ -151,7 +142,8 @@ object NetworkModule {
             var uri: String? = null
             var title: String? = null
             var description: String? = null
-            var thumb: BlobRef? = null
+            var thumbUrl: String? = null
+            var thumbBlob: BlobRef? = null
 
             reader.beginObject()
             while (reader.hasNext()) {
@@ -167,14 +159,17 @@ object NetworkModule {
                         }
                     }
                     "thumb" -> {
-                        if (reader.peek() == JsonReader.Token.BEGIN_OBJECT) {
+                        if (reader.peek() == JsonReader.Token.STRING) {
+                            thumbUrl = reader.nextString()
+                        } else if (reader.peek() != JsonReader.Token.NULL) {
                             reader.beginObject()
+                            var type: String? = null
                             var link: String? = null
                             var mimeType: String? = null
                             var size: Long? = null
-                            
                             while (reader.hasNext()) {
                                 when (reader.nextName()) {
+                                    "\$type" -> type = reader.nextString()
                                     "\$link" -> link = reader.nextString()
                                     "mimeType" -> mimeType = reader.nextString()
                                     "size" -> size = reader.nextLong()
@@ -182,9 +177,9 @@ object NetworkModule {
                                 }
                             }
                             reader.endObject()
-                            thumb = BlobRef(link, mimeType, size)
+                            thumbBlob = BlobRef(type, link, mimeType, size)
                         } else {
-                            reader.skipValue()
+                            reader.nextNull<String>()
                         }
                     }
                     else -> reader.skipValue()
@@ -192,16 +187,11 @@ object NetworkModule {
             }
             reader.endObject()
 
-            if (uri == null) {
-                throw JsonDataException("Required field 'uri' missing for ExternalEmbed")
+            if (uri == null || title == null) {
+                throw JsonDataException("Required fields missing for ExternalEmbed")
             }
 
-            return ExternalEmbed(
-                uri = uri,
-                title = title,
-                description = description,
-                thumb = thumb
-            )
+            return ExternalEmbed(uri, title, description, thumbUrl, thumbBlob)
         }
 
         @ToJson
@@ -210,12 +200,14 @@ object NetworkModule {
             writer.name("uri").value(value.uri)
             writer.name("title").value(value.title)
             value.description?.let { writer.name("description").value(it) }
-            value.thumb?.let { thumb ->
+            value.thumbUrl?.let { writer.name("thumb").value(it) }
+            value.thumbBlob?.let { blob ->
                 writer.name("thumb")
                 writer.beginObject()
-                writer.name("\$link").value(thumb.link)
-                writer.name("mimeType").value(thumb.mimeType)
-                writer.name("size").value(thumb.size)
+                blob.type?.let { writer.name("\$type").value(it) }
+                blob.link?.let { writer.name("\$link").value(it) }
+                blob.mimeType?.let { writer.name("mimeType").value(it) }
+                blob.size?.let { writer.name("size").value(it) }
                 writer.endObject()
             }
             writer.endObject()
@@ -228,6 +220,14 @@ object NetworkModule {
         @ApplicationContext context: Context
     ): SessionManager {
         return SessionManager(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideCredentialsManager(
+        @ApplicationContext context: Context
+    ): CredentialsManager {
+        return CredentialsManager(context)
     }
 
     @Provides
@@ -275,9 +275,6 @@ object NetworkModule {
     @Singleton
     fun provideMoshi(): Moshi {
         return Moshi.Builder()
-            .add(RecordJsonAdapter.FACTORY)
-            .add(FacetFeatureJsonAdapter.FACTORY)
-            .add(FeatureJsonAdapter.FACTORY)
             .add(FacetAdapter())
             .add(ExternalEmbedAdapter())
             .addLast(KotlinJsonAdapterFactory())
@@ -305,77 +302,8 @@ object NetworkModule {
         userDao: UserDao,
         @ApplicationContext context: Context,
         sessionManager: SessionManager,
-        credentialsManager: BlueskyCredentialsManager
+        credentialsManager: CredentialsManager
     ): AtProtocolRepository {
         return AtProtocolRepositoryImpl(service, userDao, context, sessionManager, credentialsManager)
-    }
-
-    private fun createBlobRef(link: String?, mimeType: String?, size: Long?): BlobRef {
-        return BlobRef(
-            link = link,
-            mimeType = mimeType,
-            size = size
-        )
-    }
-
-    private fun createExternalEmbed(
-        uri: String,
-        title: String?,
-        description: String?,
-        thumb: BlobRef?
-    ): ExternalEmbed {
-        return ExternalEmbed(
-            uri = uri,
-            title = title,
-            description = description,
-            thumb = thumb
-        )
-    }
-
-    private fun mapToVideoModel(post: Post): VideoModel {
-        val thumbnailUrl = when {
-            post.embed?.external?.thumb?.link != null -> {
-                "https://cdn.bsky.app/img/feed_thumbnail/plain/${post.embed.external.thumb.link}@jpeg"
-            }
-            post.embed?.images?.firstOrNull()?.thumb != null -> {
-                post.embed.images.first().thumb
-            }
-            post.embed?.images?.firstOrNull()?.image?.link != null -> {
-                val imageLink = post.embed.images.first().image?.link
-                "https://cdn.bsky.app/img/feed_thumbnail/plain/$imageLink@jpeg"
-            }
-            else -> null
-        }
-
-        return VideoModel(
-            uri = post.uri,
-            title = post.embed?.external?.title,
-            description = post.record.text,
-            thumbnailUrl = thumbnailUrl,
-            videoUrl = post.embed?.video?.ref?.link?.let { "https://cdn.bsky.app/video/plain/$it" },
-            authorDid = post.author.did,
-            authorHandle = post.author.handle,
-            authorName = post.author.displayName,
-            authorAvatar = post.author.avatar,
-            createdAt = post.record.createdAt,
-            likes = post.likeCount ?: 0,
-            comments = post.replyCount ?: 0,
-            reposts = post.repostCount ?: 0,
-            aspectRatio = post.embed?.video?.aspectRatio?.let { it.width.toFloat() / it.height.toFloat() }
-        )
-    }
-
-    @Provides
-    @Singleton
-    fun provideBlueskyApi(
-        okHttpClient: OkHttpClient,
-        moshi: Moshi
-    ): BlueskyApi {
-        return Retrofit.Builder()
-            .baseUrl(BASE_URL)
-            .client(okHttpClient)
-            .addConverterFactory(MoshiConverterFactory.create(moshi))
-            .build()
-            .create(BlueskyApi::class.java)
     }
 } 

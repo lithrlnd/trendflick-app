@@ -17,85 +17,56 @@ class BlueskyCredentialsManager @Inject constructor(
     private val sessionManager: SessionManager,
     private val sharedPreferences: SharedPreferences
 ) {
-    private val TAG = "TF_CredentialsManager"
-    private val masterKeyAlias by lazy {
-        try {
-            MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
-        } catch (e: Exception) {
-            Log.e("TF_Credentials", "❌ Failed to create master key: ${e.message}")
-            null
-        }
-    }
+    private val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
     
-    private val prefs by lazy {
-        try {
-            masterKeyAlias?.let { keyAlias ->
-                EncryptedSharedPreferences.create(
-                    "bluesky_credentials",
-                    keyAlias,
-                    context,
-                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-                )
-            } ?: sharedPreferences
-        } catch (e: Exception) {
-            Log.e("TF_Credentials", "❌ Failed to create encrypted prefs: ${e.message}")
-            sharedPreferences
-        }
-    }
+    private val prefs = EncryptedSharedPreferences.create(
+        "bluesky_credentials",
+        masterKeyAlias,
+        context,
+        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+    )
 
     fun saveCredentials(handle: String, password: String) {
-        Log.d(TAG, "💾 Saving credentials for handle: $handle")
-        try {
-            // Try to save in encrypted storage first
-            prefs.edit()
-                .putString(KEY_HANDLE, handle)
-                .putString(KEY_PASSWORD, password)
-                .commit()
-            
-            // Clear any old unencrypted data
-            if (prefs !== sharedPreferences) {
-                sharedPreferences.edit()
-                    .remove(KEY_HANDLE)
-                    .remove(KEY_PASSWORD)
-                    .commit()
-            }
-        } catch (e: Exception) {
-            Log.e("TF_Credentials", "❌ Failed to save credentials: ${e.message}")
-            // Fallback to unencrypted storage
-            sharedPreferences.edit()
-                .putString(KEY_HANDLE, handle)
-                .putString(KEY_PASSWORD, password)
-                .commit()
-        }
+        Log.d("TF_Credentials", "💾 Saving credentials for handle: $handle")
+        prefs.edit()
+            .putString(KEY_HANDLE, handle)
+            .putString(KEY_PASSWORD, password)
+            .commit()
     }
 
     fun getCredentials(): Pair<String?, String?> {
-        val handle = getHandle()
-        val password = getPassword()
-        Log.d(TAG, """
-            🔑 Getting credentials:
-            Handle exists: ${!handle.isNullOrEmpty()}
-            Password exists: ${!password.isNullOrEmpty()}
-        """.trimIndent())
-        return Pair(handle, password)
+        return try {
+            val handle = getHandle()
+            val password = getPassword()
+            
+            Log.d("TF_Credentials", "🔍 Retrieved credentials - Handle exists: ${!handle.isNullOrEmpty()}, Password exists: ${!password.isNullOrEmpty()}")
+            
+            if (handle.isNullOrEmpty() || password.isNullOrEmpty()) {
+                Log.d("TF_Credentials", "⚠️ Incomplete credentials found - clearing")
+                clearCredentials()
+                Pair(null, null)
+            } else {
+                Pair(handle, password)
+            }
+        } catch (e: Exception) {
+            Log.e("TF_Credentials", "❌ Error retrieving credentials: ${e.message}")
+            clearCredentials()
+            Pair(null, null)
+        }
     }
 
     fun getHandle(): String? = try {
-        val handle = prefs.getString(KEY_HANDLE, null) ?: sharedPreferences.getString(KEY_HANDLE, BuildConfig.BLUESKY_HANDLE)
-        Log.d(TAG, "🔍 Retrieved handle: ${handle ?: "null"}")
-        handle
-    } catch (e: Exception) {
-        Log.w("TF_Credentials", "⚠️ Could not get handle: ${e.message}")
+        prefs.getString(KEY_HANDLE, BuildConfig.BLUESKY_HANDLE)
+    } catch (e: SecurityException) {
+        Log.w("TF_Credentials", "⚠️ Could not decrypt handle: ${e.message}")
         sharedPreferences.getString(KEY_HANDLE, BuildConfig.BLUESKY_HANDLE)
     }
     
     fun getPassword(): String? = try {
-        val password = prefs.getString(KEY_PASSWORD, null) ?: sharedPreferences.getString(KEY_PASSWORD, BuildConfig.BLUESKY_APP_PASSWORD)
-        Log.d(TAG, "🔍 Retrieved password: ${if (password != null) "****" else "null"}")
-        password
-    } catch (e: Exception) {
-        Log.w("TF_Credentials", "⚠️ Could not get password: ${e.message}")
+        prefs.getString(KEY_PASSWORD, BuildConfig.BLUESKY_APP_PASSWORD)
+    } catch (e: SecurityException) {
+        Log.w("TF_Credentials", "⚠️ Could not decrypt password: ${e.message}")
         sharedPreferences.getString(KEY_PASSWORD, BuildConfig.BLUESKY_APP_PASSWORD)
     }
     
@@ -104,77 +75,83 @@ class BlueskyCredentialsManager @Inject constructor(
     fun getRefreshToken(): String? = sessionManager.getRefreshToken()
     
     fun clearCredentials() {
-        Log.d(TAG, "🧹 Clearing all credentials")
+        Log.d("TF_Credentials", "🗑️ Starting BlueSky credentials cleanup")
         
         try {
-            // 1. Clear session data first
+            // 1. Clear session data first (this includes PDS info)
             sessionManager.clearSession()
             Log.d("TF_Credentials", "✅ Session data cleared")
             
-            // 2. Clear both storage locations
-            var clearedAny = false
-            
+            // 2. Clear shared preferences directly if encrypted prefs fail
             try {
-                if (prefs !== sharedPreferences) {
-                    prefs.edit().clear().commit()
-                    clearedAny = true
-                    Log.d("TF_Credentials", "✅ Encrypted storage cleared")
-                }
-            } catch (e: Exception) {
-                Log.w("TF_Credentials", "⚠️ Failed to clear encrypted storage: ${e.message}")
-            }
-            
-            try {
+                prefs.edit().clear().commit()
+                Log.d("TF_Credentials", "✅ Encrypted credentials cleared")
+            } catch (e: SecurityException) {
+                Log.w("TF_Credentials", "⚠️ Could not clear encrypted prefs: ${e.message}")
+                // Fallback to clearing regular shared preferences
                 sharedPreferences.edit()
                     .remove(KEY_HANDLE)
                     .remove(KEY_PASSWORD)
                     .commit()
-                clearedAny = true
-                Log.d("TF_Credentials", "✅ Unencrypted storage cleared")
-            } catch (e: Exception) {
-                Log.w("TF_Credentials", "⚠️ Failed to clear unencrypted storage: ${e.message}")
+                Log.d("TF_Credentials", "✅ Fallback: credentials cleared from regular prefs")
             }
             
-            if (!clearedAny) {
-                Log.e("TF_Credentials", "❌ Failed to clear any storage location")
-            }
-            
-            // 3. Verify cleanup
+            // 3. Double check everything is cleared
             if (getHandle() != null || getPassword() != null) {
-                Log.w("TF_Credentials", "⚠️ Credentials still present after clear")
-                // One final attempt with both clear() and remove()
+                Log.w("TF_Credentials", "⚠️ Credentials still present after clear, forcing removal")
                 try {
+                    // Force clear both storage locations
                     prefs.edit().clear().commit()
                     sharedPreferences.edit().clear().commit()
-                    Log.d("TF_Credentials", "✅ Final cleanup completed")
                 } catch (e: Exception) {
-                    Log.e("TF_Credentials", "❌ Final cleanup failed: ${e.message}")
+                    Log.e("TF_Credentials", "❌ Final cleanup attempt failed: ${e.message}")
                 }
             }
+            
         } catch (e: Exception) {
-            Log.e("TF_Credentials", "❌ Error during cleanup: ${e.message}")
+            Log.e("TF_Credentials", """
+                ❌ Error during credentials cleanup:
+                Type: ${e.javaClass.name}
+                Message: ${e.message}
+            """.trimIndent())
+            
+            // Last resort: try to clear everything we can
+            try {
+                sessionManager.clearSession()
+                sharedPreferences.edit().clear().commit()
+                prefs.edit().clear().commit()
+            } catch (e2: Exception) {
+                Log.e("TF_Credentials", "❌ Emergency cleanup failed: ${e2.message}")
+            }
         }
     }
 
     fun hasValidCredentials(): Boolean {
-        val (handle, password) = getCredentials()
-        val hasCredentials = !handle.isNullOrEmpty() && !password.isNullOrEmpty()
-        val hasSession = sessionManager.hasValidSession()
-        
-        Log.d(TAG, """
-            🔐 Checking auth state:
-            Handle present: ${!handle.isNullOrEmpty()}
-            Password present: ${!password.isNullOrEmpty()}
-            Session valid: $hasSession
-            Overall valid: ${hasCredentials && hasSession}
-        """.trimIndent())
-        
-        return hasCredentials && hasSession
-    }
-
-    fun saveDid(did: String) {
-        Log.d(TAG, "💾 Saving DID: $did")
-        prefs.edit().putString("did", did).apply()
+        try {
+            val (handle, password) = getCredentials()
+            val hasCredentials = !handle.isNullOrEmpty() && !password.isNullOrEmpty()
+            
+            // Check session state first
+            val hasSession = sessionManager.hasValidSession()
+            
+            Log.d("TF_Credentials", """
+                🔐 Checking auth state:
+                Handle present: ${!handle.isNullOrEmpty()}
+                Password present: ${!password.isNullOrEmpty()}
+                Session valid: $hasSession
+                Overall valid: ${hasCredentials && hasSession}
+            """.trimIndent())
+            
+            return hasCredentials && hasSession
+        } catch (e: SecurityException) {
+            Log.e("TF_Credentials", "❌ Security error checking credentials: ${e.message}")
+            // If we can't decrypt, consider credentials invalid
+            clearCredentials() // Clean up any corrupted state
+            return false
+        } catch (e: Exception) {
+            Log.e("TF_Credentials", "❌ Error checking credentials: ${e.message}")
+            return false
+        }
     }
 
     companion object {

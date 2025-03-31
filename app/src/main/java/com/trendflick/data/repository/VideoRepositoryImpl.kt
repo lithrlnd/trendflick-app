@@ -410,14 +410,14 @@ class VideoRepositoryImpl @Inject constructor(
                         close(error)
                         return@addSnapshotListener
                     }
-
+                    
                     if (snapshot == null) {
                         Log.w(TAG, "⚠️ Snapshot is null")
                         trySend(emptyList())
                         return@addSnapshotListener
                     }
                     
-                try {
+                    try {
                         val videos = snapshot.documents.mapNotNull { doc ->
                             try {
                                 val data = doc.data
@@ -425,8 +425,8 @@ class VideoRepositoryImpl @Inject constructor(
                                     Log.w(TAG, "⚠️ Document ${doc.id} has no data")
                                     return@mapNotNull null
                                 }
-
-                            Video(
+                                
+                                Video(
                                     uri = doc.id,
                                     videoUrl = data["videoUrl"] as? String ?: run {
                                         Log.e(TAG, "❌ Missing videoUrl in doc ${doc.id}")
@@ -440,8 +440,8 @@ class VideoRepositoryImpl @Inject constructor(
                                             Instant.now()
                                         } else {
                                             Instant.parse(createdAtStr)
-                            }
-                                } catch (e: Exception) {
+                                        }
+                                    } catch (e: Exception) {
                                         Log.e(TAG, "❌ Error parsing createdAt in doc ${doc.id}: ${e.message}")
                                         Instant.now()
                                     },
@@ -464,8 +464,8 @@ class VideoRepositoryImpl @Inject constructor(
                                             Instant.now()
                                         } else {
                                             Instant.parse(sortAtStr)
-                                }
-                        } catch (e: Exception) {
+                                        }
+                                    } catch (e: Exception) {
                                         Log.e(TAG, "❌ Error parsing sortAt in doc ${doc.id}: ${e.message}")
                                         Instant.now()
                                     },
@@ -487,34 +487,34 @@ class VideoRepositoryImpl @Inject constructor(
                                         👤 User: ${video.username}
                                     """.trimIndent())
                                 }
-                                } catch (e: Exception) {
+                            } catch (e: Exception) {
                                 Log.e(TAG, """
                                     ❌ Error parsing doc ${doc.id}:
                                     Error: ${e.message}
                                     Stack: ${e.stackTraceToString()}
                                 """.trimIndent())
-                                    null
-                    }
-                    }
+                                null
+                            }
+                        }
                         
                         Log.d(TAG, """
                             📊 Feed Update:
                             Total Videos: ${videos.size}
                             Latest Video: ${videos.firstOrNull()?.videoUrl}
                         """.trimIndent())
-
-                    trySend(videos)
                         
-                } catch (e: Exception) {
+                        trySend(videos)
+                        
+                    } catch (e: Exception) {
                         Log.e(TAG, """
                             ❌ Error processing feed:
                             Error: ${e.message}
                             Stack: ${e.stackTraceToString()}
                         """.trimIndent())
                         close(e)
+                    }
                 }
-            }
-            
+                
             awaitClose { 
                 Log.d(TAG, "👋 Closing video feed listener")
                 registration.remove()

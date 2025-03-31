@@ -4,7 +4,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.trendflick.data.repository.AtProtocolRepository
-import com.trendflick.data.repository.UserSearchResult
+import com.trendflick.data.repository.VideoRepository
 import com.trendflick.data.model.Video
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,318 +14,226 @@ import kotlinx.coroutines.launch
 import java.time.Instant
 import javax.inject.Inject
 import android.util.Log
-import java.io.File
-import kotlinx.coroutines.delay
-import com.trendflick.data.repository.BlueskyRepository
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
-import org.json.JSONObject
-import com.trendflick.data.model.TrendingHashtag
-import com.trendflick.domain.model.UserProfile
-import com.trendflick.domain.model.Hashtag
 
 data class CreateFlickUiState(
     val isLoading: Boolean = false,
     val uploadProgress: Float = 0f,
     val isPostSuccessful: Boolean = false,
-    val error: String? = null,
-    val userSuggestions: List<UserSearchResult> = emptyList(),
-    val hashtagSuggestions: List<TrendingHashtag> = emptyList()
+    val video: Video? = null,
+    val error: String? = null
 )
 
 @HiltViewModel
 class CreateFlickViewModel @Inject constructor(
-    application: Application,
-    private val atProtocolRepository: AtProtocolRepository,
-    private val blueskyRepository: BlueskyRepository
-) : AndroidViewModel(application) {
+    private val videoRepository: VideoRepository,
+    private val atProtocolRepository: AtProtocolRepository
+) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CreateFlickUiState())
     val uiState: StateFlow<CreateFlickUiState> = _uiState.asStateFlow()
 
-    private val _currentQuery = MutableStateFlow("")
-    val currentQuery: StateFlow<String> = _currentQuery.asStateFlow()
+    private val _suggestions = MutableStateFlow<List<String>>(emptyList())
+    val suggestions: StateFlow<List<String>> = _suggestions.asStateFlow()
 
-    private val _userSuggestions = MutableStateFlow<List<UserProfile>>(emptyList())
-    val userSuggestions: StateFlow<List<UserProfile>> = _userSuggestions.asStateFlow()
+    private val TAG = "TF_VideoRepo"
 
-    private val _hashtagSuggestions = MutableStateFlow<List<Hashtag>>(emptyList())
-    val hashtagSuggestions: StateFlow<List<Hashtag>> = _hashtagSuggestions.asStateFlow()
+    private fun extractFacets(text: String): List<Map<String, Any>> {
+        val facets = mutableListOf<Map<String, Any>>()
+        val textBytes = text.encodeToByteArray()
+        
+        // Find mentions (@handle.bsky.social)
+        val mentionRegex = Regex("@([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)")
+        mentionRegex.findAll(text).forEach { matchResult ->
+            val handle = matchResult.groupValues[1]
+            val byteRange = matchResult.range
+            val byteStart = text.substring(0, byteRange.first).encodeToByteArray().size
+            val byteEnd = text.substring(0, byteRange.last + 1).encodeToByteArray().size
+            
+            // Get the DID for the handle using identity.resolveHandle
+            viewModelScope.launch {
+                try {
+                    val did = atProtocolRepository.identityResolveHandle(handle)
+                    facets.add(mapOf(
+                        "index" to mapOf(
+                            "byteStart" to byteStart,
+                            "byteEnd" to byteEnd
+                        ),
+                        "features" to listOf(mapOf(
+                            "\$type" to "app.bsky.richtext.facet#mention",
+                            "did" to did
+                        ))
+                    ))
+                } catch (e: Exception) {
+                    // Handle error - invalid handle
+                }
+            }
+        }
 
-    private val TAG = "TF_CreateFlickViewModel"
+        // Find hashtags (#tag)
+        val hashtagRegex = Regex("#([a-zA-Z0-9]+)")
+        hashtagRegex.findAll(text).forEach { matchResult ->
+            val tag = matchResult.groupValues[1]
+            val byteRange = matchResult.range
+            val byteStart = text.substring(0, byteRange.first).encodeToByteArray().size
+            val byteEnd = text.substring(0, byteRange.last + 1).encodeToByteArray().size
+            
+            facets.add(mapOf(
+                "index" to mapOf(
+                    "byteStart" to byteStart,
+                    "byteEnd" to byteEnd
+                ),
+                "features" to listOf(mapOf(
+                    "\$type" to "app.bsky.richtext.facet#tag",
+                    "tag" to tag
+                ))
+            ))
+        }
 
-    fun createFlick(videoUri: Uri, description: String) {
+        // Find URLs
+        val urlRegex = Regex("https?://[^\\s]+")
+        urlRegex.findAll(text).forEach { matchResult ->
+            val url = matchResult.value
+            val byteRange = matchResult.range
+            val byteStart = text.substring(0, byteRange.first).encodeToByteArray().size
+            val byteEnd = text.substring(0, byteRange.last + 1).encodeToByteArray().size
+            
+            facets.add(mapOf(
+                "index" to mapOf(
+                    "byteStart" to byteStart,
+                    "byteEnd" to byteEnd
+                ),
+                "features" to listOf(mapOf(
+                    "\$type" to "app.bsky.richtext.facet#link",
+                    "uri" to url
+                ))
+            ))
+        }
+
+        return facets
+    }
+
+    fun searchBlueSkyUsers(query: String) {
+        viewModelScope.launch {
+            try {
+                // Use AtProtocolRepository to search for users
+                val users = atProtocolRepository.searchUsers(query)
+                _suggestions.value = users.map { "${it.handle}" } // Include full handle with domain
+            } catch (e: Exception) {
+                // Handle error silently - keep existing suggestions
+                _suggestions.value = emptyList()
+            }
+        }
+    }
+
+    fun searchHashtags(query: String) {
+        viewModelScope.launch {
+            try {
+                // Fallback to local list since BlueSky doesn't have a hashtag search API yet
+                _suggestions.value = listOf(
+                    "trending",
+                    "viral",
+                    "fyp",
+                    "foryou",
+                    "trendflick",
+                    "video",
+                    "reels"
+                ).filter { it.contains(query, ignoreCase = true) }
+            } catch (e: Exception) {
+                _suggestions.value = emptyList()
+            }
+        }
+    }
+
+    fun createFlick(videoUri: Uri, description: String, postToBlueSky: Boolean) {
         viewModelScope.launch {
             try {
                 Log.d(TAG, """
                     🎬 CREATE FLICK START
                     Description: $description
-                    VideoUri: $videoUri
+                    PostToBlueSky: $postToBlueSky
                 """.trimIndent())
                 
                 _uiState.value = CreateFlickUiState(isLoading = true)
                 
-                // Get the actual file path from Uri
-                val context = getApplication<Application>()
-                val originalVideoFile = when {
-                    videoUri.scheme == "file" -> File(videoUri.path!!)
-                    videoUri.scheme == "content" -> {
-                        val timestamp = System.currentTimeMillis()
-                        val tempFile = File(context.cacheDir, "TrendFlick_video_$timestamp.mp4")
-                        
-                        try {
-                            context.contentResolver.openInputStream(videoUri)?.use { input ->
-                                tempFile.outputStream().use { output ->
-                                    input.copyTo(output)
-                                }
-                            } ?: throw IllegalStateException("Failed to open video file stream")
-                            
-                            if (!tempFile.exists() || tempFile.length() == 0L) {
-                                throw IllegalStateException("Failed to create temporary video file")
-                            }
-                            
-                            Log.d(TAG, """
-                                📁 Temporary file created:
-                                Path: ${tempFile.absolutePath}
-                                Size: ${tempFile.length()} bytes
-                                Exists: ${tempFile.exists()}
-                            """.trimIndent())
-                            
-                            tempFile
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Failed to create temporary file: ${e.message}")
-                            throw IllegalStateException("Failed to process video file: ${e.message}")
-                        }
-                    }
-                    else -> throw IllegalStateException("Unsupported URI scheme: ${videoUri.scheme}")
-                }
+                // 1. Upload video to Firebase Storage
+                Log.d(TAG, "📤 UPLOAD: Starting video upload to Firebase")
+                val videoUrl = uploadVideo(videoUri)
+                Log.d(TAG, "📤 UPLOAD: Success - URL: $videoUrl")
 
-                try {
-                    if (!originalVideoFile.exists()) {
-                        throw IllegalStateException("Video file does not exist at path: ${originalVideoFile.absolutePath}")
-                    }
-
-                    // Check video duration
-                    val retriever = android.media.MediaMetadataRetriever()
-                    retriever.setDataSource(originalVideoFile.absolutePath)
-                    val durationMs = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: 0
-                    
-                    if (durationMs > 60000) { // 60 seconds in milliseconds
-                        throw IllegalStateException("Video is too long. Maximum duration is 60 seconds.")
-                    }
-
-                    // First ensure we have a valid session
-                    val sessionValid = atProtocolRepository.ensureValidSession()
-                    if (!sessionValid) {
-                        throw IllegalStateException("BlueSky session is invalid. Please log in again.")
-                    }
-
-                    // Add TrendFlick signature to description with proper spacing
-                    val signedDescription = buildString {
-                        append(description.trim())
-                        append("\n\n") // Add two newlines for proper spacing
-                        append("Posted from TrendFlick ✨")
-                    }
-
-                    Log.d(TAG, "📝 Post text with signature: $signedDescription")
-
-                    // Upload video to BlueSky with signed description
-                    val uploadResult = blueskyRepository.uploadVideo(originalVideoFile, signedDescription)
-                    
-                    if (uploadResult.error != null) {
-                        throw IllegalStateException(uploadResult.error)
-                    }
-
-                    if (uploadResult.blobRef == null) {
-                        throw IllegalStateException("Failed to upload video: No blob reference returned")
-                    }
-
-                    // Parse facets for mentions and hashtags in description
-                    val facets = try {
-                        atProtocolRepository.parseFacets(signedDescription)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed to parse facets: ${e.message}")
-                        null
-                    }
-
-                    // Create BlueSky post with video embed and facets
-                    val record = mutableMapOf<String, Any>(
-                        "did" to (atProtocolRepository.getDid() ?: throw IllegalStateException("No DID found")),
-                        "\$type" to "app.bsky.feed.post",
-                        "text" to signedDescription,
-                        "createdAt" to java.time.Instant.now().toString()
-                    )
-
-                    // Add video embed
-                    val embed = mutableMapOf<String, Any>(
-                        "\$type" to "app.bsky.embed.video",
-                        "video" to uploadResult.blobRef
-                    )
-                    record["embed"] = embed
-                    
-                    // Add facets if available
-                    if (facets != null) {
-                        record["facets"] = facets
-                    }
-
-                    val postResult = atProtocolRepository.createPost(record)
-
-                    Log.d(TAG, """
-                        ✅ Post created successfully:
-                        URI: ${uploadResult.postUri}
-                        Description: $signedDescription
-                        Facets: ${facets?.size ?: 0}
-                    """.trimIndent())
-                    _uiState.value = CreateFlickUiState(isPostSuccessful = true)
-
-                } finally {
-                    // Clean up temp files
-                    try {
-                        if (videoUri.scheme == "content") {
-                            originalVideoFile.delete()
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed to delete temp files: ${e.message}")
-                    }
-                }
-
-            } catch (e: Exception) {
-                Log.e(TAG, """
-                    ❌ Error creating flick:
-                    Error: ${e.message}
-                    Stack: ${e.stackTraceToString()}
-                """.trimIndent())
-                _uiState.value = CreateFlickUiState(error = when {
-                    e.message?.contains("too long") == true -> "Video is too long. Maximum duration is 60 seconds."
-                    e.message?.contains("session is invalid") == true -> "Please log in to BlueSky again."
-                    else -> e.message ?: "Failed to create post"
+                // 2. Get user info - AT Protocol only needed if posting to BlueSky
+                val currentUser = if (postToBlueSky) {
+                    atProtocolRepository.getCurrentSession()
+                        ?: throw IllegalStateException("AT Protocol authentication required to post to BlueSky")
+                } else null
+                
+                Log.d(TAG, if (postToBlueSky) {
+                    "👤 USER: DID=${currentUser?.did}, Handle=${currentUser?.handle}"
+                } else {
+                    "👤 USER: Posting to TrendFlick only (no BlueSky)"
                 })
-            }
-        }
-    }
+                
+                // 3. Save video metadata
+                val timestamp = Instant.now().toString()
+                Log.d(TAG, "💾 METADATA: Saving with timestamp=$timestamp")
+                val video = videoRepository.saveVideoMetadata(
+                    videoUrl = videoUrl,
+                    description = description,
+                    timestamp = timestamp,
+                    did = currentUser?.did ?: "",  // Empty string if null
+                    handle = currentUser?.handle ?: "",  // Empty string if null
+                    postToBlueSky = postToBlueSky
+                )
+                Log.d(TAG, "💾 METADATA: Saved successfully - URI=${video.uri}")
 
-    fun updateQuery(newText: String) {
-        viewModelScope.launch {
-            _currentQuery.value = newText
-            
-            // Check if we're looking for mentions or hashtags
-            when {
-                newText.contains("@") -> {
-                    val query = newText.substringAfterLast("@")
-                    if (query.isNotEmpty()) {
-                        searchUsers(query)
+                // 4. Post to BlueSky if selected
+                if (postToBlueSky) {
+                    try {
+                        val facets = extractFacets(description)
+                        val record = mapOf<String, Any>(
+                            "\$type" to "app.bsky.feed.post",
+                            "text" to "$description\n\n🎬 Coming soon to Android! Follow us for updates.",
+                            "createdAt" to timestamp,
+                            "facets" to facets,
+                            "embed" to mapOf<String, Any>(
+                                "\$type" to "app.bsky.embed.external",
+                                "external" to mapOf(
+                                    "uri" to "https://trendflick.app/flick/${video.uri}",
+                                    "title" to "Watch on TrendFlick (Coming Soon)",
+                                    "description" to description,
+                                    "thumb" to "" // Optional thumbnail URL
+                                )
+                            )
+                        )
+                        val postResult = atProtocolRepository.createPost(record)
+                        _uiState.value = CreateFlickUiState(isPostSuccessful = true, video = video)
+                    } catch (e: Exception) {
+                        _uiState.value = CreateFlickUiState(error = "Failed to post to BlueSky: ${e.message}", video = video)
                     }
+                } else {
+                    _uiState.value = CreateFlickUiState(isPostSuccessful = true, video = video)
                 }
-                newText.contains("#") -> {
-                    val query = newText.substringAfterLast("#")
-                    if (query.isNotEmpty()) {
-                        searchHashtags(query)
-                    }
-                }
-            }
-        }
-    }
-
-    private suspend fun searchUsers(query: String) {
-        try {
-            val users = atProtocolRepository.searchHandles(query)
-            _userSuggestions.value = users.map { result ->
-                UserProfile(
-                    did = result.did,
-                    handle = result.handle,
-                    displayName = result.displayName,
-                    avatar = result.avatar
-                )
-            }
-            _hashtagSuggestions.value = emptyList()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error searching users: ${e.message}")
-            _userSuggestions.value = emptyList()
-            _hashtagSuggestions.value = emptyList()
-        }
-    }
-
-    private suspend fun searchHashtags(query: String) {
-        try {
-            val hashtags = atProtocolRepository.searchHashtags(query)
-            _userSuggestions.value = emptyList()
-            _hashtagSuggestions.value = hashtags.map { trending ->
-                Hashtag(
-                    tag = trending.tag,
-                    postCount = 0  // Default to 0 since we don't have this info from BlueSky
-                )
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error searching hashtags: ${e.message}")
-            _userSuggestions.value = emptyList()
-            _hashtagSuggestions.value = emptyList()
-        }
-    }
-
-    fun createTextPost(text: String) {
-        viewModelScope.launch {
-            try {
-                _uiState.value = CreateFlickUiState(isLoading = true)
-                
-                // Ensure valid session
-                if (!atProtocolRepository.ensureValidSession()) {
-                    throw IllegalStateException("BlueSky session is invalid. Please log in again.")
-                }
-
-                // Parse facets (mentions, hashtags, links)
-                val facets = atProtocolRepository.parseFacets(text)
-                
-                // Create the post with facets
-                atProtocolRepository.createPost(
-                    text = text,
-                    timestamp = Instant.now().toString(),
-                    facets = facets
-                )
-
-                Log.d(TAG, """
-                    ✅ Text post created successfully:
-                    Text: $text
-                    Facets: ${facets?.size ?: 0}
-                """.trimIndent())
-                
-                _uiState.value = CreateFlickUiState(isPostSuccessful = true)
-                
+                Log.d(TAG, "✅ CREATE FLICK: Completed successfully")
             } catch (e: Exception) {
-                Log.e(TAG, """
-                    ❌ Error creating text post:
-                    Error: ${e.message}
-                    Stack: ${e.stackTraceToString()}
-                """.trimIndent())
-                
-                _uiState.value = CreateFlickUiState(
-                    error = e.message ?: "Failed to create post"
-                )
+                Log.e(TAG, "❌ ERROR: ${e.message}")
+                Log.e(TAG, "❌ STACK: ${e.stackTraceToString()}")
+                _uiState.value = CreateFlickUiState(error = e.message ?: "Unknown error")
             }
         }
     }
 
-    fun insertMention(user: UserProfile): String {
-        val currentText = _currentQuery.value
-        val lastAtIndex = currentText.lastIndexOf('@')
-        return if (lastAtIndex >= 0) {
-            currentText.substring(0, lastAtIndex) + "@${user.handle} "
-        } else {
-            currentText
+    private suspend fun uploadVideo(uri: Uri): String {
+        return try {
+            val result = videoRepository.uploadVideo(
+                uri = uri,
+                title = "Flick ${System.currentTimeMillis()}",
+                description = "Created with TrendFlick",
+                visibility = "public",
+                tags = listOf("trendflick", "flick")
+            )
+            result.getOrThrow()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to upload video", e)
+            throw e
         }
-    }
-
-    fun insertHashtag(hashtag: Hashtag): String {
-        val currentText = _currentQuery.value
-        val lastHashIndex = currentText.lastIndexOf('#')
-        return if (lastHashIndex >= 0) {
-            currentText.substring(0, lastHashIndex) + "#${hashtag.tag} "
-        } else {
-            currentText
-        }
-    }
-
-    fun clearSuggestions() {
-        _userSuggestions.value = emptyList()
-        _hashtagSuggestions.value = emptyList()
     }
 } 

@@ -3,84 +3,87 @@ package com.trendflick.ui.components
 import android.Manifest
 import android.app.Activity
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
-import android.provider.Settings
+import android.os.Build
 import android.util.Log
+import android.view.Surface
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.core.*
-import androidx.camera.core.ImageCapture.FLASH_MODE_OFF
-import androidx.camera.extensions.ExtensionMode
-import androidx.camera.extensions.ExtensionsManager
+import androidx.camera.core.AspectRatio
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.*
-import androidx.camera.video.VideoRecordEvent
 import androidx.camera.view.PreviewView
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Cameraswitch
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import com.google.common.util.concurrent.ListenableFuture
-import com.trendflick.utils.PermissionUtils
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalView
+import android.view.WindowManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
+import android.net.Uri
+import java.util.concurrent.Executor
 import kotlin.coroutines.suspendCoroutine
+import android.content.Intent
+import android.provider.Settings
+import com.trendflick.utils.PermissionUtils
 
 private const val TAG = "CameraPreview"
 
-private fun checkCameraPermission(context: Context): Boolean {
-    return ContextCompat.checkSelfPermission(
-        context,
-        Manifest.permission.CAMERA
-    ) == PackageManager.PERMISSION_GRANTED
-}
-
-private fun checkAudioPermission(context: Context): Boolean {
-    return ContextCompat.checkSelfPermission(
-        context,
-        Manifest.permission.RECORD_AUDIO
-    ) == PackageManager.PERMISSION_GRANTED
-}
-
-suspend fun Context.getCameraProvider(): ProcessCameraProvider = suspendCoroutine { continuation ->
-    ProcessCameraProvider.getInstance(this).apply {
-        addListener({
-            try {
-                continuation.resume(get())
-            } catch (e: Exception) {
-                continuation.resumeWithException(e)
-            }
-        }, ContextCompat.getMainExecutor(this@getCameraProvider))
-    }
-}
-
-suspend fun Context.getExtensionsManager(cameraProvider: ProcessCameraProvider): ExtensionsManager = suspendCoroutine { continuation ->
-    ExtensionsManager.getInstanceAsync(this, cameraProvider).apply {
-        addListener({
-            try {
-                continuation.resume(get())
-            } catch (e: Exception) {
-                continuation.resumeWithException(e)
-            }
-        }, ContextCompat.getMainExecutor(this@getExtensionsManager))
-    }
+// Add extension function for ListenableFuture to support await()
+suspend fun <T> ListenableFuture<T>.await(context: Context): T = suspendCancellableCoroutine { cont ->
+    addListener({
+        try {
+            cont.resume(get())
+        } catch (e: Exception) {
+            cont.resumeWithException(e)
+        }
+    }, ContextCompat.getMainExecutor(context))
 }
 
 @Composable
@@ -140,6 +143,7 @@ fun RequestPermissions(
                 TextButton(
                     onClick = {
                         showRationale = false
+                        // Open app settings
                         activity?.let { act ->
                             val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                                 data = Uri.fromParts("package", act.packageName, null)
@@ -167,25 +171,22 @@ fun CameraPreview(
     isPaused: Boolean,
     isBackCamera: Boolean,
     isRecording: Boolean,
-    onSegmentUpdated: (List<Float>) -> Unit,
-    enableBeautyFilter: Boolean = true
+    onSegmentUpdated: (List<Float>) -> Unit
 ) {
     var permissionsGranted by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    var isBeautyFilterAvailable by remember { mutableStateOf(false) }
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
     
     RequestPermissions(
         onPermissionsGranted = { permissionsGranted = true },
         onPermissionsDenied = { permissionsGranted = false }
     )
 
-    if (!permissionsGranted || !checkCameraPermission(context) || !checkAudioPermission(context)) {
+    if (!permissionsGranted) {
         return
     }
 
-    val preview = remember { Preview.Builder().build() }
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val preview = Preview.Builder().build()
     val previewView = remember { PreviewView(context) }
     val videoCapture: MutableState<VideoCapture<Recorder>?> = remember { mutableStateOf(null) }
     val recording: MutableState<Recording?> = remember { mutableStateOf(null) }
@@ -193,186 +194,77 @@ fun CameraPreview(
     val recordingSegments = remember { mutableStateListOf<Float>() }
     var currentSegmentProgress by remember { mutableStateOf(0f) }
 
-    // Check if beauty filter is available
-    LaunchedEffect(Unit) {
-        try {
-            val cameraProvider = context.getCameraProvider()
-            val extensionsManager = context.getExtensionsManager(cameraProvider)
-            isBeautyFilterAvailable = extensionsManager.isExtensionAvailable(
-                CameraSelector.DEFAULT_FRONT_CAMERA, 
-                ExtensionMode.FACE_RETOUCH
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to check beauty filter availability", e)
-        }
-    }
-
     // Handle recording state changes
     LaunchedEffect(isRecording) {
         if (isRecording) {
-            try {
-                startRecording(
-                    context = context,
-                    videoCapture = videoCapture.value,
-                    recording = recording,
-                    recordedSegments = recordedSegments,
-                    recordingSegments = recordingSegments,
-                    onSegmentUpdated = onSegmentUpdated,
-                    onVideoRecorded = onVideoRecorded,
-                    isBackCamera = isBackCamera
-                )
-            } catch (e: Exception) {
-                errorMessage = "Failed to start recording: ${e.message}"
-                Log.e(TAG, "Recording error", e)
-            }
+            startRecording(
+                context = context,
+                videoCapture = videoCapture.value,
+                recording = recording,
+                recordedSegments = recordedSegments,
+                recordingSegments = recordingSegments,
+                onSegmentUpdated = onSegmentUpdated,
+                onVideoRecorded = onVideoRecorded
+            )
         } else {
-            try {
-                recording.value?.stop()
-            } catch (e: Exception) {
-                errorMessage = "Failed to stop recording: ${e.message}"
-                Log.e(TAG, "Stop recording error", e)
-            }
+            recording.value?.stop()
         }
     }
 
     // Handle pause/resume
     LaunchedEffect(isPaused) {
         if (isPaused && isRecording) {
-            try {
-                recording.value?.pause()
-                if (currentSegmentProgress > 0f) {
-                    recordingSegments.add(currentSegmentProgress)
-                    currentSegmentProgress = 0f
-                    onSegmentUpdated(recordingSegments.toList())
-                }
-            } catch (e: Exception) {
-                errorMessage = "Failed to pause recording: ${e.message}"
-                Log.e(TAG, "Pause error", e)
+            recording.value?.pause()
+            if (currentSegmentProgress > 0f) {
+                recordingSegments.add(currentSegmentProgress)
+                currentSegmentProgress = 0f
+                onSegmentUpdated(recordingSegments.toList())
             }
         } else if (!isPaused && isRecording) {
-            try {
-                recording.value?.resume()
-                recordingSegments.add(0f)
-                onSegmentUpdated(recordingSegments.toList())
-            } catch (e: Exception) {
-                errorMessage = "Failed to resume recording: ${e.message}"
-                Log.e(TAG, "Resume error", e)
-            }
+            recording.value?.resume()
+            recordingSegments.add(0f)
+            onSegmentUpdated(recordingSegments.toList())
         }
     }
 
     // Handle camera setup and switching
-    LaunchedEffect(isBackCamera, enableBeautyFilter) {
+    LaunchedEffect(isBackCamera) {
+        val cameraProvider = context.getCameraProvider()
+        val cameraSelector = if (isBackCamera) {
+            CameraSelector.DEFAULT_BACK_CAMERA
+        } else {
+            CameraSelector.DEFAULT_FRONT_CAMERA
+        }
+
+        val recorder = Recorder.Builder()
+            .setQualitySelector(QualitySelector.from(Quality.HIGHEST))
+            .build()
+        videoCapture.value = VideoCapture.withOutput(recorder)
+
         try {
-            val cameraProvider = context.getCameraProvider()
-            val cameraSelector = if (isBackCamera) {
-                CameraSelector.DEFAULT_BACK_CAMERA
-            } else {
-                CameraSelector.DEFAULT_FRONT_CAMERA
-            }
-
-            // Configure preview with proper rotation
-            val preview = Preview.Builder()
-                .setTargetRotation(previewView.display.rotation)
-                .build()
-
-            // Configure preview view for optimal performance and scaling
-            previewView.implementationMode = PreviewView.ImplementationMode.PERFORMANCE
-            previewView.scaleType = PreviewView.ScaleType.FILL_CENTER
-
-            // Apply beauty filter if available and enabled for front camera
-            val effectiveCameraSelector = if (enableBeautyFilter && isBeautyFilterAvailable && !isBackCamera) {
-                val extensionsManager = context.getExtensionsManager(cameraProvider)
-                extensionsManager.getExtensionEnabledCameraSelector(
-                    cameraSelector,
-                    ExtensionMode.FACE_RETOUCH
-                )
-            } else {
-                cameraSelector
-            }
-
-            // Configure video capture with proper orientation settings
-            val qualitySelector = QualitySelector.from(Quality.HIGHEST)
-            val recorder = Recorder.Builder()
-                .setQualitySelector(qualitySelector)
-                .build()
-            
-            val videoCaptureBuilder = VideoCapture.withOutput(recorder)
-
-            // Mirror preview for front camera only (selfie view)
-            if (!isBackCamera) {
-                previewView.scaleX = -1f
-            } else {
-                previewView.scaleX = 1f
-            }
-
             cameraProvider.unbindAll()
             cameraProvider.bindToLifecycle(
                 lifecycleOwner,
-                effectiveCameraSelector,
+                cameraSelector,
                 preview,
-                videoCaptureBuilder
+                videoCapture.value
             )
-
-            videoCapture.value = videoCaptureBuilder
             preview.setSurfaceProvider(previewView.surfaceProvider)
-
         } catch (e: Exception) {
-            errorMessage = "Failed to setup camera: ${e.message}"
-            Log.e(TAG, "Camera setup error", e)
+            Log.e("CameraPreview", "Use case binding failed", e)
         }
     }
 
     DisposableEffect(Unit) {
         onDispose {
-            try {
-                recording.value?.stop()
-            } catch (e: Exception) {
-                Log.e(TAG, "Error stopping recording on dispose", e)
-            }
+            recording.value?.stop()
         }
     }
 
-    Box(modifier = modifier) {
-        AndroidView(
-            factory = { previewView },
-            modifier = Modifier.fillMaxSize()
-        )
-
-        // Show beauty filter unavailable message if needed
-        if (enableBeautyFilter && !isBeautyFilterAvailable && !isBackCamera) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(16.dp)
-                    .background(
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
-                        shape = RoundedCornerShape(8.dp)
-                    )
-                    .padding(8.dp)
-            ) {
-                Text(
-                    text = "Beauty filter not available on this device",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-        }
-
-        // Show error message if any
-        errorMessage?.let { error ->
-            AlertDialog(
-                onDismissRequest = { errorMessage = null },
-                title = { Text("Error") },
-                text = { Text(error) },
-                confirmButton = {
-                    TextButton(onClick = { errorMessage = null }) {
-                        Text("OK")
-                    }
-                }
-            )
-        }
-    }
+    AndroidView(
+        factory = { previewView },
+        modifier = modifier
+    )
 }
 
 private suspend fun startRecording(
@@ -382,59 +274,55 @@ private suspend fun startRecording(
     recordedSegments: MutableList<File>,
     recordingSegments: MutableList<Float>,
     onSegmentUpdated: (List<Float>) -> Unit,
-    onVideoRecorded: (List<File>) -> Unit,
-    isBackCamera: Boolean
+    onVideoRecorded: (List<File>) -> Unit
 ) {
-    if (!checkCameraPermission(context) || !checkAudioPermission(context)) {
-        Log.e(TAG, "Missing camera or audio permissions")
-        return
-    }
+    val videoFile = File(
+        context.filesDir,
+        "TrendFlick_${SimpleDateFormat("yyyy-MM-dd-HH-mm-ss-SSS", Locale.US)
+            .format(System.currentTimeMillis())}.mp4"
+    )
+    
+    val fileOutputOptions = FileOutputOptions.Builder(videoFile).build()
 
-    withContext(Dispatchers.IO) {
-        try {
-            val videoFile = File(
-                context.cacheDir,
-                "TrendFlick_${SimpleDateFormat("yyyy-MM-dd-HH-mm-ss-SSS", Locale.US).format(System.currentTimeMillis())}.mp4"
-            )
-
-            val outputOptions = FileOutputOptions.Builder(videoFile).build()
-
-            recording.value = videoCapture?.output
-                ?.prepareRecording(context, outputOptions)
-                ?.apply {
-                    if (checkAudioPermission(context)) {
-                        withAudioEnabled()
+    recording.value = videoCapture?.output
+        ?.prepareRecording(context, fileOutputOptions)
+        ?.apply { withAudioEnabled() }
+        ?.start(ContextCompat.getMainExecutor(context)) { event ->
+            when(event) {
+                is VideoRecordEvent.Start -> {
+                    recordingSegments.add(0f)
+                    onSegmentUpdated(recordingSegments.toList())
+                }
+                is VideoRecordEvent.Pause -> {
+                    // Handle pause event
+                }
+                is VideoRecordEvent.Resume -> {
+                    // Handle resume event
+                }
+                is VideoRecordEvent.Finalize -> {
+                    if (event.hasError()) {
+                        Log.e("CameraPreview", "Video capture failed: ${event.cause}")
+                    } else {
+                        recordedSegments.add(videoFile)
+                        onVideoRecorded(recordedSegments.toList())
                     }
                 }
-                ?.start(ContextCompat.getMainExecutor(context)) { event ->
-                    when(event) {
-                        is VideoRecordEvent.Start -> {
-                            Log.d(TAG, "Recording started")
-                        }
-                        is VideoRecordEvent.Finalize -> {
-                            if (event.hasError()) {
-                                Log.e(TAG, "Video capture failed: ${event.error}")
-                                videoFile.delete()
-                            } else {
-                                Log.d(TAG, "Video capture succeeded: ${videoFile.absolutePath}")
-                                recordedSegments.add(videoFile)
-                                onVideoRecorded(recordedSegments.toList())
-                            }
-                        }
-                        else -> { /* Ignore other events */ }
-                    }
-                }
-        } catch (e: SecurityException) {
-            Log.e(TAG, "Security exception during recording: ${e.message}")
-            throw e
-        } catch (e: Exception) {
-            Log.e(TAG, "Error during recording: ${e.message}")
-            throw e
+            }
         }
+}
+
+private suspend fun Context.getCameraProvider(): ProcessCameraProvider = suspendCoroutine { continuation ->
+    ProcessCameraProvider.getInstance(this).also { future ->
+        future.addListener(
+            {
+                continuation.resume(future.get())
+            },
+            ContextCompat.getMainExecutor(this)
+        )
     }
 }
 
-private fun mergeVideoSegments(segments: List<File>, context: Context): File {
+private fun mergeVideoSegments(segments: List<File>): File {
     // TODO: Implement video merging logic
     // For now, return the last segment
     return segments.last()

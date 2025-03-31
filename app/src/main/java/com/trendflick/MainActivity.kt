@@ -1,5 +1,3 @@
-@file:OptIn(androidx.media3.common.util.UnstableApi::class)
-
 package com.trendflick
 
 import android.os.Bundle
@@ -23,7 +21,6 @@ import com.trendflick.ui.screens.profile.ProfileScreen
 import com.trendflick.ui.screens.splash.SplashScreen
 import com.trendflick.ui.screens.login.LoginScreen
 import com.trendflick.ui.screens.ai.AIScreen
-import com.trendflick.ui.screens.messages.MessagesScreen
 import com.trendflick.ui.theme.TrendFlickTheme
 import dagger.hilt.android.AndroidEntryPoint
 import androidx.compose.material.icons.Icons
@@ -40,19 +37,12 @@ import android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
 import androidx.compose.ui.graphics.Color
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.trendflick.ui.viewmodels.SharedViewModel
-import com.trendflick.ui.components.CastButton
-import com.trendflick.ui.screens.following.FollowingScreen
-import androidx.compose.runtime.CompositionLocalProvider
-import com.trendflick.ui.components.LocalAtProtocolRepository
-import com.trendflick.data.repository.AtProtocolRepository
-import javax.inject.Inject
+import com.trendflick.ui.screens.flicks.FlicksScreenWrapper
+import com.trendflick.ui.components.SwipeTray
+import com.trendflick.ui.components.SwipeTrayItem
 
-@OptIn(ExperimentalMaterial3Api::class)
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-    @Inject
-    lateinit var atProtocolRepository: AtProtocolRepository
-    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
@@ -66,127 +56,179 @@ class MainActivity : ComponentActivity() {
         
         setContent {
             TrendFlickTheme {
-                CompositionLocalProvider(
-                    LocalAtProtocolRepository provides atProtocolRepository
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
                 ) {
-                    Surface(
-                        modifier = Modifier.fillMaxSize(),
-                        color = MaterialTheme.colorScheme.background
+                    val navController = rememberNavController()
+                    val sharedViewModel: SharedViewModel = hiltViewModel()
+                    var showSwipeTray by remember { mutableStateOf(false) }
+                    
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .systemBarsPadding() // Add system bars padding
                     ) {
-                        val navController = rememberNavController()
-                        
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .systemBarsPadding() // Add system bars padding
+                        NavHost(
+                            navController = navController,
+                            startDestination = Screen.Splash.route,
+                            modifier = Modifier.fillMaxSize()
                         ) {
-                            NavHost(
-                                navController = navController,
-                                startDestination = Screen.Splash.route,
-                                modifier = Modifier.fillMaxSize()
-                            ) {
-                                composable(Screen.Splash.route) {
-                                    SplashScreen(navController = navController)
+                            composable(Screen.Splash.route) {
+                                SplashScreen(navController = navController)
+                            }
+                            composable(Screen.Login.route) {
+                                LoginScreen(navController = navController)
+                            }
+                            composable(Screen.Home.route) {
+                                Box(modifier = Modifier.padding(bottom = 80.dp)) {
+                                    HomeScreen(
+                                        onNavigateToProfile = { did ->
+                                            navController.navigate(Screen.ProfileDetail.createRoute(did))
+                                        },
+                                        navController = navController,
+                                        sharedViewModel = sharedViewModel
+                                    )
                                 }
-                                composable(Screen.Login.route) {
-                                    LoginScreen(navController = navController)
-                                }
-                                composable(Screen.Home.route) {
-                                    val sharedViewModel: SharedViewModel = hiltViewModel()
-                                    Box(modifier = Modifier.padding(bottom = 80.dp)) {
-                                        HomeScreen(
-                                            onNavigateToProfile = { did ->
-                                                navController.navigate("profile/$did")
-                                            },
-                                            navController = navController,
-                                            sharedViewModel = sharedViewModel
-                                        )
-                                    }
-                                }
-                                composable(Screen.Messages.route) {
-                                    Box(modifier = Modifier.padding(bottom = 80.dp)) {
-                                        MessagesScreen(navController = navController)
-                                    }
-                                }
-                                composable(Screen.CreateFlick.route) {
-                                    Surface(
+                            }
+                            composable(Screen.Following.route) {
+                                Box(modifier = Modifier.padding(bottom = 80.dp)) {
+                                    Column(
                                         modifier = Modifier.fillMaxSize(),
-                                        color = Color.Black
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center
                                     ) {
-                                        CreateFlickScreen(
-                                            onNavigateBack = { navController.navigateUp() }
+                                        Text(
+                                            text = "Following Coming Soon",
+                                            style = MaterialTheme.typography.headlineMedium
                                         )
                                     }
                                 }
-                                composable(Screen.CreatePost.route) {
-                                    Box(modifier = Modifier.padding(bottom = 80.dp)) {
-                                        CreatePostScreen(navController = navController)
-                                    }
+                            }
+                            composable(Screen.CreateFlick.route) {
+                                Surface(
+                                    modifier = Modifier.fillMaxSize(),
+                                    color = Color.Black
+                                ) {
+                                    CreateFlickScreen(navController = navController)
                                 }
-                                composable(Screen.Profile.route) {
-                                    Box(modifier = Modifier.padding(bottom = 80.dp)) {
-                                        ProfileScreen(navController = navController)
-                                    }
+                            }
+                            composable(Screen.CreatePost.route) {
+                                Box(modifier = Modifier.padding(bottom = 80.dp)) {
+                                    CreatePostScreen(navController = navController)
                                 }
-                                composable(Screen.Upload.route) {
-                                    Surface(
+                            }
+                            composable(Screen.Chat.route) {
+                                Box(modifier = Modifier.padding(bottom = 80.dp)) {
+                                    Column(
                                         modifier = Modifier.fillMaxSize(),
-                                        color = Color.Black
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center
                                     ) {
-                                        UploadScreen(navController = navController)
-                                    }
-                                }
-                                composable(Screen.AI.route) {
-                                    AIScreen(navController = navController)
-                                }
-                                composable(Screen.WhatsHot.route) {
-                                    Box(modifier = Modifier.padding(bottom = 80.dp)) {
-                                        FollowingScreen(
-                                            onNavigateToProfile = { did: String ->
-                                                navController.navigate("profile/$did")
-                                            },
-                                            onNavigateToCreatePost = {
-                                                navController.navigate(Screen.CreatePost.route)
-                                            },
-                                            onCreatePost = {
-                                                navController.navigate(Screen.CreatePost.route)
-                                            }
+                                        Text(
+                                            text = "Messages Coming Soon",
+                                            style = MaterialTheme.typography.headlineMedium
                                         )
                                     }
                                 }
-                                composable(Screen.Settings.route) {
-                                    SettingsScreen(navController = navController)
+                            }
+                            composable(Screen.Profile.route) {
+                                Box(modifier = Modifier.padding(bottom = 80.dp)) {
+                                    ProfileScreen(navController = navController)
+                                }
+                            }
+                            composable(Screen.Upload.route) {
+                                Surface(
+                                    modifier = Modifier.fillMaxSize(),
+                                    color = Color.Black
+                                ) {
+                                    UploadScreen(navController = navController)
+                                }
+                            }
+                            composable(Screen.AI.route) {
+                                AIScreen(navController = navController)
+                            }
+                            composable(Screen.Search.route) {
+                                Box(modifier = Modifier.padding(bottom = 80.dp)) {
+                                    Column(
+                                        modifier = Modifier.fillMaxSize(),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center
+                                    ) {
+                                        Text(
+                                            text = "Search Coming Soon",
+                                            style = MaterialTheme.typography.headlineMedium
+                                        )
+                                    }
                                 }
                             }
                             
-                            // Show bottom navigation bar on main screens
-                            val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
-                            if (currentRoute in listOf(
-                                    Screen.Home.route,
-                                    Screen.Messages.route,
-                                    Screen.Profile.route,
-                                    Screen.WhatsHot.route
-                                )) {
-                                Column(
-                                    modifier = Modifier
-                                        .align(Alignment.BottomCenter)
-                                        .fillMaxWidth()
-                                ) {
-                                    BottomNavigationBar(
-                                        navController = navController
+                            // Settings Routes
+                            composable(Screen.Settings.route) {
+                                SettingsScreen(navController = navController)
+                            }
+                            composable(Screen.EditProfile.route) {
+                                EditProfileScreen(navController = navController)
+                            }
+                            composable(Screen.AppPassword.route) {
+                                AppPasswordScreen(navController = navController)
+                            }
+                            composable(Screen.PrivacySettings.route) {
+                                PrivacySettingsScreen(navController = navController)
+                            }
+                            composable(Screen.BlockedAccounts.route) {
+                                // TODO: Implement BlockedAccountsScreen
+                                Box(modifier = Modifier.fillMaxSize()) {
+                                    Text(
+                                        text = "Blocked Accounts Coming Soon",
+                                        style = MaterialTheme.typography.headlineMedium
                                     )
                                 }
                             }
                             
-                            // Show cast button on video screens
-                            if (currentRoute == Screen.Home.route) {
-                                Box(
+                            // Detail routes
+                            composable(Screen.VideoDetail.route) { backStackEntry ->
+                                val videoId = backStackEntry.arguments?.getString("videoId") ?: ""
+                                FlicksScreenWrapper(navController = navController)
+                            }
+                            composable(Screen.ProfileDetail.route) { backStackEntry ->
+                                val did = backStackEntry.arguments?.getString("did") ?: ""
+                                ProfileScreen(navController = navController)
+                            }
+                        }
+                        
+                        val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
+                        if (currentRoute != Screen.Splash.route && 
+                            currentRoute != Screen.Login.route) {
+                            
+                            // Show bottom navigation bar on main screens
+                            if (!currentRoute.toString().startsWith("settings")) {
+                                // SwipeTray
+                                SwipeTray(
+                                    isVisible = showSwipeTray,
+                                    onVisibilityChange = { showSwipeTray = it },
+                                    onItemClick = { item ->
+                                        showSwipeTray = false
+                                        when (item) {
+                                            SwipeTrayItem.CREATE_POST -> navController.navigate(Screen.CreatePost.route)
+                                            SwipeTrayItem.CREATE_FLICK -> navController.navigate(Screen.CreateFlick.route)
+                                            SwipeTrayItem.MESSAGES -> navController.navigate(Screen.Chat.route)
+                                            SwipeTrayItem.NOTIFICATIONS -> { /* TODO */ }
+                                            SwipeTrayItem.BOOKMARKS -> { /* TODO */ }
+                                            SwipeTrayItem.SETTINGS -> navController.navigate(Screen.Settings.route)
+                                        }
+                                    },
                                     modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .padding(16.dp)
-                                ) {
-                                    CastButton()
-                                }
+                                        .align(Alignment.BottomCenter)
+                                        .offset(y = (-80).dp)
+                                )
+                                
+                                // Bottom Navigation Bar
+                                BottomNavigationBar(
+                                    navController = navController,
+                                    modifier = Modifier.align(Alignment.BottomCenter),
+                                    sharedViewModel = sharedViewModel
+                                )
                             }
                         }
                     }
@@ -204,4 +246,4 @@ class MainActivity : ComponentActivity() {
         super.onPause()
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
-} 
+}

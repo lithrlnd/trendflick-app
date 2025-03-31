@@ -1,42 +1,76 @@
 package com.trendflick.utils
 
-import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
-import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.core.content.ContextCompat
 
+/**
+ * Utility class for handling permissions in the app
+ */
 object PermissionUtils {
-    fun getRequiredMediaPermissions(): Array<String> {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            arrayOf(
-                Manifest.permission.READ_MEDIA_VIDEO,
-                Manifest.permission.READ_MEDIA_IMAGES
-            )
-        } else {
-            arrayOf(
-                Manifest.permission.READ_EXTERNAL_STORAGE,
-                Manifest.permission.WRITE_EXTERNAL_STORAGE
-            )
+
+    /**
+     * Check if a permission is granted
+     */
+    fun isPermissionGranted(context: Context, permission: String): Boolean {
+        return ContextCompat.checkSelfPermission(
+            context,
+            permission
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    /**
+     * Check if multiple permissions are granted
+     */
+    fun arePermissionsGranted(context: Context, permissions: List<String>): Boolean {
+        return permissions.all { permission ->
+            isPermissionGranted(context, permission)
         }
     }
 
-    fun getRequiredCameraPermissions(): Array<String> {
-        return arrayOf(
-            Manifest.permission.CAMERA,
-            Manifest.permission.RECORD_AUDIO
-        )
-    }
+    /**
+     * Composable to request a permission
+     */
+    @Composable
+    fun RequestPermission(
+        permission: String,
+        onPermissionResult: (Boolean) -> Unit
+    ) {
+        val permissionState = remember { mutableStateOf(false) }
+        val launcher = rememberLauncherForActivityResult(
+            ActivityResultContracts.RequestPermission()
+        ) { isGranted ->
+            permissionState.value = isGranted
+            onPermissionResult(isGranted)
+        }
 
-    fun checkMediaPermissions(context: Context): Boolean {
-        return getRequiredMediaPermissions().all {
-            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+        LaunchedEffect(Unit) {
+            launcher.launch(permission)
         }
     }
 
-    fun checkCameraPermissions(context: Context): Boolean {
-        return getRequiredCameraPermissions().all {
-            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+    /**
+     * Composable to request multiple permissions
+     */
+    @Composable
+    fun RequestMultiplePermissions(
+        permissions: List<String>,
+        onPermissionsResult: (Map<String, Boolean>) -> Unit
+    ) {
+        val launcher = rememberLauncherForActivityResult(
+            ActivityResultContracts.RequestMultiplePermissions()
+        ) { permissionsMap ->
+            onPermissionsResult(permissionsMap)
+        }
+
+        LaunchedEffect(Unit) {
+            launcher.launch(permissions.toTypedArray())
         }
     }
-} 
+}

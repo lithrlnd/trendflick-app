@@ -22,10 +22,7 @@ import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.trendflick.ui.components.SettingsSection
 import com.trendflick.ui.components.SettingsItem
-import com.trendflick.ui.components.SettingsSwitch
-import com.trendflick.ui.components.ColorSchemeSelector
 import com.trendflick.ui.navigation.Screen
-import com.trendflick.ui.theme.ThemeManager
 import kotlinx.coroutines.launch
 import android.util.Log
 
@@ -173,28 +170,6 @@ fun SettingsScreen(
                 title = "Storage",
                 subtitle = "Manage app storage and cache",
                 onClick = { navController.navigate("storage_settings") }
-            )
-        }
-
-        // Appearance Settings
-        SettingsSection(title = "Appearance") {
-            val isDark by ThemeManager.isDarkTheme.collectAsState()
-            val primaryHue by ThemeManager.primaryHue.collectAsState()
-
-            SettingsSwitch(
-                title = "Dark Mode",
-                subtitle = "Toggle dark/light theme",
-                checked = isDark,
-                onCheckedChange = { ThemeManager.updateThemeMode(it) },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            ColorSchemeSelector(
-                selectedHue = primaryHue,
-                onHueChange = { ThemeManager.updatePrimaryHue(it) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 16.dp)
             )
         }
 

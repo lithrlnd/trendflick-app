@@ -20,10 +20,4 @@ object AppModule {
     fun provideVideoCache(@ApplicationContext context: Context): Cache {
         return TrendFlickApplication.getVideoCache(context as TrendFlickApplication)
     }
-
-    @Provides
-    @Singleton
-    fun provideContext(@ApplicationContext context: Context): Context {
-        return context
-    }
 } 

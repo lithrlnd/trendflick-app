@@ -1,259 +1,259 @@
 package com.trendflick.ui.screens.hashtag
 
-import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.trendflick.ui.components.ThreadCard
-import com.trendflick.data.api.FeedPost
-import com.trendflick.ui.components.HashtagBadge
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.navigation.NavController
+import com.trendflick.data.model.Post
+import com.trendflick.ui.components.EnhancedPostItem
+import com.trendflick.ui.components.HashtagPill
+import com.trendflick.ui.viewmodels.HashtagViewModel
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.Tab
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.ExperimentalMaterialApi
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
+import androidx.compose.foundation.ExperimentalFoundationApi
+import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Screen for displaying posts with a specific hashtag
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun HashtagScreen(
+    navController: NavController,
     hashtag: String,
-    onBackClick: () -> Unit,
-    onNavigateToProfile: (String) -> Unit,
     viewModel: HashtagViewModel = hiltViewModel()
 ) {
-    var selectedTab by remember { mutableStateOf(HashtagTab.Latest) }
-    val posts by viewModel.posts.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
-    val isFollowing by viewModel.isFollowing.collectAsState()
-    val relatedHashtags by viewModel.relatedHashtags.collectAsState()
-    val postCount by viewModel.postCount.collectAsState()
-    val engagementRate by viewModel.engagementRate.collectAsState()
-
+    val coroutineScope = rememberCoroutineScope()
+    val isLoading by remember { mutableStateOf(false) }
+    val pullRefreshState = rememberPullRefreshState(
+        refreshing = isLoading,
+        onRefresh = { /* Refresh data */ }
+    )
+    
+    // Track hashtag view for analytics
     LaunchedEffect(hashtag) {
-        viewModel.loadHashtagData(hashtag)
+        viewModel.trackHashtagUsage(hashtag)
     }
-
-    Scaffold(
-        topBar = {
-            HashtagTopBar(
-                hashtag = hashtag,
-                onBackClick = onBackClick,
-                isFollowing = isFollowing,
-                onFollowClick = { viewModel.toggleFollow(hashtag) }
+    
+    // Mock posts for the hashtag
+    val posts = remember {
+        List(10) { index ->
+            Post(
+                id = "post_$index",
+                authorName = "User ${index + 1}",
+                authorHandle = "user${index + 1}",
+                authorAvatar = null,
+                content = "This is a post with #$hashtag and some other content. #trending",
+                timestamp = System.currentTimeMillis() - (index * 3600000),
+                likes = (10..500).random(),
+                comments = (0..50).random(),
+                reposts = (0..30).random(),
+                hashtags = listOf(hashtag, "trending"),
+                mentions = emptyList(),
+                mediaUrl = if (index % 3 == 0) "https://example.com/image.jpg" else null,
+                isVideo = index % 6 == 0
             )
         }
+    }
+    
+    // Tab state
+    val tabs = listOf("Top", "Latest", "Videos", "Photos")
+    val pagerState = rememberPagerState(pageCount = { tabs.size })
+    
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Column {
+                        Text(
+                            text = "#$hashtag",
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "${posts.size} posts",
+                            fontSize = 12.sp,
+                            color = Color.Gray
+                        )
+                    }
+                },
+                navigationIcon = {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Back"
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color(0xFF121212),
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White
+                )
+            )
+        },
+        containerColor = Color(0xFF121212)
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // Hashtag Header
-            HashtagHeader(
-                hashtag = hashtag,
-                postCount = postCount,
-                engagementRate = engagementRate
-            )
-
-            // Related Hashtags
-            if (relatedHashtags.isNotEmpty()) {
-                LazyRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(horizontal = 16.dp)
-                ) {
-                    items(relatedHashtags) { relatedTag ->
-                        HashtagBadge(
-                            hashtag = relatedTag,
-                            onClick = { /* Handle related hashtag click */ }
+            // Related hashtags
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(60.dp)
+                    .padding(horizontal = 16.dp),
+                horizontalAlignment = Alignment.Start,
+                verticalArrangement = Arrangement.Center
+            ) {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Related:",
+                            color = Color.Gray,
+                            fontSize = 14.sp,
+                            modifier = Modifier.padding(end = 8.dp)
                         )
+                        
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState())
+                        ) {
+                            listOf("trending", "viral", "fyp", "foryou").forEach { relatedTag ->
+                                HashtagPill(
+                                    hashtag = relatedTag,
+                                    onClick = {
+                                        navController.navigate("hashtag/$relatedTag")
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }
-
-            // Tab Row
+            
+            // Tabs
             TabRow(
-                selectedTabIndex = selectedTab.ordinal,
-                modifier = Modifier.fillMaxWidth()
+                selectedTabIndex = pagerState.currentPage,
+                containerColor = Color(0xFF121212),
+                contentColor = Color(0xFF6B4EFF),
+                indicator = { tabPositions ->
+                    TabRowDefaults.Indicator(
+                        modifier = Modifier.tabIndicatorOffset(tabPositions[pagerState.currentPage]),
+                        height = 3.dp,
+                        color = Color(0xFF6B4EFF)
+                    )
+                }
             ) {
-                HashtagTab.values().forEach { tab ->
+                tabs.forEachIndexed { index, title ->
                     Tab(
-                        selected = selectedTab == tab,
-                        onClick = { selectedTab = tab },
-                        text = { Text(tab.title) },
-                        icon = {
-                            Icon(
-                                imageVector = tab.icon,
-                                contentDescription = null
+                        selected = pagerState.currentPage == index,
+                        onClick = {
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(index)
+                            }
+                        },
+                        text = {
+                            Text(
+                                text = title,
+                                fontWeight = if (pagerState.currentPage == index) FontWeight.Bold else FontWeight.Normal
                             )
-                        }
+                        },
+                        selectedContentColor = Color(0xFF6B4EFF),
+                        unselectedContentColor = Color.Gray
                     )
                 }
             }
-
+            
             // Content
-            when {
-                isLoading -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator()
-                    }
-                }
-                posts.isEmpty() -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("No posts found for #$hashtag")
-                    }
-                }
-                else -> {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pullRefresh(pullRefreshState)
+            ) { page ->
+                Box(modifier = Modifier.fillMaxSize()) {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(vertical = 8.dp)
                     ) {
-                        items(
-                            items = posts,
-                            key = { it.post.uri }
-                        ) { post ->
-                            ThreadCard(
-                                feedPost = post,
-                                isLiked = false, // Implement like state
-                                isReposted = false, // Implement repost state
-                                onLikeClick = { /* Handle like */ },
-                                onRepostClick = { /* Handle repost */ },
-                                onShareClick = { /* Handle share */ },
-                                onProfileClick = { onNavigateToProfile(post.post.author.did) },
-                                onThreadClick = { /* Handle thread click */ },
-                                onCommentClick = { /* Handle comment */ },
-                                onCreatePost = { /* Handle create post */ },
-                                onImageClick = { /* Handle image click */ },
-                                modifier = Modifier.fillMaxWidth()
-                            )
+                        val filteredPosts = when (page) {
+                            0 -> posts.sortedByDescending { it.likes }
+                            1 -> posts.sortedByDescending { it.timestamp }
+                            2 -> posts.filter { it.isVideo }
+                            3 -> posts.filter { it.mediaUrl != null && !it.isVideo }
+                            else -> posts
+                        }
+                        
+                        if (filteredPosts.isEmpty()) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(200.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "No posts found",
+                                        color = Color.Gray,
+                                        fontSize = 16.sp
+                                    )
+                                }
+                            }
+                        } else {
+                            items(filteredPosts) { post ->
+                                EnhancedPostItem(
+                                    post = post,
+                                    onLikeClick = { /* Like post */ },
+                                    onCommentClick = { /* Open comments */ },
+                                    onShareClick = { /* Share post */ },
+                                    onProfileClick = { navController.navigate("profile/${post.authorHandle}") },
+                                    onHashtagClick = { clickedHashtag ->
+                                        navController.navigate("hashtag/$clickedHashtag")
+                                    },
+                                    onMentionClick = { username ->
+                                        navController.navigate("profile/$username")
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(bottom = 8.dp)
+                                )
+                            }
                         }
                     }
+                    
+                    PullRefreshIndicator(
+                        refreshing = isLoading,
+                        state = pullRefreshState,
+                        modifier = Modifier.align(Alignment.TopCenter),
+                        backgroundColor = Color(0xFF6B4EFF),
+                        contentColor = Color.White
+                    )
                 }
             }
         }
     }
 }
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun HashtagTopBar(
-    hashtag: String,
-    onBackClick: () -> Unit,
-    isFollowing: Boolean,
-    onFollowClick: () -> Unit
-) {
-    TopAppBar(
-        title = { Text("#$hashtag") },
-        navigationIcon = {
-            IconButton(onClick = onBackClick) {
-                Icon(
-                    imageVector = Icons.Default.ArrowBack,
-                    contentDescription = "Navigate back"
-                )
-            }
-        },
-        actions = {
-            IconButton(onClick = onFollowClick) {
-                Icon(
-                    imageVector = if (isFollowing) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    contentDescription = if (isFollowing) "Unfollow" else "Follow"
-                )
-            }
-        }
-    )
-}
-
-@Composable
-private fun HashtagHeader(
-    hashtag: String,
-    postCount: Int,
-    engagementRate: Double
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFF6B4EFF).copy(alpha = 0.1f),
-                        Color.Transparent
-                    )
-                )
-            )
-            .padding(16.dp)
-    ) {
-        Text(
-            text = "#$hashtag",
-            style = MaterialTheme.typography.headlineMedium.copy(
-                fontWeight = FontWeight.Bold
-            ),
-            color = Color(0xFF6B4EFF)
-        )
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Column {
-                Text(
-                    text = formatCount(postCount),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = "Posts",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            
-            Column {
-                Text(
-                    text = "${String.format("%.1f", engagementRate)}%",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = "Engagement",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-}
-
-private enum class HashtagTab(
-    val title: String,
-    val icon: ImageVector
-) {
-    Latest("Latest", Icons.Default.Schedule),
-    Trending("Trending", Icons.Default.TrendingUp),
-    Media("Media", Icons.Default.Image)
-}
-
-private fun formatCount(count: Int): String = when {
-    count < 1000 -> count.toString()
-    count < 1000000 -> String.format("%.1fK", count / 1000f)
-    else -> String.format("%.1fM", count / 1000000f)
-} 

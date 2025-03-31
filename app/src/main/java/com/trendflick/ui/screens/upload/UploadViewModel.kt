@@ -128,16 +128,11 @@ class UploadViewModel @Inject constructor(
                             "text" to description,
                             "createdAt" to Instant.now().toString(),
                             "embed" to mapOf(
-                                "\$type" to "app.bsky.embed.video",
-                                "video" to mapOf(
-                                    "ref" to mapOf(
-                                        "\$link" to videoUrl
-                                    ),
-                                    "aspectRatio" to mapOf(
-                                        "width" to 16,
-                                        "height" to 9
-                                    ),
-                                    "alt" to description
+                                "\$type" to "app.bsky.embed.external",
+                                "external" to mapOf(
+                                    "uri" to videoUrl,
+                                    "title" to "TrendFlick Video",
+                                    "description" to description
                                 )
                             )
                         )
